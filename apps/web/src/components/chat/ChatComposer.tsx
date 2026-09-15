@@ -75,7 +75,10 @@ import {
   formatAssistantCitationForComposer,
   replaceTextRange,
 } from "../../composer-logic";
-import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import {
+  ACTIVE_COMPOSER_PLACEHOLDER,
+  DISCONNECTED_COMPOSER_PLACEHOLDER,
+} from "../../composerPlaceholder";
 import {
   deriveComposerSendState,
   getAntigravitySendBlockReason,
@@ -6191,7 +6194,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     : prompt.trim() ||
                       (showProviderUnavailable
                         ? "Enable a provider in Settings"
-                        : "Ask anything...")}
+                        : phase === "disconnected"
+                          ? "Ask anything..."
+                          : "Ask for changes...")}
                 </button>
                 {collapsedComposerImagePreviews}
                 <button
@@ -6700,7 +6705,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 ? "Enable a provider in Settings to send a message"
                                 : phase === "disconnected"
                                   ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                  : ACTIVE_COMPOSER_PLACEHOLDER
                     }
                     disabled={
                       isConnecting ||

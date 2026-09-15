@@ -58,6 +58,7 @@ function createCitationEditor(text = "") {
   );
   registerComposerInlineTokenPaste(editor, {
     createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+    createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
     createCitationNode: $createComposerCitationNode,
     createContextReferenceNode: (reference) => $createTextNode(`<context:${reference.contextId}>`),
     getExpandedAbsoluteOffsetForPoint: (_node, offset) => offset,
@@ -99,6 +100,46 @@ describe("registerComposerInlineTokenPaste", () => {
     vi.unstubAllGlobals();
   });
 
+  it("turns a pasted skill reference into an inline skill token", () => {
+    vi.stubGlobal("ClipboardEvent", TestClipboardEvent);
+    const editor = createEditor();
+    const plainTextFallback = vi.fn(() => true);
+
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        $getRoot().append(paragraph);
+        paragraph.selectEnd();
+      },
+      { discrete: true },
+    );
+    registerComposerInlineTokenPaste(editor, {
+      createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+      createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
+      createCitationNode: $createComposerCitationNode,
+      createContextReferenceNode: (reference) =>
+        $createTextNode(`<context:${reference.contextId}>`),
+      getExpandedAbsoluteOffsetForPoint: () => 0,
+    });
+    editor.registerCommand(PASTE_COMMAND, plainTextFallback, COMMAND_PRIORITY_EDITOR);
+
+    const event = new TestClipboardEvent("Use $playwright to verify this");
+    let handled = false;
+    editor.update(
+      () => {
+        handled = editor.dispatchCommand(PASTE_COMMAND, event as ClipboardEvent);
+      },
+      { discrete: true },
+    );
+
+    expect(handled).toBe(true);
+    expect(plainTextFallback).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe(
+      "Use <skill:playwright> to verify this",
+    );
+  });
+
   it("handles a copied mention without also running the plain-text paste fallback", () => {
     vi.stubGlobal("ClipboardEvent", TestClipboardEvent);
     const editor = createEditor();
@@ -120,6 +161,7 @@ describe("registerComposerInlineTokenPaste", () => {
     );
     registerComposerInlineTokenPaste(editor, {
       createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+      createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
       createCitationNode: $createComposerCitationNode,
       createContextReferenceNode: (reference) =>
         $createTextNode(`<context:${reference.contextId}>`),
@@ -168,6 +210,7 @@ describe("registerComposerInlineTokenPaste", () => {
     );
     registerComposerInlineTokenPaste(editor, {
       createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+      createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
       createCitationNode: $createComposerCitationNode,
       createContextReferenceNode: (reference) =>
         $createTextNode(`<context:${reference.contextId}>`),
@@ -205,6 +248,7 @@ describe("registerComposerInlineTokenPaste", () => {
     );
     registerComposerInlineTokenPaste(editor, {
       createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+      createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
       createCitationNode: $createComposerCitationNode,
       createContextReferenceNode: (reference) =>
         $createTextNode(`<context:${reference.contextId}>`),
@@ -526,6 +570,7 @@ describe("context reference paste", () => {
       };
       registerComposerInlineTokenPaste(editor, {
         createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+        createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
         createCitationNode: $createComposerCitationNode,
         createContextReferenceNode: (reference) =>
           $createTextNode(`<context:${reference.contextId}>`),
@@ -652,6 +697,7 @@ describe("context reference paste", () => {
     const imported: string[] = [];
     registerComposerInlineTokenPaste(editor, {
       createMentionNode: (path) => $createTextNode(`<mention:${path}>`),
+      createSkillNode: (name) => $createTextNode(`<skill:${name}>`),
       createCitationNode: $createComposerCitationNode,
       createContextReferenceNode: (reference) =>
         $createTextNode(`<context:${reference.contextId}>`),

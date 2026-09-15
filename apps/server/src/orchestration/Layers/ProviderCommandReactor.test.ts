@@ -2590,6 +2590,11 @@ describe("ProviderCommandReactor", () => {
 
     await harness.runEffect(Deferred.await(statusRefreshed));
     await harness.drain();
+    expect(harness.renameBranch).toHaveBeenCalledWith({
+      cwd: "/tmp/provider-project-worktree",
+      oldBranch: "t3code/1234abcd",
+      newBranch: "feature/gpt-5-6-luna",
+    });
     expect(harness.generateBranchName.mock.calls[0]?.[0].message).toBe(
       `Add a safer reconnect backoff. ${assistantQuoteText}`,
     );

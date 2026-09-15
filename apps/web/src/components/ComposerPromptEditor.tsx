@@ -1293,14 +1293,28 @@ function ComposerChipSelectionPlugin() {
 
 function ComposerInlineTokenPastePlugin(props: {
   importContextFragment?: ComposerPromptEditorProps["importContextFragment"];
+  skills: ReadonlyArray<ServerProviderSkill>;
 }) {
   const [editor] = useLexicalComposerContext();
   const importContextFragment = props.importContextFragment;
+  const skillMetadataRef = useRef(skillMetadataByName(props.skills));
+
+  useEffect(() => {
+    skillMetadataRef.current = skillMetadataByName(props.skills);
+  }, [props.skills]);
 
   useEffect(
     () =>
       registerComposerInlineTokenPaste(editor, {
         createMentionNode: $createComposerMentionNode,
+        createSkillNode: (name) => {
+          const metadata = skillMetadataRef.current.get(name);
+          return $createComposerSkillNode(
+            name,
+            metadata?.label ?? formatProviderSkillDisplayName({ name }),
+            metadata?.description ?? null,
+          );
+        },
         createCitationNode: $createComposerCitationNode,
         createContextReferenceNode: $createComposerContextReferenceNode,
         getExpandedAbsoluteOffsetForPoint,
@@ -2050,7 +2064,10 @@ function ComposerPromptEditorInner({
           <ComposerInlineTokenArrowPlugin />
           <ComposerInlineTokenSelectionNormalizePlugin />
           <ComposerInlineTokenBackspacePlugin />
-          <ComposerInlineTokenPastePlugin importContextFragment={importContextFragment} />
+          <ComposerInlineTokenPastePlugin
+            importContextFragment={importContextFragment}
+            skills={skills}
+          />
           <ComposerContextClipboardPlugin
             buildContextClipboardFragment={buildContextClipboardFragment}
           />

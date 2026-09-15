@@ -26,6 +26,7 @@ import { collectComposerPromptInlineTokens } from "../composer-editor-mentions";
 
 interface ComposerInlineTokenPasteOptions {
   createMentionNode: (path: string) => LexicalNode;
+  createSkillNode: (name: string) => LexicalNode;
   createCitationNode: (citation: AssistantCitation, source: string) => LexicalNode;
   createContextReferenceNode: (reference: {
     kind: string;
@@ -65,6 +66,7 @@ export function registerComposerInlineTokenPaste(
       const tokens = collectComposerPromptInlineTokens(`${text}\n`).filter(
         (token) =>
           (token.type === "mention" ||
+            token.type === "skill" ||
             token.type === "citation" ||
             token.type === "context-reference") &&
           token.end <= text.length,
@@ -124,15 +126,17 @@ export function registerComposerInlineTokenPaste(
                   contextId: token.contextId,
                   label: token.label,
                 })
-              : options.createMentionNode(token.value),
+              : token.type === "skill"
+                ? options.createSkillNode(token.value)
+                : options.createMentionNode(token.value),
         );
         cursor = token.end;
       }
       if (cursor < text.length) {
         appendText(text.slice(cursor));
-      } else if (tokens.at(-1)?.type === "mention") {
-        // Keep the serialized prompt valid: mention tokens need trailing
-        // whitespace, so a paste ending in a mention gets the same
+      } else if (["mention", "skill"].includes(tokens.at(-1)?.type ?? "")) {
+        // Keep the serialized prompt valid: mention and skill tokens need
+        // trailing whitespace, so a paste ending in either gets the same
         // trailing space the autocomplete inserts.
         nodes.push($createTextNode(" "));
       }
