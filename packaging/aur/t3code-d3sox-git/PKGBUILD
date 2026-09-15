@@ -5,7 +5,7 @@ _pkgname=t3code
 _ssh_archive_version=0.0.41-nightly.20260915.1752
 pkgver=0.0.40.r4006.gae1f057
 pkgrel=1
-pkgdesc='T3 Code desktop app built from the latest D3SOX fork commit'
+pkgdesc='T3 Code nightly desktop app built from the latest D3SOX fork commit'
 arch=('x86_64')
 url='https://github.com/D3SOX/t3code'
 license=('MIT')
@@ -74,11 +74,22 @@ prepare() {
 
 build() {
   cd "$srcdir/$_pkgname"
+  local base_version build_date build_number nightly_version
+  base_version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' apps/desktop/package.json | head -n 1)
+  base_version=$(awk -F. '{ printf "%s.%s.%d", $1, $2, $3 + 1 }' <<<"$base_version")
+  build_date=$(git show -s --format=%cd --date=format:%Y%m%d)
+  build_number=$(git rev-list --count HEAD)
+  nightly_version="$base_version-nightly.$build_date.$build_number"
+
   export T3CODE_CLERK_PUBLISHABLE_KEY='pk_live_Y2xlcmsudDMuY29kZXMk'
   export T3CODE_CLERK_JWT_TEMPLATE='t3-relay'
   export T3CODE_CLERK_CLI_OAUTH_CLIENT_ID='hzxSgY2cH10sDU2r'
   export T3CODE_RELAY_URL='https://relay.t3.codes'
-  pnpm dist:desktop:linux
+  pnpm dist:desktop:artifact \
+    --platform linux \
+    --target AppImage \
+    --arch x64 \
+    --build-version "$nightly_version"
 
   local appimage
   appimage=$(find release -maxdepth 1 -name '*.AppImage' -print -quit)
