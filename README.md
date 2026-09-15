@@ -1,3 +1,16 @@
+# D3SOX's T3 Code fork
+
+This fork adjusts new-thread interactions, composer behavior, generated worktree branch names, and terminal closing. Arch Linux users can build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package directly from this fork:
+
+```bash
+cd packaging/aur/t3code-d3sox-git
+makepkg -si
+```
+
+Run `git pull --ff-only` in the repository and repeat `makepkg -si` whenever you want to update the installed package to the latest commit.
+
+---
+
 # T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).

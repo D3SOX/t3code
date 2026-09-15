@@ -1,0 +1,10 @@
+version: "1"
+rules:
+  - base: main
+    upstream: pingdotgg:main
+    mergeMethod: merge
+    mergeUnstable: false
+    assignees:
+      - D3SOX
+    conflictReviewers:
+      - D3SOX
