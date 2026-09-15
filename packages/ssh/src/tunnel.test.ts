@@ -334,7 +334,7 @@ describe("ssh tunnel scripts", () => {
     return Effect.gen(function* () {
       const result = yield* launchOrReuseRemoteServer(target, undefined, ARCHIVE);
       assert.equal(result.remotePort, 3774);
-      assert.deepEqual(spawnedCommands[0]?.slice(-5, -1), ["sh", "-l", "-s", "--"]);
+      assert.deepEqual(spawnedCommands[0]?.slice(-4, -1), ["sh", "-s", "--"]);
     }).pipe(Effect.provide(processLayer));
   });
 

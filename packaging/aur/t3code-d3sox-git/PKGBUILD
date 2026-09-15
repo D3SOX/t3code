@@ -2,6 +2,7 @@
 
 pkgname=t3code-d3sox-git
 _pkgname=t3code
+_ssh_archive_version=0.0.41-nightly.20260915.1752
 pkgver=0.0.40.r4006.gae1f057
 pkgrel=1
 pkgdesc='T3 Code desktop app built from the latest D3SOX fork commit'
@@ -73,6 +74,10 @@ prepare() {
 
 build() {
   cd "$srcdir/$_pkgname"
+  export T3CODE_CLERK_PUBLISHABLE_KEY='pk_live_Y2xlcmsudDMuY29kZXMk'
+  export T3CODE_CLERK_JWT_TEMPLATE='t3-relay'
+  export T3CODE_CLERK_CLI_OAUTH_CLIENT_ID='hzxSgY2cH10sDU2r'
+  export T3CODE_RELAY_URL='https://relay.t3.codes'
   pnpm dist:desktop:linux
 
   local appimage
@@ -94,9 +99,10 @@ package() {
   chmod -R u=rwX,go=rX "$pkgdir/opt/$pkgname"
   chmod 4755 "$pkgdir/opt/$pkgname/chrome-sandbox"
 
-  install -Dm755 /dev/stdin "$pkgdir/usr/bin/t3code" <<'EOF'
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/t3code" <<EOF
 #!/bin/sh
-exec /opt/t3code-d3sox-git/AppRun "$@"
+export T3CODE_SSH_ARCHIVE_VERSION='$_ssh_archive_version'
+exec /opt/t3code-d3sox-git/AppRun "\$@"
 EOF
   ln -s t3code "$pkgdir/usr/bin/t3-code-desktop"
 
