@@ -283,6 +283,56 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect("migrates legacy terminal split defaults without changing custom bindings", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+shift+d", command: "terminal.splitVertical", when: "terminalFocus" },
+        { key: "mod+alt+d", command: "terminal.new", when: "terminalFocus" },
+      ]);
+
+      yield* Effect.gen(function* () {
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+      });
+
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      assert.deepEqual(
+        persisted.find((entry) => entry.command === "terminal.split"),
+        { key: "ctrl+)", command: "terminal.split", when: "terminalFocus" },
+      );
+      assert.deepEqual(
+        persisted.find((entry) => entry.command === "terminal.splitVertical"),
+        { key: "ctrl+(", command: "terminal.splitVertical", when: "terminalFocus" },
+      );
+      assert.isTrue(
+        persisted.some(
+          (entry) =>
+            entry.command === "terminal.new" &&
+            entry.key === "mod+alt+d" &&
+            entry.when === "terminalFocus",
+        ),
+      );
+      assert.isFalse(
+        persisted.some(
+          (entry) =>
+            entry.command === "terminal.split" &&
+            entry.key === "mod+d" &&
+            entry.when === "terminalFocus",
+        ),
+      );
+      assert.isFalse(
+        persisted.some(
+          (entry) =>
+            entry.command === "terminal.splitVertical" &&
+            entry.key === "mod+shift+d" &&
+            entry.when === "terminalFocus",
+        ),
+      );
+    }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("skips conflicting default keybindings on startup and logs a detailed warning", () => {
     const messages: string[] = [];
     const logger = Logger.make(({ message }) => {

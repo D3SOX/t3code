@@ -119,6 +119,20 @@ function hasSameShortcutContext(left: KeybindingRule, right: KeybindingRule): bo
   return leftContext === rightContext;
 }
 
+const LEGACY_DEFAULT_KEYBINDING_MIGRATIONS: ReadonlyArray<{
+  from: KeybindingRule;
+  to: KeybindingRule;
+}> = [
+  {
+    from: { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+    to: { key: "ctrl+)", command: "terminal.split", when: "terminalFocus" },
+  },
+  {
+    from: { key: "mod+shift+d", command: "terminal.splitVertical", when: "terminalFocus" },
+    to: { key: "ctrl+(", command: "terminal.splitVertical", when: "terminalFocus" },
+  },
+];
+
 function keybindingRuleFromUpsertInput(input: ServerUpsertKeybindingInput): KeybindingRule {
   return input.when === undefined
     ? { key: input.key, command: input.command }
@@ -469,7 +483,23 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
-      const customConfig = runtimeConfig.keybindings;
+      const persistedConfig = runtimeConfig.keybindings;
+      let migratedLegacyDefaults = false;
+      const customConfig = persistedConfig.map((entry, entryIndex) => {
+        const migration = LEGACY_DEFAULT_KEYBINDING_MIGRATIONS.find(({ from }) =>
+          isSameKeybindingRule(entry, from),
+        );
+        if (!migration) return entry;
+
+        const shortcutIsAvailable = !persistedConfig.some(
+          (candidate, candidateIndex) =>
+            candidateIndex !== entryIndex && hasSameShortcutContext(candidate, migration.to),
+        );
+        if (!shortcutIsAvailable) return entry;
+
+        migratedLegacyDefaults = true;
+        return migration.to;
+      });
       const existingCommands = new Set(customConfig.map((entry) => entry.command));
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
@@ -507,6 +537,9 @@ const make = Effect.gen(function* () {
         });
       }
       if (missingDefaults.length === 0) {
+        if (migratedLegacyDefaults) {
+          yield* writeConfigAtomically(customConfig);
+        }
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
@@ -536,6 +569,9 @@ const make = Effect.gen(function* () {
         });
       }
       if (defaultsToAppend.length === 0) {
+        if (migratedLegacyDefaults) {
+          yield* writeConfigAtomically(customConfig);
+        }
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }

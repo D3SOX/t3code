@@ -253,6 +253,34 @@ describe("copy thread reference shortcut", () => {
 });
 
 describe("split/new/close terminal shortcuts", () => {
+  it("uses terminal-safe split defaults", () => {
+    const context = { platform: "Linux", context: { terminalFocus: true } } as const;
+
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: ")", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+      "terminal.split",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "(", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+      "terminal.splitVertical",
+    );
+    assert.isNull(
+      resolveShortcutCommand(
+        event({ key: "d", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+    );
+  });
+
   it("requires terminalFocus for default split/new/close bindings", () => {
     assert.isFalse(
       isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
