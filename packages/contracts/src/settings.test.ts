@@ -800,6 +800,21 @@ describe("ServerSettings worktree defaults", () => {
 });
 
 describe("ServerSettings.sourceControlWritingStyle", () => {
+  it("enables automatic thread titles and branch names by default and accepts opt-outs", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.autoGenerateThreadTitles).toBe(true);
+    expect(settings.autoGenerateBranchNames).toBe(true);
+    expect(
+      decodeServerSettingsPatch({
+        autoGenerateThreadTitles: false,
+        autoGenerateBranchNames: false,
+      }),
+    ).toEqual({
+      autoGenerateThreadTitles: false,
+      autoGenerateBranchNames: false,
+    });
+  });
+
   it("defaults all style settings for legacy configs", () => {
     const settings = decodeServerSettings({});
 

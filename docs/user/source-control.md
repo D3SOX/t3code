@@ -93,6 +93,9 @@ messages, review titles, and descriptions from your changes.
 Choose the writing style and model in **Settings → Source Control**. **Repository conventions**
 uses the project's instructions and recent commit subjects.
 
+The same page can disable automatic titles for new threads and automatic names for temporary
+worktree branches. Choose a project first to override either setting for that project.
+
 ## Review and merge
 
 Open **Pull requests** to review changes and comments, request reviewers, check out a branch,

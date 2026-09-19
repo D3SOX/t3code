@@ -83,6 +83,8 @@ export function SourceControlWritingSettingsSection() {
   const instructionsMixed = styleFieldMixed("customInstructions");
   const templatesMixed = styleFieldMixed("followChangeRequestTemplates");
   const writingStyleMixed = modeMixed || instructionsMixed;
+  const automaticTitlesMixed = useScopedSettingsMixed(["autoGenerateThreadTitles"]);
+  const automaticBranchNamesMixed = useScopedSettingsMixed(["autoGenerateBranchNames"]);
   const mixedWriterModel = useScopedSettingsMixed(["sourceControlWriterModelSelection"]);
   const customInstructionsRef = useRef<HTMLTextAreaElement>(null);
   const [editingAllInstructions, setEditingAllInstructions] = useState(false);
@@ -126,6 +128,69 @@ export function SourceControlWritingSettingsSection() {
 
   return (
     <SettingsSection id="source-control-text-generation" title="Text generation">
+      <SettingsRow
+        serverScoped
+        settingKeys={["autoGenerateThreadTitles"]}
+        mixed={automaticTitlesMixed}
+        {...searchableSetting("automatic-thread-titles")}
+        description="Generate a concise title from the first message in a new thread."
+        resetAction={
+          automaticTitlesMixed ||
+          settings.autoGenerateThreadTitles !==
+            DEFAULT_UNIFIED_SETTINGS.autoGenerateThreadTitles ? (
+            <SettingResetButton
+              label="automatic thread titles"
+              onClick={() =>
+                updateSettings({
+                  autoGenerateThreadTitles: DEFAULT_UNIFIED_SETTINGS.autoGenerateThreadTitles,
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Switch
+            mixed={automaticTitlesMixed}
+            checked={automaticTitlesMixed ? false : settings.autoGenerateThreadTitles}
+            onCheckedChange={(checked) =>
+              updateSettings({ autoGenerateThreadTitles: Boolean(checked) })
+            }
+            aria-label="Generate thread titles automatically"
+          />
+        }
+      />
+
+      <SettingsRow
+        serverScoped
+        settingKeys={["autoGenerateBranchNames"]}
+        mixed={automaticBranchNamesMixed}
+        {...searchableSetting("automatic-branch-names")}
+        description="Rename temporary worktree branches from the first message in a new thread."
+        resetAction={
+          automaticBranchNamesMixed ||
+          settings.autoGenerateBranchNames !== DEFAULT_UNIFIED_SETTINGS.autoGenerateBranchNames ? (
+            <SettingResetButton
+              label="automatic branch names"
+              onClick={() =>
+                updateSettings({
+                  autoGenerateBranchNames: DEFAULT_UNIFIED_SETTINGS.autoGenerateBranchNames,
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Switch
+            mixed={automaticBranchNamesMixed}
+            checked={automaticBranchNamesMixed ? false : settings.autoGenerateBranchNames}
+            onCheckedChange={(checked) =>
+              updateSettings({ autoGenerateBranchNames: Boolean(checked) })
+            }
+            aria-label="Generate branch names automatically"
+          />
+        }
+      />
+
       <SettingsRow
         serverScoped
         settingKeys={["sourceControlWritingStyle"]}

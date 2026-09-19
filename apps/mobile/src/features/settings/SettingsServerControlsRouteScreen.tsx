@@ -44,7 +44,12 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 
 const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettingKey[]> = {
   "new-threads": ["defaultThreadEnvMode", "defaultRuntimeMode"],
-  "source-control": ["defaultAutoPull", "newWorktreesStartFromOrigin"],
+  "source-control": [
+    "defaultAutoPull",
+    "newWorktreesStartFromOrigin",
+    "autoGenerateThreadTitles",
+    "autoGenerateBranchNames",
+  ],
   "agent-behavior": ["responseStreamingMode", "enableAgentBrowserAccess"],
   maintenance: ["continueThreadsAfterServerUpdate"],
 };
@@ -279,6 +284,24 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       value={uniform("newWorktreesStartFromOrigin")}
                       disabled={disabledFor("newWorktreesStartFromOrigin")}
                       onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
+                    />
+                  </SettingsSection>
+                  <SettingsSection title="Text generation">
+                    <FanoutSwitchRow
+                      icon="textformat.size"
+                      label="Automatic thread titles"
+                      subtitle="Generate a title from the first message in a new thread."
+                      value={uniform("autoGenerateThreadTitles")}
+                      disabled={disabledFor("autoGenerateThreadTitles")}
+                      onValueChange={(value) => write({ autoGenerateThreadTitles: value })}
+                    />
+                    <FanoutSwitchRow
+                      icon="arrow.triangle.branch"
+                      label="Automatic branch names"
+                      subtitle="Rename temporary worktree branches from the first message."
+                      value={uniform("autoGenerateBranchNames")}
+                      disabled={disabledFor("autoGenerateBranchNames")}
+                      onValueChange={(value) => write({ autoGenerateBranchNames: value })}
                     />
                   </SettingsSection>
                 </>

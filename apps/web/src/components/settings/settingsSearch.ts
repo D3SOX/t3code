@@ -661,6 +661,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "automatic-thread-titles",
+    title: "Automatic thread titles",
+    to: "/settings/source-control",
+    searchTerms: ["disable generate first message rename thread"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
+    id: "automatic-branch-names",
+    title: "Automatic branch names",
+    to: "/settings/source-control",
+    searchTerms: ["disable generate rename worktree temporary feature branch"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
     id: "source-control-writing-style",
     title: "Source control writing style",
     to: "/settings/source-control",

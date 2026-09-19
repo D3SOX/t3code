@@ -898,6 +898,7 @@ const make = Effect.gen(function* () {
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
       const settings = yield* projectSettingsForThread(input.threadId);
+      if (!settings.autoGenerateBranchNames) return;
       const modelSelection =
         settings.sourceControlWriterModelSelection === null
           ? settings.textGenerationModelSelection
@@ -950,9 +951,9 @@ const make = Effect.gen(function* () {
     }) {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } = yield* projectSettingsForThread(
-          input.threadId,
-        );
+        const settings = yield* projectSettingsForThread(input.threadId);
+        if (!settings.autoGenerateThreadTitles) return;
+        const { textGenerationModelSelection: modelSelection } = settings;
 
         const generated = yield* textGeneration
           .generateThreadTitle({

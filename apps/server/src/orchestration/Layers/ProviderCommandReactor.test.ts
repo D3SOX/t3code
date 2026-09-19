@@ -176,6 +176,8 @@ describe("ProviderCommandReactor", () => {
     readonly unreadableHistory?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
     readonly titleRegenerationBeforeStart?: "one" | "two";
+    readonly autoGenerateThreadTitles?: boolean;
+    readonly autoGenerateBranchNames?: boolean;
     readonly serverActivation?: Effect.Effect<void>;
     readonly beforeReadySessionDispatch?: () => Effect.Effect<void>;
     readonly beforeTurnStartDispatch?: () => Effect.Effect<void>;
@@ -490,7 +492,16 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          ...(input?.autoGenerateThreadTitles !== undefined
+            ? { autoGenerateThreadTitles: input.autoGenerateThreadTitles }
+            : {}),
+          ...(input?.autoGenerateBranchNames !== undefined
+            ? { autoGenerateBranchNames: input.autoGenerateBranchNames }
+            : {}),
+        }),
+      ),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
@@ -1012,6 +1023,32 @@ describe("ProviderCommandReactor", () => {
       expect(harness.generateThreadTitle).toHaveBeenCalledWith(
         expect.objectContaining({ message: "Use the current message" }),
       );
+    }),
+  );
+
+  effectIt.effect("skips automatic title generation when disabled", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() =>
+        createHarness({ autoGenerateThreadTitles: false }),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-without-title-generation"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("message-without-title-generation"),
+          role: "user",
+          text: "Keep the original title",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.generateThreadTitle).not.toHaveBeenCalled();
     }),
   );
 
@@ -2606,6 +2643,40 @@ describe("ProviderCommandReactor", () => {
         .find((entry) => entry.id === ThreadId.make("thread-1"))
         ?.messages.find((entry) => entry.id === asMessageId("user-message-branch-model"))?.text,
     ).toBe(prompt);
+  });
+
+  it("skips automatic worktree branch naming when disabled", async () => {
+    const harness = await createHarness({ autoGenerateBranchNames: false });
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-branch-without-generation"),
+        threadId: ThreadId.make("thread-1"),
+        branch: "t3code/1234abcd",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-without-branch-generation"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("message-without-branch-generation"),
+          role: "user",
+          text: "Keep the temporary branch name",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+
+    expect(harness.generateBranchName).not.toHaveBeenCalled();
+    expect(harness.renameBranch).not.toHaveBeenCalled();
   });
 
   it("recreates a missing worktree from the thread branch before starting a turn", async () => {
