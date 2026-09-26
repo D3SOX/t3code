@@ -57,6 +57,8 @@ import {
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
+import { type RemoteOpenMode, useRemoteOpenResolution } from "../remoteOpen";
+import { useRightPanelStore } from "../rightPanelStore";
 import { isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
 import {
   isDiffToggleShortcut,
@@ -91,6 +93,13 @@ import {
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
+
+export function terminalPathOpenTarget(
+  remoteOpenMode: RemoteOpenMode,
+  isResolved = true,
+): "app" | "environment-editor" {
+  return isResolved && remoteOpenMode === "local-exec" ? "environment-editor" : "app";
+}
 
 function maxDrawerHeight(): number {
   if (typeof window === "undefined") return DEFAULT_THREAD_TERMINAL_HEIGHT;
@@ -355,11 +364,18 @@ export function TerminalViewport({
   const visibleRef = useRef(visible);
   const environmentId = threadRef.environmentId;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
+  const remoteOpen = useRemoteOpenResolution(environmentId);
   const openInPreferredEditor = useOpenInPreferredEditor(
     environmentId,
     serverConfig?.availableEditors ?? [],
   );
-  const openTerminalPath = useEffectEvent((target: string) => openInPreferredEditor(target));
+  const openTerminalPath = useEffectEvent((target: string) => {
+    if (terminalPathOpenTarget(remoteOpen.state.mode, remoteOpen.isResolved) === "app") {
+      useRightPanelStore.getState().openFile(threadRef, target);
+      return null;
+    }
+    return openInPreferredEditor(target);
+  });
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
@@ -816,6 +832,7 @@ export function TerminalViewport({
         const target = resolvePathLinkTarget(text, cwd);
         void (async () => {
           const result = await openTerminalPath(target);
+          if (result === null) return;
           if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
             return;
           }

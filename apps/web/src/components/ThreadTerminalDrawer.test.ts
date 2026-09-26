@@ -7,6 +7,7 @@ import {
   terminalSelectionLineRange,
   terminalSelectionMenuItems,
   terminalThemeFromApp,
+  terminalPathOpenTarget,
 } from "./ThreadTerminalDrawer";
 
 describe("terminal selection menus", () => {
@@ -141,5 +142,22 @@ describe("terminal selection actions", () => {
     expect(shouldHandleTerminalExit("exited", "running", false)).toBe(true);
     expect(shouldHandleTerminalExit("exited", "exited", false)).toBe(false);
     expect(shouldHandleTerminalExit("closed", "running", true)).toBe(false);
+  });
+});
+
+describe("terminal path links", () => {
+  it.each(["remote-links", "remote-unavailable"] as const)(
+    "keeps paths in T3 Code instead of launching an editor on a %s environment",
+    (mode) => {
+      expect(terminalPathOpenTarget(mode)).toBe("app");
+    },
+  );
+
+  it("preserves the preferred editor for a local environment", () => {
+    expect(terminalPathOpenTarget("local-exec")).toBe("environment-editor");
+  });
+
+  it("stays in T3 Code while the environment location is unresolved", () => {
+    expect(terminalPathOpenTarget("local-exec", false)).toBe("app");
   });
 });
