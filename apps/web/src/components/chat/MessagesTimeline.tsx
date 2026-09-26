@@ -1,4 +1,4 @@
-import { ArrowUpIcon, ClockIcon } from "lucide-react";
+import { ArrowUpIcon, ClockIcon, CornerDownRightIcon } from "lucide-react";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
@@ -299,6 +299,7 @@ interface TimelineRowSharedState {
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   onSteerQueuedMessage: (id: string) => void;
+  onSteerQueuedMessageAtNextTool: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
   onRemoveQueuedMessage: (id: string) => void;
 }
@@ -465,6 +466,7 @@ interface MessagesTimelineProps {
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
   onSteerQueuedMessage?: (id: string) => void;
+  onSteerQueuedMessageAtNextTool?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   onRemoveQueuedMessage?: (id: string) => void;
 }
@@ -523,6 +525,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
+  onSteerQueuedMessageAtNextTool = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
 }: MessagesTimelineProps) {
@@ -1173,6 +1176,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocally ?? null,
       onOpenWorktreeSetupTerminal: onOpenWorktreeSetupTerminal ?? null,
       onSteerQueuedMessage,
+      onSteerQueuedMessageAtNextTool,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
     }),
@@ -1209,6 +1213,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onWorktreeSetupWorkLocally,
       onOpenWorktreeSetupTerminal,
       onSteerQueuedMessage,
+      onSteerQueuedMessageAtNextTool,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
     ],
@@ -1790,9 +1795,11 @@ function QueuedMessageTimelineRow({
   const text = queuedMessage.prompt.trim();
   const statusLabel = queuedMessage.holdUntilUserAction
     ? "Waits for Send now"
-    : row.isNext
-      ? "Sends after the next tool call or when the turn ends"
-      : "Sends after the messages above it";
+    : !row.isNext
+      ? "Sends after the messages above it"
+      : queuedMessage.delivery === "after-turn"
+        ? "Sends after the current turn finishes"
+        : "Steers after the next tool call, or when the turn ends";
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
       <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
@@ -1828,6 +1835,27 @@ function QueuedMessageTimelineRow({
             <TooltipPopup side="bottom">{statusLabel}</TooltipPopup>
           </Tooltip>
           <div className="ml-auto flex items-center gap-0.5">
+            {row.isNext &&
+            queuedMessage.delivery === "after-turn" &&
+            !queuedMessage.holdUntilUserAction ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost-muted"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => ctx.onSteerQueuedMessageAtNextTool(queuedMessage.id)}
+                      aria-label="Steer after the next tool call"
+                    />
+                  }
+                >
+                  <CornerDownRightIcon className="size-3.5" aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Steer after the next tool call</TooltipPopup>
+              </Tooltip>
+            ) : null}
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1837,14 +1865,14 @@ function QueuedMessageTimelineRow({
                     variant="ghost-muted"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => ctx.onSteerQueuedMessage(queuedMessage.id)}
-                    aria-label="Send now"
+                    aria-label={queuedMessage.holdUntilUserAction ? "Send now" : "Steer now"}
                   />
                 }
               >
                 <ArrowUpIcon className="size-3.5" aria-hidden />
               </TooltipTrigger>
               <TooltipPopup side="bottom">
-                Send now
+                {queuedMessage.holdUntilUserAction ? "Send now" : "Steer now"}
                 {row.isNext && ctx.steerQueuedMessageShortcutLabel
                   ? ` (${ctx.steerQueuedMessageShortcutLabel})`
                   : null}

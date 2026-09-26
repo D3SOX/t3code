@@ -119,6 +119,7 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
   type ComposerSubmissionIntent,
+  followUpBehaviorForSubmission,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
 import {
@@ -7239,6 +7240,7 @@ export default function ChatView(props: ChatViewProps) {
         previewAnnotations: [],
         reviewComments: [],
         submissionIntent: "foreground",
+        delivery: "after-turn",
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         // Restoration is not a send. The user decides when the overflow goes.
         holdUntilUserAction: true,
@@ -7631,12 +7633,16 @@ export default function ChatView(props: ChatViewProps) {
       );
       return;
     }
+    const followUpBehavior = followUpBehaviorForSubmission(
+      settings.followUpBehavior,
+      submissionIntent,
+    );
     if (
       !queuedMessage &&
       !directAnnotation &&
       phase === "running" &&
       activeThreadKey &&
-      (settings.followUpBehavior === "queue") !== (submissionIntent === "alternate")
+      followUpBehavior !== "steer"
     ) {
       if (composerRef.current?.validateProviderInput(promptForSend) === false) {
         return;
@@ -7649,6 +7655,7 @@ export default function ChatView(props: ChatViewProps) {
         previewAnnotations: [...composerPreviewAnnotations],
         reviewComments: [...composerReviewComments],
         submissionIntent,
+        delivery: followUpBehavior === "next-tool" ? "next-tool" : "after-turn",
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         createdAt: new Date().toISOString(),
       });
@@ -8611,9 +8618,8 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
-  // Sends the oldest queued message once it is due: a tool call finished
-  // after it was queued, or the turn ended. Only one leaves per boundary; the
-  // take inside onSend re-anchors the rest.
+  // Sends the oldest queued message at its chosen boundary. Only one leaves
+  // per tool boundary; the take inside onSend re-anchors later steers.
   const sendQueuedMessage = useEffectEvent((message: QueuedComposerMessage) => {
     void onSend(undefined, message.submissionIntent, undefined, message);
   });
@@ -8656,6 +8662,7 @@ export default function ChatView(props: ChatViewProps) {
   // stable and does not bust TimelineRowCtx on every ChatView render.
   const queuedMessageActionsRef = useRef({
     steer: (_id: string) => {},
+    steerAtNextTool: (_id: string) => {},
     remove: (_id: string) => {},
   });
   queuedMessageActionsRef.current = {
@@ -8663,6 +8670,12 @@ export default function ChatView(props: ChatViewProps) {
       const message = queuedMessages.find((entry) => entry.id === id);
       if (!message || sendInFlightRef.current || queueBlockedByPendingRequest) return;
       void onSend(undefined, message.submissionIntent, undefined, message);
+    },
+    steerAtNextTool: (id) => {
+      if (!activeThreadKey) return;
+      useQueuedMessageStore
+        .getState()
+        .steerAtNextTool(activeThreadKey, id, latestCompletedToolActivityId(threadActivities));
     },
     remove: (id) => {
       if (!activeThreadKey) return;
@@ -8672,6 +8685,9 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onSteerQueuedMessage = useCallback((id: string) => {
     queuedMessageActionsRef.current.steer(id);
+  }, []);
+  const onSteerQueuedMessageAtNextTool = useCallback((id: string) => {
+    queuedMessageActionsRef.current.steerAtNextTool(id);
   }, []);
   const onRemoveQueuedMessage = useCallback((id: string) => {
     queuedMessageActionsRef.current.remove(id);
@@ -9963,6 +9979,7 @@ export default function ChatView(props: ChatViewProps) {
                 loadEarlier={paintOnlyDisplayedTimeline ? null : loadEarlierTurns}
                 queuedMessages={paintOnlyDisplayedTimeline ? EMPTY_QUEUED_MESSAGES : queuedMessages}
                 onSteerQueuedMessage={onSteerQueuedMessage}
+                onSteerQueuedMessageAtNextTool={onSteerQueuedMessageAtNextTool}
                 steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
                   keybindings,
                   "thread.steerQueuedMessage",

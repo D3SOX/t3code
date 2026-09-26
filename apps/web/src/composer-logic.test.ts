@@ -14,6 +14,7 @@ import {
   composerSubmissionIntentForEnter,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
+  followUpBehaviorForSubmission,
   formatAssistantCitationForComposer,
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
@@ -162,6 +163,20 @@ describe("composerSubmissionIntentForEnter", () => {
       }),
     ).toBe("foreground");
   });
+});
+
+describe("follow-up submission timing", () => {
+  it.each([
+    ["queue", "queue", "next-tool"],
+    ["next-tool", "next-tool", "queue"],
+    ["steer", "steer", "queue"],
+  ] as const)(
+    "uses the %s preference and its one-message alternative",
+    (preference, regular, alternate) => {
+      expect(followUpBehaviorForSubmission(preference, "foreground")).toBe(regular);
+      expect(followUpBehaviorForSubmission(preference, "alternate")).toBe(alternate);
+    },
+  );
 });
 
 describe("detectComposerTrigger", () => {

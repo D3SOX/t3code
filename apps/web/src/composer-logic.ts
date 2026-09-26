@@ -13,6 +13,15 @@ export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "s
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
+/** The alternate shortcut swaps the configured timing with after-turn delivery. */
+export function followUpBehaviorForSubmission(
+  preference: ClientSettings["followUpBehavior"],
+  intent: ComposerSubmissionIntent,
+): ClientSettings["followUpBehavior"] {
+  if (intent !== "alternate") return preference;
+  return preference === "queue" ? "next-tool" : "queue";
+}
+
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
   query: string;

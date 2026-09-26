@@ -21,10 +21,11 @@ export interface QueuedComposerMessage {
   previewAnnotations: PreviewAnnotationPayload[];
   reviewComments: ReviewCommentContext[];
   submissionIntent: ComposerSubmissionIntent;
+  /** Whether the message waits for the turn to finish or steers at the next tool boundary. */
+  delivery: "after-turn" | "next-tool";
   /**
-   * The newest completed tool activity at queue time. A different id later
-   * means a tool call finished after the user queued, which is the boundary
-   * the message goes out on.
+   * For next-tool delivery, the newest completed tool activity when the
+   * message was queued or promoted. A different id marks the send boundary.
    */
   queuedAfterToolActivityId: string | null;
   /**
@@ -46,14 +47,16 @@ interface QueuedMessageStoreState {
   enqueue: (threadKey: string, message: Omit<QueuedComposerMessage, "id">) => QueuedComposerMessage;
   /**
    * Removes one message and returns it, or null when another caller already
-   * took it. The remaining messages are re-anchored to `toolActivityId` so
-   * only one queued message leaves per tool boundary.
+   * took it. Remaining next-tool messages are re-anchored to `toolActivityId`
+   * so only one leaves per tool boundary.
    */
   take: (
     threadKey: string,
     id: string,
     toolActivityId: string | null,
   ) => QueuedComposerMessage | null;
+  /** Turn a waiting message into a steer, anchored to the latest completed tool call. */
+  steerAtNextTool: (threadKey: string, id: string, toolActivityId: string | null) => void;
   /** Removes one message without touching the others' anchors. Null when already gone. */
   remove: (threadKey: string, id: string) => QueuedComposerMessage | null;
   /**
@@ -91,7 +94,7 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
       const remaining = (state.queuesByThreadKey[threadKey] ?? EMPTY_QUEUE)
         .filter((message) => message.id !== id)
         .map((message) =>
-          message.queuedAfterToolActivityId === toolActivityId
+          message.delivery !== "next-tool" || message.queuedAfterToolActivityId === toolActivityId
             ? message
             : { ...message, queuedAfterToolActivityId: toolActivityId },
         );
@@ -104,6 +107,19 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
       return { queuesByThreadKey };
     });
     return entry;
+  },
+  steerAtNextTool: (threadKey, id, toolActivityId) => {
+    if (!get().queuesByThreadKey[threadKey]?.some((message) => message.id === id)) return;
+    set((state) => ({
+      queuesByThreadKey: {
+        ...state.queuesByThreadKey,
+        [threadKey]: (state.queuesByThreadKey[threadKey] ?? EMPTY_QUEUE).map((message) =>
+          message.id === id
+            ? { ...message, delivery: "next-tool", queuedAfterToolActivityId: toolActivityId }
+            : message,
+        ),
+      },
+    }));
   },
   remove: (threadKey, id) => {
     const queue = get().queuesByThreadKey[threadKey];
@@ -181,18 +197,21 @@ export function latestCompletedToolActivityId(
 }
 
 /**
- * A queued message is due mid-turn once a tool call finished after it was
- * queued, and as soon as the turn is over otherwise. "connecting" is the gap
- * between a send and the provider picking it up, so nothing is due there.
+ * A message can steer at the next completed tool call or wait for the current
+ * turn to finish. "connecting" is the gap before the provider picks up a send.
  */
 export function isQueuedMessageDue(input: {
-  message: Pick<QueuedComposerMessage, "queuedAfterToolActivityId" | "holdUntilUserAction">;
+  message: Pick<
+    QueuedComposerMessage,
+    "delivery" | "queuedAfterToolActivityId" | "holdUntilUserAction"
+  >;
   phase: "connecting" | "running" | "ready" | "disconnected";
   latestToolActivityId: string | null;
 }): boolean {
   if (input.message.holdUntilUserAction) return false;
   if (input.phase === "connecting") return false;
   if (input.phase !== "running") return true;
+  if (input.message.delivery === "after-turn") return false;
   return input.latestToolActivityId !== input.message.queuedAfterToolActivityId;
 }
 
