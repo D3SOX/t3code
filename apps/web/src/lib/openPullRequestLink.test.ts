@@ -224,6 +224,12 @@ describe("shouldOpenPullRequestExternally", () => {
   it("keeps an unmodified click in the pull request view", () => {
     expect(shouldOpenPullRequestExternally({ metaKey: false, ctrlKey: false })).toBe(false);
   });
+
+  it("uses the browser for an unmodified click when it is preferred", () => {
+    expect(shouldOpenPullRequestExternally({ metaKey: false, ctrlKey: false }, "system")).toBe(
+      true,
+    );
+  });
 });
 
 describe("parseChangeRequestUrl", () => {

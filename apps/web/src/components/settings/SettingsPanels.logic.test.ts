@@ -271,6 +271,7 @@ describe("getChangedBrowserSettingLabels", () => {
         browserRecordingShowKeyPresses: true,
         browserRecordingShowMousePresses: true,
         browserLinkTarget: "app",
+        pullRequestLinkTarget: "app",
         browserAutoShowFloatingPreview: !DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview,
       }),
     ).toEqual([
@@ -281,6 +282,7 @@ describe("getChangedBrowserSettingLabels", () => {
       "Recording key presses",
       "Recording mouse presses",
       "Open links in",
+      "Open pull requests in",
       "Floating preview",
     ]);
   });

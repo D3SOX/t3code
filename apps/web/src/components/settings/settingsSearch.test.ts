@@ -329,6 +329,13 @@ describe("searchSettings", () => {
     expect(searchSettings("external links")[0]).toMatchObject({ id: "browser-link-target" });
   });
 
+  it("routes where pull requests open to integrations", () => {
+    expect(searchSettings("open pull requests in")[0]).toMatchObject({
+      id: "pull-request-link-target",
+      to: "/settings/integrations",
+    });
+  });
+
   it("finds the default browser profile action in the profiles list", () => {
     expect(searchSettings("default profile")[0]).toMatchObject({
       id: "browser-default-profile",

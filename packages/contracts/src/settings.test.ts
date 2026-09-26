@@ -77,6 +77,18 @@ describe("ClientSettings rich text composer", () => {
   });
 });
 
+describe("ClientSettings pull request links", () => {
+  it("opens pull requests in the system browser by default", () => {
+    expect(decodeClientSettings({}).pullRequestLinkTarget).toBe("system");
+  });
+
+  it("round-trips the in-app preference through patches and persistence", () => {
+    const preference = { pullRequestLinkTarget: "app" as const };
+    expect(decodeClientSettingsPatch(preference)).toEqual(preference);
+    expect(encodeClientSettings(decodeClientSettings(preference))).toMatchObject(preference);
+  });
+});
+
 describe("ServerSettings default permissions", () => {
   it("keeps full access for settings saved before a default was configured", () => {
     expect(decodeServerSettings({}).defaultRuntimeMode).toBe("full-access");

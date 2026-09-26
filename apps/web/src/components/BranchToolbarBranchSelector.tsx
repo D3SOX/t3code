@@ -29,7 +29,7 @@ import {
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { readLocalApi } from "../localApi";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "../lib/openPullRequestLink";
 import { shouldLoadNextBranchPageAfterScroll } from "../state/paginatedBranches";
 import { usePaginatedBranches } from "../state/queries";
 import { useProject, useThreadShell } from "../state/entities";
@@ -681,6 +681,7 @@ export function BranchToolbarBranchSelector({
   const prNumber = currentLinkedPr?.number ?? displayedPr?.number;
   const prUrl = currentLinkedPr?.url ?? displayedPr?.url;
   const openPrLink = useOpenPrLink(threadRef);
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu(threadRef);
 
   function selectPickerItem(itemValue: string) {
     highlightedBranchValueRef.current = null;
@@ -796,6 +797,9 @@ export function BranchToolbarBranchSelector({
           onOpenStack={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
           onOpenPullRequest={(event) => {
             if (prUrl) openPrLink(event, prUrl);
+          }}
+          onOpenPullRequestContextMenu={(event) => {
+            if (prUrl) openPrLinkContextMenu(event, prUrl);
           }}
         />
         {/* Context menu lives on the wrapper: the disabled Button has

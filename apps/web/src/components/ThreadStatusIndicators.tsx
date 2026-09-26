@@ -205,6 +205,7 @@ export function ThreadPullRequestBadgeControl({
   status,
   onOpenStack,
   onOpenPullRequest,
+  onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
   badge: ThreadPullRequestBadge | null;
@@ -213,6 +214,7 @@ export function ThreadPullRequestBadgeControl({
   status: PrStatusIndicator | null;
   onOpenStack: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>) => void;
+  onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status });
   if (presentation === null) return null;
@@ -224,6 +226,7 @@ export function ThreadPullRequestBadgeControl({
       url={url}
       onOpenStack={onOpenStack}
       onOpenPullRequest={onOpenPullRequest}
+      onOpenPullRequestContextMenu={onOpenPullRequestContextMenu}
     />
   );
 }
@@ -235,6 +238,7 @@ function PullRequestBadge({
   url,
   onOpenStack,
   onOpenPullRequest,
+  onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
   presentation: NonNullable<ReturnType<typeof resolveThreadPullRequestBadgePresentation>>;
@@ -242,6 +246,7 @@ function PullRequestBadge({
   url: string | undefined;
   onOpenStack: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>) => void;
+  onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const onClick = isStack
     ? (event: MouseEvent<HTMLElement>) => {
@@ -264,6 +269,7 @@ function PullRequestBadge({
       "aria-label": presentation.label,
       onPointerDown: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
       onClick,
+      onContextMenu: isStack ? undefined : onOpenPullRequestContextMenu,
     },
   });
   return (

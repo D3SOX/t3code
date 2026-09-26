@@ -2472,6 +2472,9 @@ function useChatMarkdownState({
   // synchronously whether to intercept its `_blank`, and a subscription is what
   // makes a persisted "app" apply once settings hydrate after launch.
   const linkTargetPreference = useClientSettings((settings) => settings.browserLinkTarget);
+  const pullRequestLinkTargetPreference = useClientSettings(
+    (settings) => settings.pullRequestLinkTarget,
+  );
   const resolveThreadPullRequest = useCallback(
     (href: string): (ThreadPullRequestKey & { readonly url: string }) | null => {
       if (
@@ -2700,6 +2703,7 @@ function useChatMarkdownState({
       inlineCodeFileLinkMetaByText,
       isStreaming,
       linkTargetPreference,
+      pullRequestLinkTargetPreference,
       markdownFileLinkMetaByHref,
       onTaskListChange,
       onUseArtifactTemplate,
@@ -2731,6 +2735,7 @@ function useChatMarkdownState({
       inlineCodeFileLinkMetaByText,
       isStreaming,
       linkTargetPreference,
+      pullRequestLinkTargetPreference,
       markdownFileLinkMetaByHref,
       onTaskListChange,
       onUseArtifactTemplate,
@@ -2882,6 +2887,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openChangeRequestLink,
       openDeferredMarkdownLink,
       linkTargetPreference,
+      pullRequestLinkTargetPreference,
       openExternalLinkInPreview,
       projects,
       linkedThreadPullRequestFor,
@@ -2972,12 +2978,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
             // A link to a change request in a workspace project opens beside the
             // conversation instead of in a browser: it is the thing being talked about, and
             // the panel it opens offers the browser as one of its actions.
-            if (
-              !href ||
-              openChangeRequestLink(event, href, undefined, environmentId ?? undefined)
-            ) {
+            if (!href) {
               return;
             }
+            if (
+              pullRequestLinkTargetPreference === "app" &&
+              openChangeRequestLink(event, href, undefined, environmentId ?? undefined)
+            )
+              return;
             // Anything else follows the "Open links in" setting. The system browser
             // keeps the `_blank` the shell already handles; the in-app browser needs
             // the click intercepted here. A modifier click is the way out of the
@@ -3018,13 +3026,31 @@ const CHAT_MARKDOWN_COMPONENTS = {
                 : resolveThreadPullRequest(href) === null
                   ? undefined
                   : "link-to-thread";
+            const isPullRequestLink = parseChangeRequestUrl(href) !== null;
             void showExternalLinkContextMenu({
               href,
-              canOpenInPreview,
+              canOpenInPreview: canOpenInPreview || isPullRequestLink,
+              inAppLabel: isPullRequestLink ? "Open in T3 Code" : undefined,
               threadLinkAction,
               position: { x: event.clientX, y: event.clientY },
               showContextMenu: (items, position) => api.contextMenu.show(items, position),
               openInPreview: async (target) => {
+                if (
+                  isPullRequestLink &&
+                  openChangeRequestLink(
+                    {
+                      metaKey: false,
+                      ctrlKey: false,
+                      preventDefault: () => undefined,
+                      stopPropagation: () => undefined,
+                    },
+                    target,
+                    undefined,
+                    environmentId ?? undefined,
+                  )
+                ) {
+                  return;
+                }
                 const result = await openExternalLinkInPreview(target);
                 if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
                   reportMarkdownActionFailure(

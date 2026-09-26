@@ -11,7 +11,10 @@ import {
 } from "@t3tools/shared/sourceControl";
 
 import { useOpenLink } from "../browser/useOpenLink";
+import { showPullRequestLinkContextMenu } from "../components/pullRequest/pullRequestLinkContextMenu";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { useClientSettings } from "../hooks/useSettings";
+import { readLocalApi } from "../localApi";
 import { useRightPanelStore } from "../rightPanelStore";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
@@ -200,8 +203,9 @@ export function findProjectOnChangeRequestHost(
  */
 export function shouldOpenPullRequestExternally(
   event: Pick<MouseEvent<HTMLElement>, "metaKey" | "ctrlKey">,
+  preference: "system" | "app" = "app",
 ): boolean {
-  return event.metaKey || event.ctrlKey;
+  return event.metaKey || event.ctrlKey || preference === "system";
 }
 
 export function useOpenChangeRequestLink(
@@ -325,10 +329,11 @@ export function useOpenChangeRequestLink(
 export function useOpenPrLink(threadRef?: ScopedThreadRef) {
   const openChangeRequest = useOpenChangeRequestLink(threadRef);
   const openLink = useOpenLink(threadRef);
+  const linkTarget = useClientSettings((settings) => settings.pullRequestLinkTarget);
   return useCallback(
     (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
       event.stopPropagation();
-      const openInBrowser = shouldOpenPullRequestExternally(event);
+      const openInBrowser = shouldOpenPullRequestExternally(event, linkTarget);
       const isAnchor =
         event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
       // A real link already knows how to cmd/ctrl+click. Leave its default
@@ -337,6 +342,15 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       if (openInBrowser && isAnchor) return false;
 
       event.preventDefault();
+      if (openInBrowser) {
+        void readLocalApi()
+          ?.shell.openExternal(prUrl)
+          .catch((error: unknown) => {
+            console.error(error);
+            toastManager.add({ type: "error", title: "Unable to open pull request link" });
+          });
+        return false;
+      }
       if (!openInBrowser && openChangeRequest(event, prUrl, targetThreadRef)) return true;
 
       // No project to show it in, so it is an ordinary link and follows the
@@ -353,6 +367,48 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       });
       return false;
     },
-    [openChangeRequest, openLink],
+    [linkTarget, openChangeRequest, openLink],
+  );
+}
+
+export function usePullRequestLinkContextMenu(threadRef?: ScopedThreadRef) {
+  const openChangeRequest = useOpenChangeRequestLink(threadRef);
+  return useCallback(
+    (
+      event: Pick<
+        MouseEvent<HTMLElement>,
+        "preventDefault" | "stopPropagation" | "clientX" | "clientY"
+      >,
+      prUrl: string,
+      targetThreadRef?: ScopedThreadRef,
+      targetEnvironmentId?: EnvironmentId,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void showPullRequestLinkContextMenu({
+        url: prUrl,
+        position: { x: event.clientX, y: event.clientY },
+        openInApp: () => {
+          const opened = openChangeRequest(
+            {
+              metaKey: false,
+              ctrlKey: false,
+              preventDefault: () => undefined,
+              stopPropagation: () => undefined,
+            },
+            prUrl,
+            targetThreadRef,
+            targetEnvironmentId,
+          );
+          if (!opened) {
+            toastManager.add({
+              type: "error",
+              title: "This pull request is not available in T3 Code",
+            });
+          }
+        },
+      });
+    },
+    [openChangeRequest],
   );
 }

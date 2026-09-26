@@ -78,7 +78,7 @@ import { isDesktopLocalConnectionTarget, isWslConnectionTarget } from "../connec
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "../lib/openPullRequestLink";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
@@ -611,6 +611,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       threadRef,
     ],
   );
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu();
+  const handlePrContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      const url = prStatus?.url ?? currentLinkedPr?.url;
+      if (url) {
+        openPrLinkContextMenu(event, url, openPullRequestsInRightPanel ? threadRef : undefined);
+      }
+    },
+    [currentLinkedPr, openPrLinkContextMenu, openPullRequestsInRightPanel, prStatus, threadRef],
+  );
   const handleRenameInputRef = useCallback(
     (element: HTMLInputElement | null) => {
       if (element && renamingInputRef.current !== element) {
@@ -744,6 +754,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={handlePrClick}
+                    onContextMenu={handlePrContextMenu}
                   >
                     <ChangeRequestStatusIcon
                       state={pr.state}
@@ -765,6 +776,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               rel="noopener noreferrer"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={handlePrClick}
+              onContextMenu={handlePrContextMenu}
               className="text-muted-foreground"
               aria-label={`PR #${currentLinkedPr.number}, status pending`}
             >

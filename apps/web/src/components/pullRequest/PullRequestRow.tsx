@@ -8,7 +8,7 @@ import { getSourceControlPresentationForKind } from "~/sourceControlPresentation
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
-import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
+import { showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
 import {
   PULL_REQUEST_ROW_CLASS,
   PULL_REQUEST_ROW_NUMBER_CLASS,
@@ -142,7 +142,7 @@ function PullRequestRowImpl({
               event.stopPropagation();
               void showPullRequestLinkContextMenu({
                 url: entry.url,
-                openLabel: openOnHostLabel(entry.provider),
+                openInApp: () => onSelect(entry),
                 position: { x: event.clientX, y: event.clientY },
               });
             }}

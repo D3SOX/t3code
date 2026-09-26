@@ -7,7 +7,7 @@ import { ArrowUpRightIcon, LinkIcon, MoreHorizontalIcon, PlusIcon } from "lucide
 import { useCallback, useMemo } from "react";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "~/lib/openPullRequestLink";
 import { cn } from "~/lib/utils";
 import { useServerConfigs, useThreadShell } from "~/state/entities";
 import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
@@ -74,6 +74,7 @@ function LinkRow({
   onUnlink: (link: ThreadPullRequestLink) => void;
 }) {
   const openPrLink = useOpenPrLink(threadRef);
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu(threadRef);
   const { link, depth, stack } = line;
   const snapshot = link.snapshot;
   return (
@@ -101,6 +102,7 @@ function LinkRow({
       <a
         href={link.url}
         onClick={(event) => openPrLink(event, link.url, threadRef)}
+        onContextMenu={(event) => openPrLinkContextMenu(event, link.url, threadRef)}
         className="flex min-w-0 flex-1"
       >
         <PullRequestRowLines

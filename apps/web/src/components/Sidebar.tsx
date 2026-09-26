@@ -101,7 +101,7 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { isMacPlatform } from "~/lib/utils";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "../lib/openPullRequestLink";
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import {
@@ -1047,6 +1047,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,
@@ -1510,6 +1511,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         status={prStatus}
         onOpenStack={handlePrStackClick}
         onOpenPullRequest={handlePrClick}
+        onOpenPullRequestContextMenu={(event) => {
+          const url = pr?.url ?? currentLinkedPr?.url;
+          if (url) {
+            openPrLinkContextMenu(event, url, openPullRequestsInRightPanel ? threadRef : undefined);
+          }
+        }}
       />
     ) : null;
   const terminalStatusIcon = terminalStatus ? (

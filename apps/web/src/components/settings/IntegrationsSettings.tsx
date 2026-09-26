@@ -22,6 +22,7 @@ import {
   DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW,
   DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_BROWSER_LINK_TARGET,
+  DEFAULT_PULL_REQUEST_LINK_TARGET,
   DEFAULT_BROWSER_RECORDING_FRAME_RATE,
   DEFAULT_BROWSER_VIEWPORT,
   DEFAULT_PREVIEW_APPEARANCE,
@@ -591,6 +592,49 @@ function BrowserLinkTargetSetting({ disabled }: { readonly disabled: boolean }) 
           }}
         >
           <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Open links in">
+            <SelectValue>{LINK_TARGET_LABELS[linkTarget]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {(Object.keys(LINK_TARGET_LABELS) as ReadonlyArray<BrowserLinkTarget>).map((target) => (
+              <SelectItem hideIndicator key={target} value={target}>
+                {LINK_TARGET_LABELS[target]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+}
+
+function PullRequestLinkTargetSetting() {
+  const linkTarget = useClientSettings((settings) => settings.pullRequestLinkTarget);
+  const updateSettings = useUpdatePrimarySettings();
+
+  return (
+    <SettingsRow
+      {...searchableSetting("pull-request-link-target")}
+      description="Where pull request and merge request links open. Right-click a link to choose a destination for just that time."
+      resetAction={
+        linkTarget !== DEFAULT_PULL_REQUEST_LINK_TARGET ? (
+          <SettingResetButton
+            label="pull request link target"
+            onClick={() =>
+              updateSettings({ pullRequestLinkTarget: DEFAULT_PULL_REQUEST_LINK_TARGET })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={linkTarget}
+          onValueChange={(value) => {
+            if (value === "system" || value === "app") {
+              updateSettings({ pullRequestLinkTarget: value });
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Open pull requests in">
             <SelectValue>{LINK_TARGET_LABELS[linkTarget]}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -1447,6 +1491,7 @@ export function IntegrationsSettingsPanel() {
           the preview defaults below are device-local and ignore it. */}
       <ProjectDefaultsSettings category="integrations" />
       <SettingsSection id="browser" title="Browser">
+        <PullRequestLinkTargetSetting />
         {previewDefaultsDisabled ? (
           <SettingsUnavailableGroup message="Only available in the desktop app.">
             {previewDefaults}

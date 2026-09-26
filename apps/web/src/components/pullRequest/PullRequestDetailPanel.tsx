@@ -325,7 +325,8 @@ const openNumberContextMenu = (
   event.stopPropagation();
   void showPullRequestLinkContextMenu({
     url: detail.url,
-    openLabel: openOnHostLabel(detail.provider),
+    // The detail is already the in-app destination; choosing it simply keeps this view open.
+    openInApp: () => undefined,
     position: { x: event.clientX, y: event.clientY },
   });
 };
