@@ -1,13 +1,25 @@
 # D3SOX's T3 Code fork
 
-This fork adjusts new-thread interactions, composer behavior, generated worktree branch names, and terminal closing. Arch Linux users can build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package directly from this fork:
+This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with these changes:
+
+- Follow-up messages wait until the agent finishes its current turn. You can change the timing in Settings to the next tool call or immediately. The oldest queued message also has buttons for both actions.
+- Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
+- The new-thread button starts a thread in the current project. Shift-click it to choose another project.
+- You can turn off automatic thread titles and worktree branch names for the current environment or one project in Settings → Source Control.
+- Opening a path from a remote terminal shows the file in T3 Code, not an editor on the remote machine.
+- Closing a terminal does not ask for confirmation. Ctrl+D still goes to the terminal.
+- Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
+
+## Build on Arch Linux
+
+Build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package from this checkout:
 
 ```bash
 cd packaging/aur/t3code-d3sox-git
 makepkg -si
 ```
 
-Run `git pull --ff-only` in the repository and repeat `makepkg -si` whenever you want to update the installed package to the latest commit.
+The package uses nightly branding, includes T3 Connect and SSH support, and installs as a native Arch package. It conflicts with `t3code-bin`, so pacman will ask to replace that package. To update later, run `git pull --ff-only` in this checkout and repeat `makepkg -si`.
 
 ---
 
