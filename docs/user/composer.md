@@ -19,8 +19,7 @@ Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
 50 MiB each, subject to the environment's upload support and limit. The agent
 receives them on the environment's machine. Provider and model limits still
 apply, including images already in the conversation. A video attachment gives
-the agent a file path; it does not enable native video input. Antigravity does
-not accept video attachments.
+the agent a file path; it does not enable native video input.
 
 Uploads begin when you add an attachment. All uploads must finish before the
 message can send. Retry or remove a failed upload. On web and desktop, reloading
@@ -37,8 +36,9 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 
 On web and desktop, a message sent during a running turn waits at the end of the conversation as a
 dashed bubble. By default, it sends after the current turn finishes, giving the agent a separate
-turn to handle it. Use the actions under the bubble to steer after the next tool call, send it
-immediately, or return it to the composer. Stop returns every queued message to the composer.
+turn to handle it, even while you have another thread open. Use the actions under the bubble to
+steer after the next tool call, send it immediately, or return it to the composer. Stop returns
+every queued message to the composer.
 
 In **Settings → General → Follow-up behavior**, choose **After current turn** (the default),
 **At next tool call**, or **Immediately**. The next-tool choice sends when a tool call finishes,
