@@ -283,7 +283,9 @@ const config: ExpoConfig = {
   },
   android: {
     icon: variant.assets.appIcon,
-    package: isForkAndroidBuild ? "com.d3sox.t3code" : variant.androidPackage,
+    // Use upstream's preview identity so its Clerk instance accepts native sign-in,
+    // while the production app remains installable alongside the fork.
+    package: isForkAndroidBuild ? VARIANT_CONFIG.preview.androidPackage : variant.androidPackage,
     ...(isForkAndroidBuild ? { versionCode: forkAndroidVersionCode } : {}),
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }

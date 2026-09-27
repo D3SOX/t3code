@@ -173,7 +173,7 @@ jobs:
             --out "$apk" \
             "$RUNNER_TEMP/android-aligned.apk"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk"
-          "$build_tools/aapt" dump badging "$apk" | head -n 1 | grep "name='com.d3sox.t3code'"
+          "$build_tools/aapt" dump badging "$apk" | head -n 1 | grep "name='com.t3tools.t3code.preview'"
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do
             unzip -p "$apk" "lib/$abi/libc++_shared.so" | cmp - "$RUNNER_TEMP/android-libcxx/lib/$abi/libc++_shared.so"
           done
@@ -253,7 +253,7 @@ jobs:
             gh release create "$RELEASE_TAG" "$package" "$package.sig" "$apk" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "D3SOX nightly r${RELEASE_COUNT}" --prerelease --latest=false \
-              --notes "Automated fork build from ${GITHUB_SHA}. Android APK: com.d3sox.t3code. Arch Linux: t3code-d3sox-git. The Android and Arch packages use dedicated signing keys; see the repository README before installing."
+              --notes "Automated fork build from ${GITHUB_SHA}. Android APK: com.t3tools.t3code.preview. Arch Linux: t3code-d3sox-git. The Android and Arch packages use dedicated signing keys; see the repository README before installing."
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
