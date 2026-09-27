@@ -12,6 +12,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef, MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import { shouldUseRestingComposerLayout } from "../composerFooterLayout";
+import { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { useComposerFocusState } from "./useComposerFocusState";
 
 vi.mock("@legendapp/list/react", async () => {
@@ -285,6 +286,50 @@ function buildSnapShotTimelineEntry(previewUrl?: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it("starts viewed images collapsed and toggles the preview with one click", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            workspaceRoot="/workspace"
+            timelineEntries={[
+              {
+                id: "viewed-image-entry",
+                kind: "work",
+                createdAt: MESSAGE_CREATED_AT,
+                entry: {
+                  id: "viewed-image-work",
+                  createdAt: MESSAGE_CREATED_AT,
+                  label: "View image",
+                  itemType: "image_view",
+                  viewedImagePath: "screens/picture.png",
+                  tone: "tool",
+                  toolLifecycleStatus: "completed",
+                },
+              },
+            ]}
+          />,
+        );
+      });
+      const row = renderer!.root.findByProps({ "data-timeline-row-kind": "viewed-image" });
+      expect(row.findAllByType(ChatMarkdownAssetImage.type)).toHaveLength(0);
+      const toggle = row.findByProps({ "aria-expanded": false });
+      await act(() => toggle.props.onClick());
+      expect(toggle.props["aria-expanded"]).toBe(true);
+      expect(row.findAllByType(ChatMarkdownAssetImage.type)).toHaveLength(1);
+      await act(() => toggle.props.onClick());
+      expect(toggle.props["aria-expanded"]).toBe(false);
+      expect(row.findAllByType(ChatMarkdownAssetImage.type)).toHaveLength(0);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("renders previous and next controls with the minimap", () => {
     const first = buildUserTimelineEntry("First turn");
     const secondBase = buildUserTimelineEntry("Second turn");
