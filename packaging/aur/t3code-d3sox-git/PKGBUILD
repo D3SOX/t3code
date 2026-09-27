@@ -53,7 +53,8 @@ optdepends=('openai-codex: use the system-installed Codex CLI')
 provides=("t3code=$pkgver")
 conflicts=('t3code' 't3code-bin' 't3code-git' 't3code-nightly-bin')
 options=('!debug' '!emptydirs' '!strip')
-source=("$_pkgname::git+$url.git#branch=main")
+_source_ref=${T3CODE_SOURCE_COMMIT:+commit=$T3CODE_SOURCE_COMMIT}
+source=("$_pkgname::git+$url.git#${_source_ref:-branch=main}")
 sha256sums=('SKIP')
 
 pkgver() {

@@ -1,0 +1,254 @@
+name: D3SOX nightly packages
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: d3sox-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.version.outputs.build }}
+      count: ${{ steps.version.outputs.count }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          count=$(git rev-list --count HEAD)
+          tag="d3sox-nightly-r${count}"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Already released $tag; use a manual run to rebuild it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  arch:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git imagemagick libsecret nodejs-lts-krypton pkgconf pnpm rust
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /packaging/aur/t3code-d3sox-git/
+          sparse-checkout-cone-mode: false
+      - name: Build package from this release commit
+        run: |
+          set -euo pipefail
+          useradd --create-home builder
+          install -d -o builder -g builder /tmp/t3code-d3sox-build
+          install -m 644 packaging/aur/t3code-d3sox-git/PKGBUILD /tmp/t3code-d3sox-build/PKGBUILD
+          cd /tmp/t3code-d3sox-build
+          runuser -u builder -- env T3CODE_SOURCE_COMMIT="$GITHUB_SHA" makepkg --noconfirm
+          install -d "$RUNNER_TEMP/arch-package"
+          install -m 644 ./*.pkg.tar.zst "$RUNNER_TEMP/arch-package/"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: d3sox-arch-package
+          path: ${{ runner.temp }}/arch-package/*.pkg.tar.zst
+          if-no-files-found: error
+          compression-level: 0
+
+  android:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      APP_VARIANT: preview
+      EXPO_NO_DOTENV: "1"
+      NODE_OPTIONS: --max-old-space-size=8192
+      T3CODE_FORK_ANDROID_BUILD: "1"
+      T3CODE_FORK_ANDROID_VERSION_CODE: ${{ needs.plan.outputs.count }}
+      T3CODE_MOBILE_UPDATES_ENABLED: "0"
+      T3CODE_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsudDMuY29kZXMk
+      T3CODE_CLERK_JWT_TEMPLATE: t3-relay
+      T3CODE_RELAY_URL: https://relay.t3.codes
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/mobile...
+      - name: Expose pnpm
+        run: |
+          pnpm_version=$(node --print "require('./package.json').packageManager.split('@').pop()")
+          echo "$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Generate Android project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+      - name: Build APK
+        working-directory: apps/mobile/android
+        run: ./gradlew :app:assembleRelease --no-daemon
+      - name: Sign and verify APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.D3SOX_ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.D3SOX_ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_COUNT: ${{ needs.plan.outputs.count }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD"
+          keystore="$RUNNER_TEMP/android-release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          test -n "$build_tools"
+          install -d "$RUNNER_TEMP/android-package"
+          apk="$RUNNER_TEMP/android-package/T3-Code-D3SOX-Android-r${RELEASE_COUNT}.apk"
+          "$build_tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-type PKCS12 \
+            --ks-key-alias t3code-d3sox \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEYSTORE_PASSWORD \
+            --out "$apk" \
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          "$build_tools/aapt" dump badging "$apk" | head -n 1 | grep "name='com.d3sox.t3code'"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: d3sox-android-apk
+          path: ${{ runner.temp }}/android-package/*.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: [plan, arch, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: archlinux:base
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write
+    steps:
+      - name: Install signing and publishing tools
+        run: pacman -Syu --noconfirm --needed git github-cli gnupg pacman
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /packaging/aur/t3code-d3sox-git/signing-key.asc
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: d3sox-arch-package
+          path: packages
+      - uses: actions/download-artifact@v8
+        with:
+          name: d3sox-android-apk
+          path: packages
+      - name: Sign package and create pacman repository
+        env:
+          ARCH_GPG_KEY: ${{ secrets.D3SOX_ARCH_GPG_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$ARCH_GPG_KEY"
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          install -d -m 700 "$GNUPGHOME" site/arch/x86_64
+          printf '%s' "$ARCH_GPG_KEY" | gpg --batch --import
+          key=5A4D66D6943777AD48A5F169972812D8A4CFBA4D
+          gpg --batch --list-secret-keys "$key" >/dev/null
+          package=$(find packages -maxdepth 1 -name 't3code-d3sox-git-*.pkg.tar.zst' -print -quit)
+          test -n "$package"
+          install -m 644 "$package" site/arch/x86_64/
+          package="site/arch/x86_64/${package##*/}"
+          gpg --batch --local-user "$key" --detach-sign --output "$package.sig" "$package"
+          repo-add --sign --key "$key" --include-sigs \
+            site/arch/x86_64/t3code-d3sox.db.tar.zst "$package"
+          for alias in t3code-d3sox.db t3code-d3sox.db.sig t3code-d3sox.files t3code-d3sox.files.sig; do
+            cp -L "site/arch/x86_64/$alias" "site/arch/x86_64/$alias.copy"
+            mv "site/arch/x86_64/$alias.copy" "site/arch/x86_64/$alias"
+          done
+          install -m 644 packaging/aur/t3code-d3sox-git/signing-key.asc site/arch/
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_COUNT: ${{ needs.plan.outputs.count }}
+        run: |
+          set -euo pipefail
+          package=$(find site/arch/x86_64 -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)
+          apk=$(find packages -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$package" && test -n "$apk"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$package" "$package.sig" "$apk" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "$package" "$package.sig" "$apk" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "D3SOX nightly r${RELEASE_COUNT}" --prerelease --latest=false \
+              --notes "Automated fork build from ${GITHUB_SHA}. Android APK: com.d3sox.t3code. Arch Linux: t3code-d3sox-git. The Android and Arch packages use dedicated signing keys; see the repository README before installing."
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: d3sox-pacman-site
+          path: site/
+          if-no-files-found: error
+          compression-level: 0
+
+  pages:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: d3sox-pacman-site
+          path: site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

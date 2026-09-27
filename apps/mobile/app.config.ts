@@ -9,6 +9,14 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+const isForkAndroidBuild = repoEnv.T3CODE_FORK_ANDROID_BUILD === "1";
+const forkAndroidVersionCode = Number(repoEnv.T3CODE_FORK_ANDROID_VERSION_CODE ?? "1");
+if (
+  isForkAndroidBuild &&
+  (!Number.isSafeInteger(forkAndroidVersionCode) || forkAndroidVersionCode < 1)
+) {
+  throw new Error("T3CODE_FORK_ANDROID_VERSION_CODE must be a positive integer.");
+}
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
@@ -210,10 +218,10 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // family names without waiting for runtime font loading.
 
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: isForkAndroidBuild ? "T3 Code D3SOX" : variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
-  scheme: variant.scheme,
+  scheme: isForkAndroidBuild ? "t3code-d3sox" : variant.scheme,
   version: "1.3.1",
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
@@ -225,7 +233,7 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    enabled: !isForkAndroidBuild && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
     url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
@@ -275,7 +283,8 @@ const config: ExpoConfig = {
   },
   android: {
     icon: variant.assets.appIcon,
-    package: variant.androidPackage,
+    package: isForkAndroidBuild ? "com.d3sox.t3code" : variant.androidPackage,
+    ...(isForkAndroidBuild ? { versionCode: forkAndroidVersionCode } : {}),
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
       : {}),
@@ -453,11 +462,9 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-    },
+    ...(isForkAndroidBuild ? {} : { eas: { projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454" } }),
   },
-  owner: "pingdotgg",
+  ...(!isForkAndroidBuild ? { owner: "pingdotgg" } : {}),
 };
 
 export default config;

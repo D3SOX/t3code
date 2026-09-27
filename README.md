@@ -12,16 +12,41 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Closing a terminal does not ask for confirmation. Ctrl+D still goes to the terminal.
 - Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
 
-## Build on Arch Linux
+## Android nightly
 
-Build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package from this checkout:
+[![Get it on Obtainium](./assets/fork/badge-obtainium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522com.d3sox.t3code%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FD3SOX%252Ft3code%2522%252C%2522author%2522%253A%2522D3SOX%2522%252C%2522name%2522%253A%2522T3%2520Code%2520D3SOX%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includePrereleases%255C%2522%253Atrue%252C%255C%2522filterReleaseTitlesByRegEx%255C%2522%253A%255C%2522%255ED3SOX%2520nightly%2520r%255B0-9%255D%252B%2524%255C%2522%257D%2522%257D)
+
+The [nightly releases](https://github.com/D3SOX/t3code/releases) include a signed Android APK. It installs as **T3 Code D3SOX** (`com.d3sox.t3code`) alongside the upstream app and updates through Obtainium. This build does not use upstream Expo over-the-air updates. The [Obtainium badge](./assets/fork/badge-obtainium.png) is from the Obtainium project ([GPL-3.0](./assets/fork/LICENSE.obtainium.txt)).
+
+## Arch Linux nightly
+
+The same releases contain a signed `t3code-d3sox-git` package. For automatic updates through pacman, import the [repository signing key](./packaging/aur/t3code-d3sox-git/signing-key.asc) and verify its fingerprint is `5A4D 66D6 9437 77AD 48A5 F169 9728 12D8 A4CF BA4D`:
+
+```bash
+wget -O t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
+gpg --show-keys --fingerprint t3code-d3sox.asc
+sudo pacman-key --add t3code-d3sox.asc
+sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D
+```
+
+Add this repository to `/etc/pacman.conf`:
+
+```ini
+[t3code-d3sox]
+SigLevel = Required
+Server = https://d3sox.github.io/t3code/arch/$arch
+```
+
+Then run `sudo pacman -Syu t3code-d3sox-git`. The repository keeps the newest x86_64 package; older builds remain in [GitHub Releases](https://github.com/D3SOX/t3code/releases). The package conflicts with `t3code-bin`, so pacman will ask to replace it.
+
+To build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package yourself instead, use this checkout:
 
 ```bash
 cd packaging/aur/t3code-d3sox-git
 makepkg -si
 ```
 
-The package uses nightly branding, includes T3 Connect and SSH support, and installs as a native Arch package. It conflicts with `t3code-bin`, so pacman will ask to replace that package. To update later, run `git pull --ff-only` in this checkout and repeat `makepkg -si`.
+The package uses nightly branding and includes T3 Connect and SSH support. To rebuild later, run `git pull --ff-only` in this checkout and repeat `makepkg -si`.
 
 ---
 
