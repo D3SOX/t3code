@@ -33,6 +33,7 @@ interface NewThreadHandler {
 export interface ChatThreadActionContext {
   readonly activeDraftThread: ThreadContextLike | null;
   readonly activeThread: ThreadContextLike | undefined;
+  readonly preferredProjectRef: ScopedProjectRef | null;
   readonly defaultProjectRef: ScopedProjectRef | null;
   readonly handleNewThread: NewThreadHandler;
 }
@@ -71,6 +72,7 @@ export function hasExplicitComposerModelSelection(
 export function resolveThreadActionProjectRef(
   context: ChatThreadActionContext,
 ): ScopedProjectRef | null {
+  if (context.preferredProjectRef) return context.preferredProjectRef;
   if (context.activeThread) {
     return scopeProjectRef(context.activeThread.environmentId, context.activeThread.projectId);
   }

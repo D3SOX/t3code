@@ -1,4 +1,5 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -23,6 +24,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     sidebarProjectScopeKey: null,
+    lastNewThreadProjectRef: null,
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -159,6 +161,17 @@ describe("uiStateStore pure functions", () => {
 });
 
 describe("parsePersistedState", () => {
+  it("restores a valid new-thread project choice", () => {
+    const projectRef = scopeProjectRef(EnvironmentId.make("env-1"), ProjectId.make("project-1"));
+    expect(
+      parsePersistedState({ lastNewThreadProjectRef: projectRef }).lastNewThreadProjectRef,
+    ).toEqual(projectRef);
+    expect(
+      parsePersistedState({
+        lastNewThreadProjectRef: { environmentId: "", projectId: "project-1" },
+      }).lastNewThreadProjectRef,
+    ).toBeNull();
+  });
   it("hydrates the last selected pull request merge method", () => {
     const parsed = parsePersistedState({
       pullRequestMergeMethod: "squash",
@@ -202,6 +215,7 @@ describe("parsePersistedState", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
+      lastNewThreadProjectRef: null,
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -324,6 +338,7 @@ describe("uiStateStore persistence", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
+      lastNewThreadProjectRef: null,
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -348,6 +363,15 @@ describe("uiStateStore persistence", () => {
     expect(parsePersistedState(persisted).sidebarProjectScopeKey).toBe(
       "github.com/pingdotgg/t3code",
     );
+  });
+
+  it("persists the last project used for a new thread", () => {
+    const projectRef = scopeProjectRef(EnvironmentId.make("env-1"), ProjectId.make("project-1"));
+    persistState(makeUiState({ lastNewThreadProjectRef: projectRef }));
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(parsePersistedState(persisted).lastNewThreadProjectRef).toEqual(projectRef);
   });
 
   it("drops the temporary expanded-only migration fallback when rewriting state", () => {

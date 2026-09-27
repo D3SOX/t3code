@@ -128,6 +128,9 @@ export function useNewThreadHandler() {
           candidate.id === projectRef.projectId &&
           candidate.environmentId === projectRef.environmentId,
       );
+      if (project) {
+        useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
+      }
       // The resolver applies project overrides and, until the server has
       // folded them, the aggregate's own legacy fields.
       const projectSettings = resolveProjectSettings(
@@ -436,6 +439,7 @@ export function useNewThreadHandler() {
 
 export function useHandleNewThread() {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const lastNewThreadProjectRef = useUiStateStore((store) => store.lastNewThreadProjectRef);
   const routeTarget = useParams({
     strict: false,
     select: (params) => resolveThreadRouteTarget(params),
@@ -468,6 +472,15 @@ export function useHandleNewThread() {
   return {
     activeDraftThread,
     activeThread,
+    preferredProjectRef:
+      lastNewThreadProjectRef &&
+      projects.some(
+        (project) =>
+          project.environmentId === lastNewThreadProjectRef.environmentId &&
+          project.id === lastNewThreadProjectRef.projectId,
+      )
+        ? lastNewThreadProjectRef
+        : null,
     defaultProjectRef: orderedProjects[0]
       ? scopeProjectRef(orderedProjects[0].environmentId, orderedProjects[0].id)
       : null,

@@ -725,8 +725,13 @@ function OpenCommandPaletteDialog(props: {
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
-  const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
-    useHandleNewThread();
+  const {
+    activeDraftThread,
+    activeThread,
+    preferredProjectRef,
+    defaultProjectRef,
+    handleNewThread,
+  } = useHandleNewThread();
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -930,10 +935,11 @@ function OpenCommandPaletteDialog(props: {
       resolveThreadActionProjectRef({
         activeDraftThread,
         activeThread: activeThread ?? undefined,
+        preferredProjectRef,
         defaultProjectRef,
         handleNewThread,
       }),
-    [activeDraftThread, activeThread, defaultProjectRef, handleNewThread],
+    [activeDraftThread, activeThread, preferredProjectRef, defaultProjectRef, handleNewThread],
   );
   const projectPickerEntries = useMemo(
     () =>
@@ -1714,10 +1720,9 @@ function OpenCommandPaletteDialog(props: {
     setAddProjectCloneFlow(null);
     setViewStack([]);
     setQuery("");
-    const currentPrefix =
-      currentProjectEnvironmentId && currentProjectId
-        ? `new-thread-in:${currentProjectEnvironmentId}:${currentProjectId}`
-        : null;
+    const currentPrefix = contextualProjectRef
+      ? `new-thread-in:${contextualProjectRef.environmentId}:${contextualProjectRef.projectId}`
+      : null;
     const prioritized = currentPrefix
       ? [
           ...projectThreadItems.filter((item) => item.value === currentPrefix),
@@ -1737,8 +1742,7 @@ function OpenCommandPaletteDialog(props: {
   }, [
     clearOpenIntent,
     browseNavigation,
-    currentProjectEnvironmentId,
-    currentProjectId,
+    contextualProjectRef,
     openIntent,
     projectThreadItems,
     pushPaletteView,
@@ -1767,6 +1771,7 @@ function OpenCommandPaletteDialog(props: {
           await startNewThreadFromContext({
             activeDraftThread,
             activeThread: activeThread ?? undefined,
+            preferredProjectRef,
             defaultProjectRef,
             handleNewThread,
           });

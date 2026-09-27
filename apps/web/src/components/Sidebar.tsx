@@ -4408,10 +4408,8 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
 
-  // New thread defaults to the project you're in (active thread's project,
-  // falling back to the top project), the same resolution the command palette
-  // uses. The command palette already offers a "New thread in..." submenu
-  // for multi-project setups.
+  // The last project used for a new thread wins; otherwise use the viewed
+  // thread's project. Shift+click still opens the project picker.
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
       // One project: nothing to pick, create immediately. With several
@@ -4421,6 +4419,7 @@ export default function Sidebar() {
         void startNewThreadFromContext({
           activeDraftThread: newThreadContext.activeDraftThread,
           activeThread: newThreadContext.activeThread ?? undefined,
+          preferredProjectRef: newThreadContext.preferredProjectRef,
           defaultProjectRef: newThreadContext.defaultProjectRef,
           handleNewThread: newThreadContext.handleNewThread,
         });
@@ -4432,8 +4431,7 @@ export default function Sidebar() {
     [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
   );
 
-  // The primary button mirrors chat.newLocal and creates in the current
-  // project. Its Shift+click alternative mirrors chat.new and opens the picker.
+  // The primary button mirrors chat.newLocal. Shift+click opens the picker.
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.newLocal") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.new") : undefined);

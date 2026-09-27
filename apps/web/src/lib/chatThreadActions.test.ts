@@ -31,6 +31,7 @@ function createContext(overrides: Partial<ChatThreadActionContext> = {}): ChatTh
   return {
     activeDraftThread: null,
     activeThread: undefined,
+    preferredProjectRef: null,
     defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID),
     handleNewThread: async () => {},
     ...overrides,
@@ -38,6 +39,16 @@ function createContext(overrides: Partial<ChatThreadActionContext> = {}): ChatTh
 }
 
 describe("chatThreadActions", () => {
+  it("uses the last new-thread project even while viewing another project", () => {
+    expect(
+      resolveThreadActionProjectRef(
+        createContext({
+          preferredProjectRef: scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID),
+          activeThread: { environmentId: ENVIRONMENT_ID, projectId: PROJECT_ID },
+        }),
+      ),
+    ).toEqual(scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID));
+  });
   it("only treats an active stored selection marked explicit as an explicit pick", () => {
     const draft = {
       activeProvider: PROJECT_DEFAULT_SELECTION.instanceId,
