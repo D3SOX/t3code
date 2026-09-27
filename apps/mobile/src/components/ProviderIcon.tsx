@@ -101,6 +101,8 @@ export function ProviderInstanceIcon(props: {
   readonly showBadge?: boolean;
   readonly surfaceColor: string;
 }) {
+  const initials = providerInstanceInitials(props.displayName);
+
   return (
     <View style={{ position: "relative" }}>
       <View style={{ opacity: 0.6 }}>
@@ -114,8 +116,7 @@ export function ProviderInstanceIcon(props: {
             right: -3,
             bottom: -3,
             height: 12,
-            minWidth: 12,
-            paddingHorizontal: 2,
+            width: initials.length > 1 ? 16 : 12,
             borderRadius: 999,
             borderWidth: 1,
             borderColor: props.surfaceColor,
@@ -125,15 +126,19 @@ export function ProviderInstanceIcon(props: {
           }}
         >
           <Text
+            allowFontScaling={false}
             className={props.accentColor ? undefined : "text-foreground-muted"}
             style={{
               fontSize: 7,
               fontWeight: "600",
               lineHeight: 9,
+              alignSelf: "stretch",
+              textAlign: "center",
+              includeFontPadding: false,
               color: props.accentColor ? "#ffffff" : undefined,
             }}
           >
-            {providerInstanceInitials(props.displayName)}
+            {initials}
           </Text>
         </View>
       ) : null}
