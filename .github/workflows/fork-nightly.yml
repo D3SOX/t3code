@@ -55,7 +55,11 @@ jobs:
         shell: bash
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed git imagemagick libsecret nodejs-lts-krypton pkgconf pnpm rust
+        run: |
+          pacman -Syu --noconfirm --needed \
+            alsa-lib at-spi2-core gdk-pixbuf2 git gtk3 hicolor-icon-theme imagemagick \
+            libcups libdrm libsecret libxcomposite libxdamage libxfixes libxkbcommon \
+            libxrandr mesa nodejs-lts-krypton nspr nss pango pkgconf pnpm rust xdg-utils
       - uses: actions/checkout@v6
         with:
           sparse-checkout: |
@@ -116,6 +120,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v5
       - name: Generate Android project
         working-directory: apps/mobile
