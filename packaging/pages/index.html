@@ -3,20 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Nightly Android and Arch Linux builds of D3SOX's T3 Code fork."
+      content="Features and nightly Android and Arch Linux builds of D3SOX's T3 Code fork."
     />
     <title>T3 Code D3SOX</title>
     <style>
       :root {
-        color-scheme: dark;
+        color-scheme: light dark;
         font:
           16px/1.6 system-ui,
           sans-serif;
-        background: #0f172a;
-        color: #f8fafc;
+        background: #f7f7f7;
+        color: #242424;
+        --muted: #454545;
+        --link: #292929;
+        --border: #d0d0d0;
+        --code-background: #eeeeee;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #1c1c1c;
+          color: #eeeeee;
+          --muted: #cccccc;
+          --link: #eeeeee;
+          --border: #505050;
+          --code-background: #292929;
+        }
       }
       body {
         max-width: 48rem;
@@ -37,17 +51,20 @@
       }
       p,
       li {
-        color: #cbd5e1;
+        color: var(--muted);
+      }
+      li + li {
+        margin-top: 0.5rem;
       }
       a {
-        color: #86efac;
+        color: var(--link);
         text-underline-offset: 0.2em;
       }
       a:hover {
-        color: #bbf7d0;
+        text-decoration-thickness: 2px;
       }
       a:focus-visible {
-        outline: 2px solid #86efac;
+        outline: 2px solid currentColor;
         outline-offset: 3px;
       }
       .links {
@@ -63,10 +80,10 @@
       pre {
         overflow-x: auto;
         padding: 1rem;
-        border: 1px solid #475569;
-        border-radius: 0.4rem;
-        background: #1e293b;
-        color: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 0.25rem;
+        background: var(--code-background);
+        color: inherit;
       }
       .note {
         font-size: 0.9rem;
@@ -77,34 +94,90 @@
     <main>
       <h1>T3 Code D3SOX</h1>
       <p>
-        A fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a> with queued follow-up
-        messages, clearer image previews, remote-terminal fixes, and privacy-minded defaults. Signed
-        nightly builds are available for Android and Arch Linux.
+        A fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a> with changes to agent
+        workflows, remote use, and privacy. Signed nightly builds are available for Android and Arch
+        Linux.
       </p>
       <nav class="links" aria-label="Project links">
-        <a href="https://github.com/D3SOX/t3code">Source and feature list</a>
+        <a href="https://github.com/D3SOX/t3code">Source</a>
         <a href="https://github.com/D3SOX/t3code/releases">Latest builds</a>
       </nav>
 
-      <h2>Android</h2>
+      <h2>What this fork changes</h2>
+      <ul>
+        <li>
+          Follow-up messages wait until the agent finishes its current turn. In Settings, you can
+          instead steer at the next tool call or immediately; the oldest queued message has buttons
+          for both actions.
+        </li>
+        <li>
+          Images an agent opens appear in their own timeline rows, even when the rest of the turn is
+          collapsed. The preview starts collapsed; open the row to show it, then click the preview
+          to see the full image.
+        </li>
+        <li>Pinned and Active sidebar labels stay visible without dragging a thread.</li>
+        <li>
+          Pull request links open in your system browser by default. On desktop, right-click one to
+          open it in T3 Code instead. When a repository has both <code>origin</code> and
+          <code>upstream</code>, T3 Code uses <code>origin</code> for the fork's pull requests.
+        </li>
+        <li>
+          The new-thread button remembers the last project you started a thread in, even while
+          viewing another project's thread. Shift-click it to choose a different project.
+        </li>
+        <li>
+          Automatic thread titles and worktree branch names can be turned off for an environment or
+          project in Settings → Source Control.
+        </li>
+        <li>
+          Opening a path from a remote terminal shows the file in T3 Code, not on the remote
+          machine.
+        </li>
+        <li>
+          Closing a terminal does not ask for confirmation. Ctrl+D still goes to the terminal.
+        </li>
+        <li>
+          Product usage collection is off unless you set
+          <code>T3CODE_TELEMETRY_ENABLED=true</code> on the server.
+        </li>
+      </ul>
+
+      <h2>Android nightly</h2>
       <p>
         Download the latest <code>T3-Code-D3SOX-Android</code> APK from
         <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>, or use the
         <a href="https://github.com/D3SOX/t3code#android-nightly">Obtainium link in the README</a>
-        for updates. It installs alongside upstream T3 Code as a separate preview app.
+        for updates. It installs alongside upstream T3 Code as a separate preview app. This build
+        does not use upstream Expo over-the-air updates or export app telemetry.
       </p>
 
-      <h2>Arch Linux</h2>
+      <h2>Arch Linux nightly</h2>
       <p>
-        Add the signed repository following the
-        <a href="https://github.com/D3SOX/t3code#arch-linux-nightly"
-          >key and pacman setup instructions</a
-        >, then install:
+        The signed <code>t3code-d3sox-git</code> package updates through pacman. First, download the
+        <a
+          href="https://github.com/D3SOX/t3code/blob/main/packaging/aur/t3code-d3sox-git/signing-key.asc"
+          >repository signing key</a
+        >
+        and check that its fingerprint is
+        <code>5A4D 66D6 9437 77AD 48A5 F169 9728 12D8 A4CF BA4D</code>:
       </p>
+      <pre><code>wget -O t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
+gpg --show-keys --fingerprint t3code-d3sox.asc</code></pre>
+      <p>Only after the fingerprint matches, trust the key for packages from this repository:</p>
+      <pre><code>sudo pacman-key --add t3code-d3sox.asc
+sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D</code></pre>
+      <p>Add this section to <code>/etc/pacman.conf</code>:</p>
+      <pre><code>[t3code-d3sox]
+SigLevel = Required
+Server = https://d3sox.github.io/t3code/arch/$arch</code></pre>
+      <p>Install the package and get future nightly updates with your normal pacman updates:</p>
       <pre><code>sudo pacman -Syu t3code-d3sox-git</code></pre>
       <p class="note">
-        The package replaces <code>t3code-bin</code>. The repository URL is
-        <code>https://d3sox.me/t3code/arch/$arch</code>.
+        The repository keeps the newest x86_64 package; older builds remain in
+        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>. The package
+        conflicts with <code>t3code-bin</code>, so pacman will ask to replace it. To build from
+        source instead, see the
+        <a href="https://github.com/D3SOX/t3code#arch-linux-nightly">README</a>.
       </p>
     </main>
   </body>

@@ -3,7 +3,7 @@
 This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with these changes:
 
 - Follow-up messages wait until the agent finishes its current turn. You can change the timing in Settings to the next tool call or immediately. The oldest queued message also has buttons for both actions.
-- Images an agent opens appear in their own timeline rows, even when the rest of the turn is collapsed. Click the preview to see the full image.
+- Images an agent opens appear in their own timeline rows, even when the rest of the turn is collapsed. Open a row to show its preview, then click the preview to see the full image.
 - When you pin a thread, the sidebar keeps the Pinned and Active section labels visible without dragging.
 - Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
 - The new-thread button remembers the last project you started a thread in, even while you view another project's thread. Shift-click it to choose a different project.
