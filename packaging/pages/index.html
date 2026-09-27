@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Nightly Android and Arch Linux builds of D3SOX's T3 Code fork."
+    />
+    <title>T3 Code D3SOX</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      body {
+        max-width: 48rem;
+        margin: 0 auto;
+        padding: 3rem 1.25rem 5rem;
+      }
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3rem);
+        margin: 0 0 1rem;
+      }
+      h2 {
+        font-size: 1.35rem;
+        margin-top: 2.5rem;
+      }
+      p,
+      li {
+        color: #cbd5e1;
+      }
+      a {
+        color: #86efac;
+        text-underline-offset: 0.2em;
+      }
+      a:hover {
+        color: #bbf7d0;
+      }
+      a:focus-visible {
+        outline: 2px solid #86efac;
+        outline-offset: 3px;
+      }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.5rem;
+        margin: 1.5rem 0;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      pre {
+        overflow-x: auto;
+        padding: 1rem;
+        border: 1px solid #475569;
+        border-radius: 0.4rem;
+        background: #1e293b;
+        color: #f8fafc;
+      }
+      .note {
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>T3 Code D3SOX</h1>
+      <p>
+        A fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a> with queued follow-up
+        messages, clearer image previews, remote-terminal fixes, and privacy-minded defaults. Signed
+        nightly builds are available for Android and Arch Linux.
+      </p>
+      <nav class="links" aria-label="Project links">
+        <a href="https://github.com/D3SOX/t3code">Source and feature list</a>
+        <a href="https://github.com/D3SOX/t3code/releases">Latest builds</a>
+      </nav>
+
+      <h2>Android</h2>
+      <p>
+        Download the latest <code>T3-Code-D3SOX-Android</code> APK from
+        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>, or use the
+        <a href="https://github.com/D3SOX/t3code#android-nightly">Obtainium link in the README</a>
+        for updates. It installs alongside upstream T3 Code.
+      </p>
+
+      <h2>Arch Linux</h2>
+      <p>
+        Add the signed repository following the
+        <a href="https://github.com/D3SOX/t3code#arch-linux-nightly"
+          >key and pacman setup instructions</a
+        >, then install:
+      </p>
+      <pre><code>sudo pacman -Syu t3code-d3sox-git</code></pre>
+      <p class="note">
+        The package replaces <code>t3code-bin</code>. The repository URL is
+        <code>https://d3sox.me/t3code/arch/$arch</code>.
+      </p>
+    </main>
+  </body>
+</html>

@@ -129,6 +129,26 @@ jobs:
       - name: Build APK
         working-directory: apps/mobile/android
         run: ./gradlew :app:assembleRelease --no-daemon
+      - name: Bundle compatible Android C++ runtime
+        run: |
+          set -euo pipefail
+          # React Native's packaged libc++ lacks a symbol required by libfbjni on arm64.
+          sdkmanager --install 'ndk;28.2.13676358'
+          ndk_lib="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"
+          runtime_dir="$RUNNER_TEMP/android-libcxx"
+          for target in arm64-v8a:aarch64-linux-android armeabi-v7a:arm-linux-androideabi x86:i686-linux-android x86_64:x86_64-linux-android; do
+            abi=${target%%:*}
+            triplet=${target#*:}
+            install -Dm644 "$ndk_lib/$triplet/libc++_shared.so" "$runtime_dir/lib/$abi/libc++_shared.so"
+            readelf -Ws "$runtime_dir/lib/$abi/libc++_shared.so" | grep -F __cxa_init_primary_exception >/dev/null
+          done
+          patched="$RUNNER_TEMP/android-patched.apk"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$patched"
+          zip -d "$patched" 'lib/*/libc++_shared.so' >/dev/null
+          (cd "$runtime_dir" && zip -0 "$patched" lib/*/libc++_shared.so >/dev/null)
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$build_tools/zipalign" -P 16 -f 4 "$patched" "$RUNNER_TEMP/android-aligned.apk"
+          "$build_tools/zipalign" -c -P 16 4 "$RUNNER_TEMP/android-aligned.apk"
       - name: Sign and verify APK
         env:
           KEYSTORE_BASE64: ${{ secrets.D3SOX_ANDROID_KEYSTORE }}
@@ -151,9 +171,12 @@ jobs:
             --ks-pass env:KEYSTORE_PASSWORD \
             --key-pass env:KEYSTORE_PASSWORD \
             --out "$apk" \
-            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+            "$RUNNER_TEMP/android-aligned.apk"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk"
           "$build_tools/aapt" dump badging "$apk" | head -n 1 | grep "name='com.d3sox.t3code'"
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            unzip -p "$apk" "lib/$abi/libc++_shared.so" | cmp - "$RUNNER_TEMP/android-libcxx/lib/$abi/libc++_shared.so"
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: d3sox-android-apk
@@ -179,6 +202,7 @@ jobs:
         with:
           sparse-checkout: |
             /packaging/aur/t3code-d3sox-git/signing-key.asc
+            /packaging/pages/index.html
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -211,6 +235,8 @@ jobs:
             mv "site/arch/x86_64/$alias.copy" "site/arch/x86_64/$alias"
           done
           install -m 644 packaging/aur/t3code-d3sox-git/signing-key.asc site/arch/
+          install -m 644 packaging/pages/index.html site/index.html
+          test -s site/index.html
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
