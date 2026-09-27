@@ -1,0 +1,86 @@
+name: D3SOX Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packaging/pages/**
+      - .github/workflows/fork-pages.yml
+  workflow_run:
+    workflows: [D3SOX nightly packages]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: d3sox-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      artifact_run_id: ${{ steps.artifact.outputs.run_id }}
+    steps:
+      - id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_run ]]; then
+            available=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts" \
+              --jq '[.artifacts[] | select(.name == "d3sox-pacman-site" and .expired == false)] | length')
+            if [[ "$available" == 0 ]]; then
+              echo "No new pacman repository artifact; skipping Pages deployment." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            run_id="$SOURCE_RUN_ID"
+          else
+            run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=d3sox-pacman-site&per_page=1" \
+              --jq '[.artifacts[] | select(.expired == false)][0].workflow_run.id // empty')
+            test -n "$run_id"
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+  pages:
+    needs: source
+    if: needs.source.outputs.artifact_run_id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: |
+            /packaging/pages/index.html
+          sparse-checkout-cone-mode: false
+      - name: Assemble landing page and pacman repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ needs.source.outputs.artifact_run_id }}
+        run: |
+          set -euo pipefail
+          gh run download "$ARTIFACT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name d3sox-pacman-site --dir site
+          test -s site/arch/x86_64/t3code-d3sox.db
+          install -m 644 packaging/pages/index.html site/index.html
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
