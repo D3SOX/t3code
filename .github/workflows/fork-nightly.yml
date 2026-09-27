@@ -58,7 +58,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             alsa-lib at-spi2-core gdk-pixbuf2 git gtk3 hicolor-icon-theme imagemagick \
-            libcups libdrm libsecret libxcomposite libxdamage libxfixes libxkbcommon \
+            libcups libdrm libsecret libxcomposite libxcrypt-compat libxdamage libxfixes libxkbcommon \
             libxrandr mesa nodejs-lts-krypton nspr nss pango pkgconf pnpm rust xdg-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
