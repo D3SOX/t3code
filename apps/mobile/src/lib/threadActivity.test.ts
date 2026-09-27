@@ -1185,23 +1185,80 @@ describe("buildThreadFeed", () => {
       ],
     });
 
-    const group = buildThreadFeed(thread)[0];
-    expect(group).toMatchObject({
-      type: "activity-group",
-      activities: [
+    const row = buildThreadFeed(thread)[0];
+    expect(row).toMatchObject({
+      type: "viewed-image",
+      imagePath,
+      activity: { workEntry: { itemType: "image_view", viewedImagePath: imagePath } },
+    });
+    if (row?.type !== "viewed-image") return;
+    expect(row.activity.getFullDetail()).toBeNull();
+    expect(workEntryRowLabel(row.activity.workEntry, true)).toBe(`${imagePath.slice(0, 177)}...`);
+  });
+
+  it("keeps viewed images outside tool groups and settled turn folds", () => {
+    const turnId = TurnId.make("turn-viewed-image");
+    const thread = makeThread({
+      id: ThreadId.make("thread-viewed-image"),
+      projectId: ProjectId.make("project-1"),
+      title: "Image view",
+      latestTurn: {
+        turnId,
+        state: "completed",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:00.000Z",
+        completedAt: "2026-04-01T00:00:03.000Z",
+        assistantMessageId: MessageId.make("assistant-viewed-image"),
+      },
+      messages: [
         {
-          workEntry: {
-            itemType: "image_view",
-            viewedImagePath: imagePath,
-          },
+          id: MessageId.make("assistant-viewed-image"),
+          role: "assistant",
+          text: "I checked the image.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-04-01T00:00:03.000Z",
+          updatedAt: "2026-04-01T00:00:03.000Z",
         },
       ],
+      activities: [
+        makeActivity({
+          id: EventId.make("command-before-image"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Ran command",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          turnId,
+          payload: {
+            itemType: "command_execution",
+            status: "completed",
+            command: "file image.png",
+          },
+        }),
+        makeActivity({
+          id: EventId.make("viewed-image"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Image view",
+          createdAt: "2026-04-01T00:00:02.000Z",
+          turnId,
+          payload: {
+            itemType: "image_view",
+            status: "completed",
+            data: { imagePath: "/workspace/image.png" },
+          },
+        }),
+      ],
     });
-    if (group?.type !== "activity-group") return;
-    const row = group.activities[0]!;
-    expect(row.canExpand).toBe(true);
-    expect(row.getFullDetail()).toBeNull();
-    expect(workEntryRowLabel(row.workEntry, true)).toBe(`${imagePath.slice(0, 177)}...`);
+    const feed = buildThreadFeed(thread);
+    expect(feed.map((entry) => entry.type)).toEqual(["activity-group", "viewed-image", "message"]);
+
+    const collapsed = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set());
+    expect(collapsed.map((entry) => entry.type)).toEqual(["turn-fold", "viewed-image", "message"]);
+    expect(collapsed[1]).toMatchObject({ imagePath: "/workspace/image.png" });
+
+    const expanded = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set([turnId]));
+    expect(expanded.filter((entry) => entry.type === "viewed-image")).toHaveLength(1);
   });
 
   it("keeps MCP inputs available to expanded mobile work rows", () => {

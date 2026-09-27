@@ -27,6 +27,7 @@ import {
   summarizeToolGroup,
   toolGroupAction,
   toolGroupSummaryKind,
+  workEntryViewedImagePath,
   workEntryIndicatesToolFailure,
   workEntryIndicatesToolSuccess,
   workLogEntryIsToolLike,
@@ -160,6 +161,14 @@ export type ThreadFeedEntry =
       readonly activities: ReadonlyArray<ThreadFeedActivity>;
     }
   | {
+      readonly type: "viewed-image";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly turnId: TurnId | null;
+      readonly imagePath: string;
+      readonly activity: ThreadFeedActivity;
+    }
+  | {
       readonly type: "work-toggle";
       readonly id: string;
       readonly createdAt: string;
@@ -243,6 +252,10 @@ const messageEntriesCache = new WeakMap<
   Extract<RawThreadFeedEntry, { readonly type: "message" }>
 >();
 const activityGroupsCache = new WeakMap<ThreadFeedActivity, ThreadFeedActivityGroup>();
+const viewedImageRowsCache = new WeakMap<
+  ThreadFeedActivity,
+  Extract<ThreadFeedEntry, { readonly type: "viewed-image" }>
+>();
 const presentedActivityGroupsCache = new WeakMap<
   ThreadFeedActivityGroup,
   {
@@ -1582,6 +1595,25 @@ function groupAdjacentActivities(entries: ReadonlyArray<RawThreadFeedEntry>): Th
       continue;
     }
 
+    const imagePath = workEntryViewedImagePath(entry.activity.workEntry);
+    if (imagePath !== null) {
+      flushGroup();
+      let row = viewedImageRowsCache.get(entry.activity);
+      if (!row) {
+        row = {
+          type: "viewed-image",
+          id: entry.id,
+          createdAt: entry.createdAt,
+          turnId: entry.turnId,
+          imagePath,
+          activity: entry.activity,
+        };
+        viewedImageRowsCache.set(entry.activity, row);
+      }
+      grouped.push(row);
+      continue;
+    }
+
     const isStandalone =
       entry.activity.workEntry.sourceActivityKind === "context-compaction" ||
       entry.activity.workEntry.questionAnswer !== undefined;
@@ -1668,7 +1700,9 @@ function deriveThreadFeedTurnFolds(
         ? entry.message.turnId
         : entry.type === "activity-group"
           ? entry.turnId
-          : null;
+          : entry.type === "viewed-image"
+            ? entry.turnId
+            : null;
     if (!turnId) {
       continue;
     }
@@ -1711,6 +1745,7 @@ function deriveThreadFeedTurnFolds(
           (entry) =>
             entry.id !== firstAssistantMessageId &&
             entry.id !== terminalAssistantMessageId &&
+            entry.type !== "viewed-image" &&
             !(entry.type === "activity-group" && isUserInputActivityGroup(entry)),
         )
         .map((entry) => entry.id),

@@ -1705,6 +1705,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                     !row.showAssistantMeta) ||
                   (row.kind === "message" && row.message.role === "reasoning") ||
                   row.kind === "work" ||
+                  row.kind === "viewed-image" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
                   row.kind === "activity-group" ||
@@ -1732,6 +1733,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           displayLabel={row.displayLabel}
         />
       ) : null}
+      {row.kind === "viewed-image" ? <ViewedImageTimelineRow row={row} /> : null}
       {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
       {row.kind === "activity-group" ? <ActivityGroupTimelineRow row={row} /> : null}
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
@@ -4751,6 +4753,47 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
     />
   );
 });
+
+function ViewedImageTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "viewed-image" }> }) {
+  const { threadRef, workspaceRoot, onImageExpand, timestampFormat } = use(TimelineRowCtx);
+  const image = threadRef
+    ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
+    : null;
+  const displayPath = formatWorkspaceRelativePath(row.imagePath, workspaceRoot);
+  return (
+    <div className="rounded-md px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+          {row.active ? (
+            <Spinner size="xs" />
+          ) : (
+            <WorkEntryIcon name="eye" className="size-4 stroke-2" />
+          )}
+        </span>
+        <span className="shrink-0 text-sm text-secondary-label">
+          {row.active ? "Viewing image" : "Viewed image"}
+        </span>
+        <span className="min-w-0 flex-1 break-words text-sm text-secondary-label">
+          {displayPath}
+        </span>
+        <TimelineRowTimestamp createdAt={row.createdAt} timestampFormat={timestampFormat} />
+      </div>
+      {image && threadRef ? (
+        <div className="mt-1 ms-7">
+          <ChatMarkdownAssetImage
+            environmentId={threadRef.environmentId}
+            resource={image.resource}
+            alt={image.alt}
+            srcFragment={image.srcFragment}
+            workspaceRoot={workspaceRoot}
+            maxHeightRem={16}
+            onImageExpand={onImageExpand}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;

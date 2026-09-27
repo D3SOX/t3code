@@ -1092,6 +1092,81 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it("keeps viewed images in their own row outside tool groups and settled turn folds", () => {
+    const turnId = TurnId.make("image-turn");
+    const entries = [
+      {
+        id: "command-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:01Z",
+        entry: {
+          id: "command",
+          createdAt: "2026-01-01T00:00:01Z",
+          turnId,
+          label: "Ran command",
+          command: "file picture.png",
+          tone: "tool" as const,
+          toolLifecycleStatus: "completed" as const,
+        },
+      },
+      {
+        id: "image-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:02Z",
+        entry: {
+          id: "image",
+          createdAt: "2026-01-01T00:00:02Z",
+          turnId,
+          label: "Image view",
+          itemType: "image_view" as const,
+          viewedImagePath: "/workspace/picture.png",
+          tone: "tool" as const,
+          toolLifecycleStatus: "completed" as const,
+        },
+      },
+      {
+        id: "assistant-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:03Z",
+        message: {
+          id: MessageId.make("assistant-image"),
+          role: "assistant" as const,
+          text: "I checked the image.",
+          turnId,
+          createdAt: "2026-01-01T00:00:03Z",
+          updatedAt: "2026-01-01T00:00:03Z",
+          streaming: false,
+        },
+      },
+    ];
+    const input = {
+      timelineEntries: entries,
+      latestTurn: {
+        turnId,
+        state: "completed" as const,
+        startedAt: entries[0]!.createdAt,
+        completedAt: entries[2]!.createdAt,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    };
+
+    const collapsed = deriveMessagesTimelineRows(input);
+    expect(collapsed.map((row) => row.kind)).toEqual(["turn-fold", "viewed-image", "message"]);
+    expect(collapsed[1]).toMatchObject({ id: "image-entry", imagePath: "/workspace/picture.png" });
+
+    const expanded = deriveMessagesTimelineRows({ ...input, expandedTurnIds: new Set([turnId]) });
+    expect(expanded.map((row) => row.kind)).toEqual([
+      "turn-fold",
+      "work",
+      "viewed-image",
+      "message",
+    ]);
+    expect(expanded.filter((row) => row.kind === "viewed-image")).toHaveLength(1);
+  });
+
   const queuedMessage = (id: string, prompt: string) => ({
     id,
     prompt,

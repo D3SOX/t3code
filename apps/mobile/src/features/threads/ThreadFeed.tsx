@@ -1459,6 +1459,32 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "viewed-image") {
+    return (
+      <View className="mb-2 px-0.5">
+        <View className="min-h-8 flex-row items-center gap-1.5">
+          <View className="h-6 w-6 shrink-0 items-center justify-center">
+            <SymbolView
+              name={{ ios: "eye", android: "visibility" }}
+              size={14}
+              tintColor={iconSubtleColor}
+              type="monochrome"
+            />
+          </View>
+          <Text className="shrink-0 text-sm text-foreground-muted">Viewed image</Text>
+          <Text className="min-w-0 flex-1 text-sm text-foreground-muted" numberOfLines={1}>
+            {entry.imagePath}
+          </Text>
+        </View>
+        <MarkdownImageAvailableWidthContext value={Math.max(0, props.markdownContentWidth - 28)}>
+          <View className="ml-7 pb-1">
+            {props.renderViewedImage({ href: entry.imagePath, alt: null, title: null })}
+          </View>
+        </MarkdownImageAvailableWidthContext>
+      </View>
+    );
+  }
+
   if (entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) {
     const label = entry.activities[0]!.summary;
     return (

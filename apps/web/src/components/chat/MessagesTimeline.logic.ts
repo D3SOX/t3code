@@ -12,6 +12,7 @@ import {
   summarizeToolGroup,
   toolGroupAction,
   toolGroupSummaryKind,
+  workEntryViewedImagePath,
   type ToolGroupSummaryKind,
 } from "@t3tools/client-runtime/work-log/presentation";
 export {
@@ -341,6 +342,7 @@ function isActivityEntry(entry: TimelineEntry): entry is ActivityEntry {
   return entry.kind === "message"
     ? entry.message.role === "reasoning"
     : entry.kind === "work" &&
+        workEntryViewedImagePath(entry.entry) === null &&
         entry.entry.agentSpawn === undefined &&
         entry.entry.questionAnswer === undefined &&
         entry.entry.sourceActivityKind !== "context-compaction" &&
@@ -365,6 +367,14 @@ export type MessagesTimelineRow =
       groupedEntries: WorkLogEntry[];
       isExpandedToolGroup: boolean;
       displayLabel?: string;
+    }
+  | {
+      kind: "viewed-image";
+      id: string;
+      createdAt: string;
+      entry: WorkLogEntry;
+      imagePath: string;
+      active: boolean;
     }
   | {
       kind: "work-live";
@@ -740,6 +750,9 @@ function deriveTurnFolds(input: {
       }
       const isCompaction =
         entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction";
+      if (entry.kind === "work" && workEntryViewedImagePath(entry.entry) !== null) {
+        continue;
+      }
       const isSingleTrailingActivity =
         trailingEntryCount === 1 &&
         entry.kind === "work" &&
@@ -887,6 +900,10 @@ function attachTrailingToolGroupsToAssistant(
         if (hasTrailingToolGroup) {
           lastTrailingWorkIndex = index;
         }
+      }
+      if (candidate.kind === "viewed-image" && candidate.entry.turnId === turnId) {
+        hasTrailingToolGroup = true;
+        lastTrailingWorkIndex = index;
       }
     }
 
@@ -1041,6 +1058,7 @@ export function deriveMessagesTimelineRows(input: {
       entry.kind !== "work" ||
       entry.entry.questionAnswer !== undefined ||
       entry.entry.sourceActivityKind === "context-compaction" ||
+      workEntryViewedImagePath(entry.entry) !== null ||
       entry.entry.tone === "error"
     ) {
       break;
@@ -1218,6 +1236,20 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "work") {
+      const imagePath = workEntryViewedImagePath(timelineEntry.entry);
+      if (imagePath !== null) {
+        const active = workEntryIsInActiveRun(timelineEntry.entry);
+        nextRows.push({
+          kind: "viewed-image",
+          id: timelineEntry.id,
+          createdAt: timelineEntry.createdAt,
+          entry: timelineEntry.entry,
+          imagePath,
+          active,
+        });
+        hasActivityRow ||= active;
+        continue;
+      }
       if (
         timelineEntry.entry.agentSpawn !== undefined ||
         timelineEntry.entry.questionAnswer !== undefined ||
@@ -1245,6 +1277,7 @@ export function deriveMessagesTimelineRows(input: {
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
+          workEntryViewedImagePath(nextEntry.entry) !== null ||
           nextEntry.entry.agentSpawn !== undefined ||
           nextEntry.entry.questionAnswer !== undefined ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
@@ -1649,6 +1682,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.isExpandedToolGroup === bw.isExpandedToolGroup &&
         a.displayLabel === bw.displayLabel &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
+      );
+    }
+
+    case "viewed-image": {
+      const bi = b as typeof a;
+      return (
+        a.imagePath === bi.imagePath && a.active === bi.active && Equal.equals(a.entry, bi.entry)
       );
     }
 
