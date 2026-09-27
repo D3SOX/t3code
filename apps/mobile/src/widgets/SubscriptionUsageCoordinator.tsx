@@ -16,6 +16,7 @@ const snapshotAtom = Atom.make((get) =>
     Linking.createURL("settings/usage", { queryParams: { tab: "limits" } }),
     // Android scrolls the full list; iOS stores a bounded widget timeline.
     Platform.OS === "android" ? Infinity : 6,
+    Platform.OS === "android" ? "accounts" : "pooled",
   ),
 ).pipe(Atom.withEquality((a, b) => JSON.stringify(a) === JSON.stringify(b)));
 
