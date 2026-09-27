@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           useradd --create-home builder
           install -d -o builder -g builder /tmp/t3code-d3sox-build
-          install -m 644 packaging/aur/t3code-d3sox-git/PKGBUILD /tmp/t3code-d3sox-build/PKGBUILD
+          install -o builder -g builder -m 644 packaging/aur/t3code-d3sox-git/PKGBUILD /tmp/t3code-d3sox-build/PKGBUILD
           cd /tmp/t3code-d3sox-build
           runuser -u builder -- env T3CODE_SOURCE_COMMIT="$GITHUB_SHA" makepkg --noconfirm
           install -d "$RUNNER_TEMP/arch-package"
