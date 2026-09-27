@@ -250,8 +250,14 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$package" "$package.sig" "$apk" --clobber --repo "$GITHUB_REPOSITORY"
           else
+            # A moving main can make --target $GITHUB_SHA fail for GITHUB_TOKEN.
+            # Create the tag at the build commit, then release the existing tag.
+            if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA" >/dev/null
+            fi
             gh release create "$RELEASE_TAG" "$package" "$package.sig" "$apk" \
-              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --repo "$GITHUB_REPOSITORY" --verify-tag \
               --title "D3SOX nightly r${RELEASE_COUNT}" --prerelease --latest=false \
               --notes "Automated fork build from ${GITHUB_SHA}. Android APK: com.t3tools.t3code.preview. Arch Linux: t3code-d3sox-git. The Android and Arch packages use dedicated signing keys; see the repository README before installing."
           fi
