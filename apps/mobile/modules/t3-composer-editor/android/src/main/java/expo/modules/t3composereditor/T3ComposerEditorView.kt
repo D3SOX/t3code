@@ -225,6 +225,8 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     } finally {
       applyingNativeValue = false
     }
+    // Token spans can change layout after Android's automatic caret scroll.
+    editor.revealSelection()
     emitContentSizeIfNeeded()
   }
 
@@ -581,6 +583,19 @@ private fun parseTokens(value: String): List<ComposerToken> = try {
 }
 
 internal class SelectionAwareEditText(context: Context) : EditText(context) {
+  private var pendingRevealSelection: Runnable? = null
+
+  fun revealSelection() {
+    if (!hasFocus()) return
+    pendingRevealSelection?.let(::removeCallbacks)
+    val task = Runnable {
+      pendingRevealSelection = null
+      if (hasFocus() && selectionEnd >= 0) bringPointIntoView(selectionEnd)
+    }
+    pendingRevealSelection = task
+    post(task)
+  }
+
   var readOnly = false
   var selectionListener: ((Int, Int) -> Unit)? = null
   var pasteImagesListener: ((List<String>) -> Unit)? = null
@@ -674,6 +689,7 @@ internal class SelectionAwareEditText(context: Context) : EditText(context) {
   }
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
+    revealSelection()
     selectionListener?.invoke(selStart, selEnd)
   }
 
