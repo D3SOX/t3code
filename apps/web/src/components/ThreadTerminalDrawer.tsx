@@ -59,7 +59,7 @@ import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { type RemoteOpenMode, useRemoteOpenResolution } from "../remoteOpen";
 import { useRightPanelStore } from "../rightPanelStore";
-import { isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
+import { isTerminalUrl, resolvePathLinkTarget, terminalAppPathTarget } from "../terminal-links";
 import {
   isDiffToggleShortcut,
   isTerminalClearShortcut,
@@ -321,6 +321,7 @@ interface TerminalViewportProps {
   terminalId: string;
   terminalLabel: string;
   cwd: string;
+  panelWorkspaceRoot: string;
   worktreePath?: string | null;
   runtimeEnv?: Record<string, string>;
   providerInstanceId?: ProviderInstanceId;
@@ -347,6 +348,7 @@ export function TerminalViewport({
   terminalId,
   terminalLabel,
   cwd,
+  panelWorkspaceRoot,
   worktreePath,
   runtimeEnv,
   providerInstanceId,
@@ -371,7 +373,12 @@ export function TerminalViewport({
   );
   const openTerminalPath = useEffectEvent((target: string) => {
     if (terminalPathOpenTarget(remoteOpen.state.mode, remoteOpen.isResolved) === "app") {
-      useRightPanelStore.getState().openFile(threadRef, target);
+      const panelTarget = terminalAppPathTarget(target, panelWorkspaceRoot);
+      if (panelTarget.kind === "files") {
+        useRightPanelStore.getState().open(threadRef, "files");
+      } else {
+        useRightPanelStore.getState().openFile(threadRef, panelTarget.path, panelTarget.line);
+      }
       return null;
     }
     return openInPreferredEditor(target);
@@ -1542,6 +1549,7 @@ export default function ThreadTerminalDrawer({
                           terminalId={terminalId}
                           terminalLabel={terminalLabelById.get(terminalId) ?? "Terminal"}
                           cwd={terminalLaunchLocation.cwd}
+                          panelWorkspaceRoot={worktreePath ?? cwd}
                           {...(terminalLaunchLocation.worktreePath !== undefined
                             ? { worktreePath: terminalLaunchLocation.worktreePath }
                             : {})}
@@ -1572,6 +1580,7 @@ export default function ThreadTerminalDrawer({
                   terminalId={resolvedActiveTerminalId}
                   terminalLabel={terminalLabelById.get(resolvedActiveTerminalId) ?? "Terminal"}
                   cwd={activeTerminalLaunchLocation.cwd}
+                  panelWorkspaceRoot={worktreePath ?? cwd}
                   {...(activeTerminalLaunchLocation.worktreePath !== undefined
                     ? { worktreePath: activeTerminalLaunchLocation.worktreePath }
                     : {})}

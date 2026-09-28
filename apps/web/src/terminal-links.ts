@@ -1,6 +1,7 @@
 import {
   formatFilePathPosition,
   splitFilePathPosition,
+  workspaceRelativeFilePath,
 } from "@t3tools/client-runtime/markdown-links";
 
 import { isMacPlatform } from "./lib/utils";
@@ -221,4 +222,24 @@ export function resolvePathLinkTarget(rawPath: string, cwd: string): string {
   }
 
   return formatFilePathPosition({ ...position, path: resolvedPath });
+}
+
+export function terminalAppPathTarget(
+  target: string,
+  workspaceRoot: string,
+): { kind: "files" } | { kind: "file"; path: string; line?: number } {
+  const { path, line } = splitFilePathPosition(target);
+  const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalizedPath = normalize(path);
+  const normalizedRoot = normalize(workspaceRoot);
+  const sameRoot = isWindowsAbsolutePath(workspaceRoot)
+    ? normalizedPath.toLowerCase() === normalizedRoot.toLowerCase()
+    : normalizedPath === normalizedRoot;
+  if (sameRoot) return { kind: "files" };
+
+  return {
+    kind: "file",
+    path: workspaceRelativeFilePath(path, workspaceRoot) ?? path,
+    ...(line !== undefined ? { line } : {}),
+  };
 }
