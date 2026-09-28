@@ -181,6 +181,7 @@ function stubDomGlobals() {
       classList,
       offsetHeight: 0,
     },
+    getElementById: () => ({}),
   });
 }
 
@@ -286,6 +287,33 @@ function buildSnapShotTimelineEntry(previewUrl?: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it("shows cited image files beneath an assistant message", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            workspaceRoot="/workspace"
+            timelineEntries={[
+              buildAssistantTimelineEntry("See [dark](/tmp/dark.png) and [light](/tmp/light.png)."),
+            ]}
+          />,
+        );
+      });
+      const previews = renderer!.root.findAllByType(ChatMarkdownAssetImage.type);
+      expect(previews.map((preview) => preview.props.resource.path)).toEqual([
+        "/tmp/dark.png",
+        "/tmp/light.png",
+      ]);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("starts viewed images collapsed and toggles the preview with one click", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("requestAnimationFrame", () => 0);

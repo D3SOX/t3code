@@ -23,6 +23,7 @@ import {
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { citedImagePaths } from "@t3tools/client-runtime/cited-images";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import {
@@ -2409,7 +2410,12 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const threadRef = ctx.threadRef;
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const citedImages = useMemo(
+    () => (row.message.streaming ? [] : citedImagePaths(messageText)),
+    [messageText, row.message.streaming],
+  );
 
   return (
     <>
@@ -2435,6 +2441,28 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             onImageExpand={ctx.onImageExpand}
           />
         </AssistantCitationSource>
+        {threadRef && citedImages.length > 0 ? (
+          <div className="flex flex-wrap gap-2 pt-2">
+            {citedImages.map((path) => {
+              const image = resolveViewedImageAsset(path, {
+                threadId: threadRef.threadId,
+                workspaceRoot: ctx.workspaceRoot,
+              });
+              return image ? (
+                <ChatMarkdownAssetImage
+                  key={path}
+                  environmentId={threadRef.environmentId}
+                  resource={image.resource}
+                  alt={image.alt}
+                  srcFragment={image.srcFragment}
+                  workspaceRoot={ctx.workspaceRoot}
+                  maxHeightRem={16}
+                  onImageExpand={ctx.onImageExpand}
+                />
+              ) : null;
+            })}
+          </div>
+        ) : null}
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}

@@ -36,6 +36,7 @@ import {
   classifyMarkdownImageSource,
   markdownImageSourceFragment,
 } from "@t3tools/client-runtime/markdown-images";
+import { citedImagePaths } from "@t3tools/client-runtime/cited-images";
 import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presentation";
 import {
   renderCodexFileCitationsAsMarkdown,
@@ -826,6 +827,29 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
       </Markdown>
     );
   });
+});
+
+const AssistantCitedImages = memo(function AssistantCitedImages(props: {
+  readonly markdown: string;
+  readonly streaming: boolean;
+  readonly availableWidth: number;
+  readonly renderImage: MarkdownImageRenderer;
+}) {
+  const paths = useMemo(
+    () => (props.streaming ? [] : citedImagePaths(props.markdown)),
+    [props.markdown, props.streaming],
+  );
+  if (paths.length === 0) return null;
+
+  return (
+    <MarkdownImageAvailableWidthContext value={props.availableWidth}>
+      <View className="mt-2 gap-2">
+        {paths.map((path) => (
+          <View key={path}>{props.renderImage({ href: path, alt: null, title: null })}</View>
+        ))}
+      </View>
+    </MarkdownImageAvailableWidthContext>
+  );
 });
 
 function MarkdownCodeBlock(props: {
@@ -1733,6 +1757,12 @@ function renderFeedEntry(
             />
           </MarkdownImageAvailableWidthContext>
         ) : null}
+        <AssistantCitedImages
+          markdown={renderedText}
+          streaming={Boolean(message.streaming)}
+          availableWidth={props.markdownContentWidth}
+          renderImage={props.renderViewedImage}
+        />
         {attachments.map((attachment) => {
           return isImageAttachment(attachment) ? (
             <MessageAttachmentImage
