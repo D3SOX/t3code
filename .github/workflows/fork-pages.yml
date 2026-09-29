@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - packaging/pages/**
+      - assets/fork/badge-obtainium.png
       - .github/workflows/fork-pages.yml
   workflow_run:
     workflows: [D3SOX nightly packages]
@@ -67,6 +68,7 @@ jobs:
           ref: main
           sparse-checkout: |
             /packaging/pages/index.html
+            /assets/fork/badge-obtainium.png
           sparse-checkout-cone-mode: false
       - name: Assemble landing page and pacman repository
         env:
@@ -78,6 +80,7 @@ jobs:
             --name d3sox-pacman-site --dir site
           test -s site/arch/x86_64/t3code-d3sox.db
           install -m 644 packaging/pages/index.html site/index.html
+          install -Dm 644 assets/fork/badge-obtainium.png site/assets/badge-obtainium.png
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
