@@ -1267,6 +1267,34 @@ codexHandoff.layer("ProviderServiceLive Codex instance handoff", (it) => {
       assert.equal(yield* codexHandoffFirst.hasSession(threadId), true);
     }),
   );
+
+  it.effect("resumes persisted context when switching instances after the old runtime exits", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-codex-instance-handoff-after-exit");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffFirstInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-after-exit"),
+        runtimeMode: "full-access",
+      });
+      yield* codexHandoffFirst.adapter.stopSession(threadId);
+
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffSecondInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-after-exit"),
+        runtimeMode: "full-access",
+      });
+
+      assert.deepEqual(
+        codexHandoffSecond.startSession.mock.lastCall?.[0].resumeCursor,
+        initial.resumeCursor,
+      );
+    }),
+  );
 });
 
 const customCompactionDriver = ProviderDriverKind.make("custom-compaction-provider");

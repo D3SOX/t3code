@@ -113,6 +113,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderMaintenance from "./provider/providerMaintenance.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
+import { rebindCodexSession } from "./project/AgentSessionRebinder.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -3181,6 +3182,16 @@ const makeWsRpcLayer = (
                 providerSessionDirectory,
               ),
             ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.agentSessionsRebind]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.agentSessionsRebind,
+            rebindCodexSession(input, {
+              snapshots: projectionSnapshotQuery,
+              directory: providerSessionDirectory,
+              provider: providerService,
+            }),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.assetsCreateUrl]: (input) =>

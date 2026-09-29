@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 /** Coding agent home directories the scanner knows how to read. */
@@ -102,6 +108,33 @@ export const AgentSessionImportResult = Schema.Struct({
   skippedCount: NonNegativeInt,
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
+
+/** Reattach a known native Codex session to an idle T3 thread after a lost handoff. */
+export const AgentSessionRebindInput = Schema.Struct({
+  threadId: ThreadId,
+  expectedCurrentSessionId: TrimmedNonEmptyString,
+  targetSessionId: TrimmedNonEmptyString,
+});
+export type AgentSessionRebindInput = typeof AgentSessionRebindInput.Type;
+
+export const AgentSessionRebindResult = Schema.Struct({ sessionId: TrimmedNonEmptyString });
+export type AgentSessionRebindResult = typeof AgentSessionRebindResult.Type;
+
+export class AgentSessionRebindError extends Schema.TaggedError<AgentSessionRebindError>()(
+  "AgentSessionRebindError",
+  { reason: Schema.Literals(["thread-not-idle", "binding-changed", "resume-failed"]) },
+) {
+  override get message(): string {
+    switch (this.reason) {
+      case "thread-not-idle":
+        return "The thread must have an idle Codex session before its native session can be restored.";
+      case "binding-changed":
+        return "The thread's Codex session changed; inspect it again before restoring.";
+      case "resume-failed":
+        return "The older Codex session could not be resumed. The newer session remains saved.";
+    }
+  }
+}
 
 export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanError>()(
   "AgentSessionScanError",
