@@ -1067,6 +1067,44 @@ describe("ProviderRuntimeIngestion", () => {
     }),
   );
 
+  it("ignores a replaced instance's late session exit", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const replacementInstanceId = ProviderInstanceId.make("codex-second");
+    await harness.dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.make("cmd-codex-second-session"),
+      threadId,
+      session: {
+        threadId,
+        status: "ready",
+        providerName: "codex",
+        providerInstanceId: replacementInstanceId,
+        runtimeMode: "approval-required",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+      createdAt: "2026-01-01T00:00:01.000Z",
+    });
+
+    await harness.emitAndDrain([
+      {
+        type: "session.exited",
+        eventId: asEventId("evt-codex-first-late-exit"),
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex-first"),
+        threadId,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        payload: {},
+      },
+    ]);
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.session?.status).toBe("ready");
+    expect(thread?.session?.providerInstanceId).toBe(replacementInstanceId);
+  });
+
   it("does not clear active turn when session/thread started arrives mid-turn", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -143,27 +143,28 @@ function makeFakeCodexAdapter(
   const sessions = new Map<ThreadId, ProviderSession>();
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
 
-  const startSession = vi.fn((input: ProviderSessionStartInput) =>
-    Effect.sync(() => {
-      const now = "2026-01-01T00:00:00.000Z";
-      const session: ProviderSession = {
-        provider,
-        ...(input.providerInstanceId !== undefined
-          ? { providerInstanceId: input.providerInstanceId }
-          : {}),
-        status: "ready",
-        runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
-        resumeCursor: input.resumeCursor ?? {
-          opaque: `resume-${String(input.threadId)}`,
-        },
-        cwd: input.cwd ?? process.cwd(),
-        createdAt: now,
-        updatedAt: now,
-      };
-      sessions.set(session.threadId, session);
-      return session;
-    }),
+  const startSession = vi.fn(
+    (input: ProviderSessionStartInput): Effect.Effect<ProviderSession, ProviderAdapterError> =>
+      Effect.sync(() => {
+        const now = "2026-01-01T00:00:00.000Z";
+        const session: ProviderSession = {
+          provider,
+          ...(input.providerInstanceId !== undefined
+            ? { providerInstanceId: input.providerInstanceId }
+            : {}),
+          status: "ready",
+          runtimeMode: input.runtimeMode,
+          threadId: input.threadId,
+          resumeCursor: input.resumeCursor ?? {
+            opaque: `resume-${String(input.threadId)}`,
+          },
+          cwd: input.cwd ?? process.cwd(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        sessions.set(session.threadId, session);
+        return session;
+      }),
   );
 
   const sendTurn = vi.fn(
@@ -1059,6 +1060,214 @@ it.effect("ProviderServiceLive rejects new sessions for disabled custom instance
 );
 
 const routing = makeProviderServiceLayer();
+
+const codexHandoffFirst = makeFakeCodexAdapter();
+const codexHandoffSecond = makeFakeCodexAdapter();
+const codexHandoffSecondStart = codexHandoffSecond.adapter.startSession;
+const codexHandoffFirstInstanceId = ProviderInstanceId.make("codex_handoff_first");
+const codexHandoffSecondInstanceId = ProviderInstanceId.make("codex_handoff_second");
+const codexHandoffRegistryBase = makeStaticInstanceRegistry([
+  [codexHandoffFirstInstanceId, codexHandoffFirst.adapter],
+  [
+    codexHandoffSecondInstanceId,
+    {
+      ...codexHandoffSecond.adapter,
+      startSession: (input) =>
+        Effect.gen(function* () {
+          if (yield* codexHandoffFirst.hasSession(input.threadId)) {
+            return yield* new ProviderAdapterRequestError({
+              provider: CODEX_DRIVER,
+              method: "startSession",
+              detail: "thread already has an active writer",
+            });
+          }
+          return yield* codexHandoffSecondStart(input);
+        }),
+    },
+  ],
+]);
+const codexHandoff = makeProviderServiceLayer({
+  registry: {
+    ...codexHandoffRegistryBase,
+    getInstanceInfo: (instanceId) =>
+      codexHandoffRegistryBase.getInstanceInfo(instanceId).pipe(
+        Effect.map((info) => ({
+          ...info,
+          continuationIdentity: {
+            driverKind: CODEX_DRIVER,
+            continuationKey: "codex:shared-home",
+          },
+        })),
+      ),
+  },
+});
+
+codexHandoff.layer("ProviderServiceLive Codex instance handoff", (it) => {
+  it.effect("releases the interrupted session before resuming with another instance", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-codex-instance-handoff");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffFirstInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff"),
+        runtimeMode: "full-access",
+      });
+      yield* provider.sendTurn({ threadId, input: "first turn", attachments: [] });
+      yield* provider.interruptTurn({ threadId });
+
+      const replacement = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffSecondInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff"),
+        runtimeMode: "full-access",
+        resumeCursor: initial.resumeCursor,
+      });
+      yield* provider.sendTurn({ threadId, input: "next turn", attachments: [] });
+
+      assert.equal(replacement.providerInstanceId, codexHandoffSecondInstanceId);
+      assert.deepEqual(codexHandoffFirst.stopSession.mock.calls, [[threadId]]);
+      assert.equal(codexHandoffSecond.startSession.mock.calls.length, 1);
+      assert.equal(codexHandoffSecond.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("keeps the replacement resumable if its first start fails", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-codex-instance-handoff-retry");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffFirstInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-retry"),
+        runtimeMode: "full-access",
+      });
+      codexHandoffSecond.startSession.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: CODEX_DRIVER,
+            method: "startSession",
+            detail: "temporary startup failure",
+          }),
+        ),
+      );
+
+      const failedStart = yield* Effect.exit(
+        provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexHandoffSecondInstanceId,
+          threadId,
+          cwd: fixtureCwd("project-codex-instance-handoff-retry"),
+          runtimeMode: "full-access",
+          resumeCursor: initial.resumeCursor,
+        }),
+      );
+      assert.equal(Exit.isFailure(failedStart), true);
+      const binding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(binding));
+      assert.equal(binding.value.providerInstanceId, codexHandoffSecondInstanceId);
+      assert.equal(binding.value.status, "stopped");
+      assert.deepEqual(binding.value.resumeCursor, initial.resumeCursor);
+
+      const retried = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffSecondInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-retry"),
+        runtimeMode: "full-access",
+      });
+      assert.deepEqual(retried.resumeCursor, initial.resumeCursor);
+      yield* provider.sendTurn({ threadId, input: "retry turn", attachments: [] });
+    }),
+  );
+
+  it.effect("cleans up a replacement that fails after opening a session", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-codex-instance-handoff-partial-start");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffFirstInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-partial-start"),
+        runtimeMode: "full-access",
+      });
+      codexHandoffSecond.startSession.mockImplementationOnce((input) =>
+        codexHandoffSecondStart(input).pipe(
+          Effect.flatMap(() =>
+            Effect.fail(
+              new ProviderAdapterRequestError({
+                provider: CODEX_DRIVER,
+                method: "startSession",
+                detail: "failed after opening the writer",
+              }),
+            ),
+          ),
+        ),
+      );
+
+      const failedStart = yield* Effect.exit(
+        provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexHandoffSecondInstanceId,
+          threadId,
+          cwd: fixtureCwd("project-codex-instance-handoff-partial-start"),
+          runtimeMode: "full-access",
+          resumeCursor: initial.resumeCursor,
+        }),
+      );
+      assert.equal(Exit.isFailure(failedStart), true);
+      assert.equal(yield* codexHandoffFirst.hasSession(threadId), false);
+      assert.equal(yield* codexHandoffSecond.hasSession(threadId), false);
+    }),
+  );
+
+  it.effect("does not start the replacement when the old writer cannot stop", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-codex-instance-handoff-stop-failure");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexHandoffFirstInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-codex-instance-handoff-stop-failure"),
+        runtimeMode: "full-access",
+      });
+      codexHandoffFirst.stopSession.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: CODEX_DRIVER,
+            method: "stopSession",
+            detail: "writer could not stop",
+          }),
+        ),
+      );
+      const startsBefore = codexHandoffSecond.startSession.mock.calls.length;
+
+      const failedStart = yield* Effect.exit(
+        provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexHandoffSecondInstanceId,
+          threadId,
+          cwd: fixtureCwd("project-codex-instance-handoff-stop-failure"),
+          runtimeMode: "full-access",
+          resumeCursor: initial.resumeCursor,
+        }),
+      );
+      assert.equal(Exit.isFailure(failedStart), true);
+      assert.equal(codexHandoffSecond.startSession.mock.calls.length, startsBefore);
+      const binding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(binding));
+      assert.equal(binding.value.providerInstanceId, codexHandoffFirstInstanceId);
+      assert.equal(yield* codexHandoffFirst.hasSession(threadId), true);
+    }),
+  );
+});
 
 const customCompactionDriver = ProviderDriverKind.make("custom-compaction-provider");
 const nativeCompactionInstanceId = ProviderInstanceId.make("native-compaction");

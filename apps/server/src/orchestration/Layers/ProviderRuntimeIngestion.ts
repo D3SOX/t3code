@@ -1792,6 +1792,22 @@ const make = Effect.gen(function* () {
       const thread = yield* resolveThreadRuntimeContext(event.threadId);
       if (!thread) return;
 
+      // A stopped adapter can still deliver queued lifecycle events after a
+      // replacement has been bound. They must not stop or rebind that session.
+      if (
+        thread.session?.providerInstanceId !== undefined &&
+        event.providerInstanceId !== undefined &&
+        thread.session.providerInstanceId !== event.providerInstanceId &&
+        (event.type.startsWith("session.") ||
+          event.type === "thread.started" ||
+          event.type === "turn.started" ||
+          event.type === "turn.completed" ||
+          event.type === "turn.aborted" ||
+          event.type === "runtime.error")
+      ) {
+        return;
+      }
+
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;

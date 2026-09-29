@@ -1389,13 +1389,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
                     provider: adapter.provider,
                   }),
                 ),
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("provider.session.stop-stale-failed", {
-                    threadId: input.threadId,
-                    provider: adapter.provider,
-                    cause,
-                  }),
-                ),
               );
             }),
       { discard: true },
@@ -1507,6 +1500,29 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           }
         }
         const adapter = yield* registry.getByInstance(resolvedInstanceId);
+        // A compatible instance can resume the same provider thread, but only
+        // after the previous adapter has released its writer.
+        yield* stopStaleSessionsForThread({
+          threadId,
+          currentInstanceId: resolvedInstanceId,
+        });
+        if (persistedBinding?.providerInstanceId !== resolvedInstanceId && persistedBinding) {
+          // If the new adapter fails to start, a retry must target it rather
+          // than recovering the session we just stopped.
+          yield* directory.upsert({
+            threadId,
+            provider: resolvedProvider,
+            providerInstanceId: resolvedInstanceId,
+            runtimeMode: input.runtimeMode,
+            status: "stopped",
+            resumeCursor: effectiveResumeCursor ?? null,
+            runtimePayload: {
+              activeTurnId: null,
+              continueAfterServerUpdate: null,
+              continueAfterServerUpdatePrepared: null,
+            },
+          });
+        }
         yield* clearTurnAnalyticsSession(resolvedInstanceId, threadId);
         yield* prepareMcpSession(threadId, resolvedInstanceId);
         const session = yield* adapter
@@ -1516,7 +1532,27 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
             ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
           })
-          .pipe(Effect.onError(() => clearMcpSession(threadId)));
+          .pipe(
+            Effect.onError(() =>
+              Effect.gen(function* () {
+                // Some adapters can open a runtime before their start call fails.
+                // Do not leave that attempted writer behind for the next retry.
+                yield* adapter.hasSession(threadId).pipe(
+                  Effect.flatMap((hasSession) =>
+                    hasSession ? adapter.stopSession(threadId) : Effect.void,
+                  ),
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("provider.session.cleanup-failed-start", {
+                      threadId,
+                      provider: adapter.provider,
+                      cause,
+                    }),
+                  ),
+                );
+                yield* clearMcpSession(threadId);
+              }),
+            ),
+          );
 
         if (session.provider !== adapter.provider) {
           yield* clearMcpSession(threadId);
@@ -1530,10 +1566,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           providerInstanceId: resolvedInstanceId,
         };
 
-        yield* stopStaleSessionsForThread({
-          threadId,
-          currentInstanceId: resolvedInstanceId,
-        });
         yield* upsertSessionBinding(sessionWithInstance, threadId, {
           modelSelection: input.modelSelection,
         });
