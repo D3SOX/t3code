@@ -14,10 +14,10 @@ const keybindings = [
     shortcut: {
       key: "w",
       metaKey: false,
-      ctrlKey: false,
-      shiftKey: false,
+      ctrlKey: true,
+      shiftKey: true,
       altKey: false,
-      modKey: true,
+      modKey: false,
     },
     whenAst: { type: "identifier", name: "terminalFocus" },
   },
@@ -39,7 +39,7 @@ function keyboardEvent(
     code: "KeyW",
     metaKey: false,
     ctrlKey: true,
-    shiftKey: false,
+    shiftKey: true,
     altKey: false,
     repeat: false,
     ...overrides,
@@ -78,13 +78,18 @@ describe("terminal close shortcut guards", () => {
   });
 
   it("leaves a non-repeated window close and unrelated repeats alone", () => {
-    const deliberateWindowClose = keyboardEvent({ repeat: false });
+    const deliberateWindowClose = keyboardEvent({ repeat: false, shiftKey: false });
     const unrelatedRepeat = keyboardEvent({ key: "q", code: "KeyQ", repeat: true });
+    const shellCtrlW = keyboardEvent({ shiftKey: false, repeat: true });
 
     expect(
       preventRepeatedTerminalCloseShortcut(deliberateWindowClose, keybindings, "Linux x86_64"),
     ).toBe(false);
     expect(deliberateWindowClose.defaultPrevented).toBe(false);
+    expect(preventRepeatedTerminalCloseShortcut(shellCtrlW, keybindings, "Linux x86_64")).toBe(
+      false,
+    );
+    expect(shellCtrlW.defaultPrevented).toBe(false);
     expect(preventRepeatedTerminalCloseShortcut(unrelatedRepeat, keybindings, "Linux x86_64")).toBe(
       false,
     );

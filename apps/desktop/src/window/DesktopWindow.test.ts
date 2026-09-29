@@ -665,7 +665,7 @@ describe("DesktopWindow", () => {
       }),
   );
 
-  it.effect("blocks only repeated Cmd+W input before it reaches the native window menu", () =>
+  it.effect("does not intercept repeated Ctrl+W terminal input", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
       const createCount = yield* Ref.make(0);
@@ -691,20 +691,16 @@ describe("DesktopWindow", () => {
           type: "keyDown",
           isAutoRepeat: true,
           key: "W",
-          meta: true,
-          control: false,
+          meta: false,
+          control: true,
           alt: false,
           shift: false,
         };
         beforeInput(event, input);
-        assert.isTrue(prevented);
-
-        prevented = false;
-        beforeInput(event, { ...input, isAutoRepeat: false });
         assert.isFalse(prevented);
 
         prevented = false;
-        beforeInput(event, { ...input, meta: false });
+        beforeInput(event, { ...input, isAutoRepeat: false });
         assert.isFalse(prevented);
       }).pipe(Effect.provide(layer));
     }),

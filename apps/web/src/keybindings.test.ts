@@ -107,7 +107,14 @@ const DEFAULT_BINDINGS = compile([
     whenAst: whenIdentifier("terminalFocus"),
   },
   {
-    shortcut: modShortcut("w"),
+    shortcut: {
+      key: "w",
+      metaKey: false,
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      modKey: false,
+    },
     command: "terminal.close",
     whenAst: whenIdentifier("terminalFocus"),
   },
@@ -332,10 +339,14 @@ describe("split/new/close terminal shortcuts", () => {
       }),
     );
     assert.isFalse(
-      isTerminalCloseShortcut(event({ key: "w", ctrlKey: true }), DEFAULT_BINDINGS, {
-        platform: "Linux",
-        context: { terminalFocus: false },
-      }),
+      isTerminalCloseShortcut(
+        event({ key: "W", ctrlKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "Linux",
+          context: { terminalFocus: false },
+        },
+      ),
     );
   });
 
@@ -363,10 +374,14 @@ describe("split/new/close terminal shortcuts", () => {
       }),
     );
     assert.isTrue(
-      isTerminalCloseShortcut(event({ key: "w", ctrlKey: true }), DEFAULT_BINDINGS, {
-        platform: "Linux",
-        context: { terminalFocus: true },
-      }),
+      isTerminalCloseShortcut(
+        event({ key: "W", ctrlKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "Linux",
+          context: { terminalFocus: true },
+        },
+      ),
     );
   });
 
@@ -907,21 +922,45 @@ describe("resolveShortcutCommand", () => {
     );
   });
 
-  it("routes mod+w to the terminal while focused and to the right panel otherwise", () => {
-    const closeEvent = event({ key: "w", metaKey: true });
+  it("routes Ctrl+Shift+W to the terminal and mod+w to the right panel", () => {
+    const closeTerminalEvent = event({ key: "W", ctrlKey: true, shiftKey: true });
+    const closePanelEvent = event({ key: "w", metaKey: true });
     assert.strictEqual(
-      resolveShortcutCommand(closeEvent, DEFAULT_BINDINGS, {
+      resolveShortcutCommand(closeTerminalEvent, DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: true },
       }),
       "terminal.close",
     );
     assert.strictEqual(
-      resolveShortcutCommand(closeEvent, DEFAULT_BINDINGS, {
+      resolveShortcutCommand(closePanelEvent, DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: false },
       }),
       "rightPanel.close",
+    );
+  });
+
+  it("closes only a focused terminal with Ctrl+Shift+W and leaves Ctrl+W to the shell", () => {
+    const closeEvent = event({ key: "W", ctrlKey: true, shiftKey: true });
+    assert.strictEqual(
+      resolveShortcutCommand(closeEvent, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+      "terminal.close",
+    );
+    assert.isNull(
+      resolveShortcutCommand(closeEvent, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isNull(
+      resolveShortcutCommand(event({ key: "w", ctrlKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
     );
   });
 
