@@ -4,21 +4,15 @@ set -euo pipefail
 test "$#" -gt 0
 : "${RELEASE_TAG:?}" "${RELEASE_COUNT:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_SHA:?}"
 
+# The plan job reserves this tag before main can advance during a long build.
+test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')" = "$GITHUB_SHA"
+
 if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
   gh release upload "$RELEASE_TAG" "$@" --clobber --repo "$GITHUB_REPOSITORY"
   exit 0
 fi
 
-# Pin the tag to the build commit even when main has moved. Either publisher
-# may create the tag and release first, so verify them after a creation race.
-tag_endpoint="repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG"
-if ! gh api "$tag_endpoint" >/dev/null 2>&1; then
-  if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-    -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA" >/dev/null; then
-    test "$(gh api "$tag_endpoint" --jq '.object.sha')" = "$GITHUB_SHA"
-  fi
-fi
-
+# Either publisher may create the release first.
 if ! gh release create "$RELEASE_TAG" "$@" \
   --repo "$GITHUB_REPOSITORY" --verify-tag \
   --title "D3SOX nightly r${RELEASE_COUNT}" --prerelease --latest=false \
