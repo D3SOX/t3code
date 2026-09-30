@@ -167,7 +167,14 @@ describe("GhosttyTerminalSurface visibility", () => {
       resize() {
         for (const callback of resizeCallbacks) callback();
       },
-      pointer(type: string, clientX: number, buttons: number, shiftKey = false, button = 0) {
+      pointer(
+        type: string,
+        clientX: number,
+        buttons: number,
+        shiftKey = false,
+        button = 0,
+        ctrlKey = false,
+      ) {
         canvas.dispatchEvent(
           Object.assign(new Event(type, { cancelable: true }), {
             clientX,
@@ -176,6 +183,7 @@ describe("GhosttyTerminalSurface visibility", () => {
             button,
             buttons,
             shiftKey,
+            ctrlKey,
           }),
         );
       },
@@ -334,6 +342,32 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(onLinkActivate).toHaveBeenCalledOnce();
   });
 
+  it("still opens a terminal path with an unmodified click", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1);
+    harness.pointer("pointerup", 5, 0);
+    expect(onLinkActivate).toHaveBeenCalledOnce();
+    expect(onLinkActivate.mock.calls[0]?.[0]).toBe("/tmp/example.txt");
+  });
+
+  it("still activates a URL with Ctrl held", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("https://example.com");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointerup", 5, 0, false, 0, true);
+    expect(onLinkActivate).toHaveBeenCalledOnce();
+    expect(onLinkActivate.mock.calls[0]?.[0]).toBe("https://example.com");
+  });
+
   it("uses repeated link clicks for word and line selection", async () => {
     const harness = createHarness();
     const onLinkActivate = vi.fn();
@@ -366,6 +400,32 @@ describe("GhosttyTerminalSurface visibility", () => {
     harness.pointer("pointerup", 37, 0, true);
     expect(onLinkActivate).not.toHaveBeenCalled();
     expect(surface.getSelection()).toBe("https");
+  });
+
+  it("does not open a terminal path while Ctrl is held for selection", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointerup", 5, 0, false, 0, true);
+    expect(onLinkActivate).not.toHaveBeenCalled();
+  });
+
+  it("allows Ctrl-dragging from a terminal path to select text", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointermove", 37, 1, false, 0, true);
+    harness.pointer("pointerup", 37, 0, false, 0, true);
+    expect(onLinkActivate).not.toHaveBeenCalled();
+    expect(surface.getSelection()).toBe("/tmp/");
   });
 
   it("does not activate a link replaced before pointer release", async () => {

@@ -1,6 +1,10 @@
 import { isMacPlatform } from "../../lib/utils";
 import { SELECTION_MULTI_CLICK_INTERVAL_MS } from "../../lib/selectionActions";
-import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
+import {
+  collectWrappedTerminalLinkLine,
+  extractTerminalLinks,
+  isTerminalUrl,
+} from "../../terminal-links";
 import {
   GhosttyTerminalCore,
   type GhosttyScrollbar,
@@ -1304,7 +1308,12 @@ export class GhosttyTerminalSurface {
     if (event.button !== 0) return;
     const clickCount = this.recordSelectionClick(event);
     const link = this.linkAt(event.clientX, event.clientY);
-    if (link && !event.shiftKey && clickCount === 1) {
+    if (
+      link &&
+      !event.shiftKey &&
+      (isTerminalUrl(link.text) || !event.ctrlKey) &&
+      clickCount === 1
+    ) {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = event.pointerId;
@@ -1518,7 +1527,11 @@ export class GhosttyTerminalSurface {
         this.canvas.releasePointerCapture(event.pointerId);
       }
       if (event.type !== "pointercancel") {
-        if (link && isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY))) {
+        if (
+          link &&
+          (isTerminalUrl(link.text) || (!event.ctrlKey && !event.shiftKey)) &&
+          isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY))
+        ) {
           this.options.onLinkActivate(link.text, event);
         }
       }
