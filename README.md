@@ -4,20 +4,23 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 - Follow-up messages wait until the agent finishes its current turn. You can change the timing in Settings to the next tool call or immediately. The oldest queued message also has buttons for both actions.
 - Images an agent opens appear in their own timeline rows, even when the rest of the turn is collapsed. Open a row to show its preview, then click the preview to see the full image.
+- Images an agent cites also appear as previews below its message on web, desktop, and mobile.
 - The Android usage widget shows each Codex or Claude subscription separately instead of averaging accounts into one bar, without putting account emails on the home screen.
+- The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - When you pin a thread, the sidebar keeps the Pinned and Active section labels visible without dragging.
 - Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
-- The new-thread button remembers the last project you started a thread in, even while you view another project's thread. Shift-click it to choose a different project.
+- The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. Shift-click the button to choose a different project.
+- Switching Codex accounts in an existing thread preserves its agent-session context.
 - You can turn off automatic thread titles and worktree branch names for the current environment or one project in Settings → Source Control.
-- Opening a path from a remote terminal shows the file in T3 Code, not an editor on the remote machine.
-- Closing a terminal does not ask for confirmation. Ctrl+D still goes to the terminal.
+- Terminal path clicks open files in T3 Code or workspace folders in its file explorer, including on remote machines. Hold Ctrl or Shift to select path text without opening it.
+- Closing a terminal does not ask for confirmation. Ctrl+W and Ctrl+D still go to the terminal.
 - Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
 
 ## Android nightly
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522com.t3tools.t3code.preview%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FD3SOX%252Ft3code%2522%252C%2522author%2522%253A%2522D3SOX%2522%252C%2522name%2522%253A%2522T3%2520Code%2520D3SOX%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includePrereleases%255C%2522%253Atrue%252C%255C%2522filterReleaseTitlesByRegEx%255C%2522%253A%255C%2522%255ED3SOX%2520nightly%2520r%255B0-9%255D%252B%2524%255C%2522%257D%2522%257D"><img src="./assets/fork/badge-obtainium.png" alt="Get it on Obtainium" width="160" height="62" /></a>
 
-The [nightly releases](https://github.com/D3SOX/t3code/releases) include a signed Android APK. It installs as **T3 Code D3SOX** (`com.t3tools.t3code.preview`) alongside the upstream production app and updates through Obtainium. The previous `com.d3sox.t3code` build is a separate app; its local data does not move to the new package automatically. This build does not use upstream Expo over-the-air updates or export app telemetry. The [Obtainium badge](./assets/fork/badge-obtainium.png) is from the Obtainium project ([GPL-3.0](./assets/fork/LICENSE.obtainium.txt)).
+The [nightly releases](https://github.com/D3SOX/t3code/releases) include a signed Android APK. It installs as **T3 Code D3SOX** (`com.t3tools.t3code.preview`) alongside the upstream production app and updates through Obtainium. This build does not use upstream Expo over-the-air updates or export app telemetry. The [Obtainium badge](./assets/fork/badge-obtainium.png) is from the Obtainium project ([GPL-3.0](./assets/fork/LICENSE.obtainium.txt)).
 
 ## Arch Linux nightly
 

@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" />
     <meta
       name="description"
       content="Features and nightly Android and Arch Linux builds of D3SOX's T3 Code fork."
@@ -125,9 +126,14 @@
           to see the full image.
         </li>
         <li>
+          Images an agent cites also appear as previews below its message on web, desktop, and
+          mobile.
+        </li>
+        <li>
           The Android usage widget shows each Codex or Claude subscription separately instead of
           averaging accounts into one bar, without putting account emails on the home screen.
         </li>
+        <li>The Android composer keeps the cursor visible as long messages wrap onto new lines.</li>
         <li>Pinned and Active sidebar labels stay visible without dragging a thread.</li>
         <li>
           Pull request links open in your system browser by default. On desktop, right-click one to
@@ -135,19 +141,21 @@
           <code>upstream</code>, T3 Code uses <code>origin</code> for the fork's pull requests.
         </li>
         <li>
-          The new-thread button remembers the last project you started a thread in, even while
-          viewing another project's thread. Shift-click it to choose a different project.
+          The new-thread button remembers the last project you used, including one chosen in the
+          “What should we build in…” composer. Shift-click the button to choose a different project.
         </li>
+        <li>Switching Codex accounts in an existing thread preserves its agent-session context.</li>
         <li>
           Automatic thread titles and worktree branch names can be turned off for an environment or
           project in Settings → Source Control.
         </li>
         <li>
-          Opening a path from a remote terminal shows the file in T3 Code, not on the remote
-          machine.
+          Terminal path clicks open files in T3 Code or workspace folders in its file explorer,
+          including on remote machines. Hold Ctrl or Shift to select path text without opening it.
         </li>
         <li>
-          Closing a terminal does not ask for confirmation. Ctrl+D still goes to the terminal.
+          Closing a terminal does not ask for confirmation. Ctrl+W and Ctrl+D still go to the
+          terminal.
         </li>
         <li>
           Product usage collection is off unless you set
