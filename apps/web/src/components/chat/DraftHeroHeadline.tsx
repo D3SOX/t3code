@@ -31,6 +31,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InlineButton } from "../ui/button";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { useUiStateStore } from "~/uiStateStore";
 
 interface DraftHeroHeadlineProps {
   readonly draftId: DraftId | null;
@@ -169,11 +170,9 @@ export function DraftHeroHeadline({
             // place. The prompt stays in the same composer session, so the
             // sidebar only gets a draft row if the user later navigates away.
             const currentDraft = getComposerDraft(draftId);
-            setLogicalProjectDraftThreadId(
-              entry.group.projectKey,
-              scopeProjectRef(project.environmentId, project.id),
-              draftId,
-            );
+            const projectRef = scopeProjectRef(project.environmentId, project.id);
+            setLogicalProjectDraftThreadId(entry.group.projectKey, projectRef, draftId);
+            useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
             if (!hasExplicitComposerModelSelection(currentDraft)) {
               applyStickyState(draftId);
               const environmentSettings = environments.find(
