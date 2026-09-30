@@ -7,6 +7,8 @@ import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
+import { useEnvironmentIdentification } from "../state/environmentIdentification";
+import { EnvironmentArtwork } from "./EnvironmentArtwork";
 
 /**
  * Horizontal correction applied to content rendered in the brand title slot,
@@ -28,40 +30,63 @@ export function CompactBrandTitle(
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
+  const { mode } = useEnvironmentIdentification();
+  const artworkStage = mode === "artwork" && stageLabel !== "Alpha" ? stageLabel : null;
+  const showPill = mode === "pill" && stageLabel !== "Alpha";
 
   return (
     <View
       aria-level={1}
-      accessibilityLabel="T3 Code (D3SOX), Threads"
+      accessibilityLabel={`T3 Code (D3SOX), Threads${mode !== "none" && stageLabel !== "Alpha" ? `, ${stageLabel}` : ""}`}
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
-      style={[{ marginLeft: titleOffset }, Platform.OS === "android" && { gap: 5.25 * scale }]}
+      style={[
+        { marginLeft: titleOffset },
+        Platform.OS === "android" && { gap: 5.25 * scale },
+        artworkStage && {
+          overflow: "hidden",
+          borderRadius: 8,
+          paddingHorizontal: 8 * scale,
+          paddingVertical: 8 * scale,
+        },
+      ]}
     >
-      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
+      {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
+      <T3Wordmark
+        color={artworkStage ? "white" : undefined}
+        colorClassName={artworkStage ? undefined : "accent-icon"}
+        height={Math.round(15 * scale)}
+      />
       <Text
         allowFontScaling={props.allowFontScaling}
         className="font-t3-medium text-foreground-muted"
-        style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
+        style={{
+          fontSize: 21 * scale,
+          letterSpacing: -0.5 * scale,
+          ...(artworkStage ? { color: "white" } : {}),
+        }}
       >
         Code (D3SOX)
       </Text>
-      <View
-        className="rounded-full bg-subtle px-1.5 py-0.5"
-        style={
-          Platform.OS === "android"
-            ? { paddingHorizontal: 5.25 * scale, paddingVertical: 1.75 * scale }
-            : undefined
-        }
-      >
-        <Text
-          allowFontScaling={props.allowFontScaling}
-          className="font-t3-bold text-foreground-muted uppercase"
-          style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
+      {showPill ? (
+        <View
+          className="rounded-full bg-subtle px-1.5 py-0.5"
+          style={
+            Platform.OS === "android"
+              ? { paddingHorizontal: 5.25 * scale, paddingVertical: 1.75 * scale }
+              : undefined
+          }
         >
-          {stageLabel}
-        </Text>
-      </View>
+          <Text
+            allowFontScaling={props.allowFontScaling}
+            className="font-t3-bold text-foreground-muted uppercase"
+            style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
+          >
+            {stageLabel}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
