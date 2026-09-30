@@ -270,7 +270,7 @@ function PullRequestBadge({
       "aria-label": presentation.label,
       onPointerDown: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
       onClick,
-      onContextMenu: isStack ? undefined : onOpenPullRequestContextMenu,
+      onContextMenu: opensList ? undefined : onOpenPullRequestContextMenu,
     },
   });
   return (

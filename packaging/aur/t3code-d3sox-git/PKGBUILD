@@ -75,6 +75,7 @@ prepare() {
 
 build() {
   cd "$srcdir/$_pkgname"
+  pnpm --filter @t3tools/web typecheck
   local base_version build_date build_number nightly_version
   base_version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' apps/desktop/package.json | head -n 1)
   base_version=$(awk -F. '{ printf "%s.%s.%d", $1, $2, $3 + 1 }' <<<"$base_version")
