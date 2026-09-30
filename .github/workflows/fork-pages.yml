@@ -7,11 +7,12 @@ on:
       - packaging/pages/**
       - assets/fork/badge-obtainium.png
       - .github/workflows/fork-pages.yml
-  workflow_run:
-    workflows: [D3SOX nightly packages]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Nightly run containing the pacman repository (empty uses the newest artifact)
+        type: string
+        required: false
 
 concurrency:
   group: d3sox-pages
@@ -22,7 +23,6 @@ permissions:
 
 jobs:
   source:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -32,10 +32,10 @@ jobs:
       - id: artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ID: ${{ inputs.artifact_run_id }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == workflow_run ]]; then
+          if [[ -n "$SOURCE_RUN_ID" ]]; then
             available=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts" \
               --jq '[.artifacts[] | select(.name == "d3sox-pacman-site" and .expired == false)] | length')
             if [[ "$available" == 0 ]]; then
