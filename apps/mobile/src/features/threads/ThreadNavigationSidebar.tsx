@@ -23,6 +23,12 @@ import type { SearchBarCommands } from "react-native-screens";
 
 import { AppText as Text } from "../../components/AppText";
 import { CompactBrandTitle } from "../../components/CompactBrandTitle";
+import {
+  EnvironmentArtwork,
+  renderEnvironmentHeaderBackground,
+} from "../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../state/environmentIdentification";
+import { useTheme } from "@react-navigation/native";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { SymbolView } from "../../components/AppSymbol";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
@@ -134,6 +140,8 @@ function ThreadNavigationSidebarPane(
   const drawerColor = materialTheme["--color-drawer"];
 
   const insets = useSafeAreaInsets();
+  const { artworkStage } = useEnvironmentIdentification();
+  const { colors: navigationColors } = useTheme();
   const { fabClearance } = useAndroidControlSizing();
   const projects = useProjects();
   const threads = useThreadShells();
@@ -926,7 +934,7 @@ function ThreadNavigationSidebarPane(
     return (
       <>
         <NativeStackScreenOptions
-          optionsVersion={[nativeHeaderItems, props.width]}
+          optionsVersion={[nativeHeaderItems, props.width, artworkStage]}
           options={{
             // Re-applies the shell's static brand slot with the
             // connection-status swap so reconnects surface in the header
@@ -937,6 +945,8 @@ function ThreadNavigationSidebarPane(
               onOpenEnvironments: props.onOpenEnvironmentSettings,
               fallbackTitleStyle: { fontSize: 18, fontWeight: "800" },
             }),
+            headerBackground: artworkStage ? renderEnvironmentHeaderBackground : undefined,
+            headerTintColor: artworkStage ? "white" : navigationColors.primary,
             headerSearchBarOptions: {
               ref: searchBarRef,
               autoCapitalize: "none",
@@ -1081,6 +1091,7 @@ function ThreadNavigationSidebarPane(
           pointerEvents="auto"
           style={{ paddingTop: insets.top }}
         >
+          {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
           <View className="h-[50px] flex-row items-end gap-0.5 pr-2 pl-5">
             {/* Title slot doubles as the connection status surface: while an
               environment reconnects, the brand fades to a status label in

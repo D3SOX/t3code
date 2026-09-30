@@ -1,6 +1,21 @@
 import { useId } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Path, Pattern, Rect, Stop } from "react-native-svg";
+import { useEnvironmentIdentification } from "../state/environmentIdentification";
+
+/** Native navigation bars own their backdrop independently of the title slot. */
+export function EnvironmentHeaderBackground() {
+  const { artworkStage } = useEnvironmentIdentification();
+  return (
+    <View style={{ flex: 1 }} pointerEvents="none">
+      {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
+    </View>
+  );
+}
+
+export function renderEnvironmentHeaderBackground() {
+  return <EnvironmentHeaderBackground />;
+}
 
 /** Static native counterpart of desktop's Nightly sky and Dev blueprint artwork. */
 export function EnvironmentArtwork({ stage }: { readonly stage: "Nightly" | "Dev" }) {

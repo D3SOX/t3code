@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { View, type ColorValue } from "react-native";
 
 import type { AppSymbolName } from "./AppSymbol";
 import { AppText as Text } from "./AppText";
@@ -23,6 +23,7 @@ export function AndroidHeaderIconButton(props: {
   readonly onPress?: () => void;
   readonly disabled?: boolean;
   readonly selected?: boolean;
+  readonly tintColor?: ColorValue;
 }) {
   return <MaterialIconButton {...props} tintColorClassName="accent-header-foreground" />;
 }

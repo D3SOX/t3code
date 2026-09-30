@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { Pressable } from "react-native";
+import { Pressable, type ColorValue } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "./AppSymbol";
 
@@ -18,6 +18,7 @@ export function MaterialIconButton(props: {
   readonly selected?: boolean;
   readonly variant?: "standard" | "primary" | "tonal" | "danger";
   readonly tintColorClassName?: string;
+  readonly tintColor?: ColorValue;
 }) {
   const variant = props.variant ?? "standard";
   const [containerClassName, iconTintClassName] = VARIANT_CLASS_NAMES[variant];
@@ -38,11 +39,14 @@ export function MaterialIconButton(props: {
       <SymbolView
         name={props.icon}
         size={24}
+        tintColor={!props.disabled && variant === "standard" ? props.tintColor : undefined}
         tintColorClassName={
           props.disabled
             ? "accent-icon-subtle"
             : variant === "standard"
-              ? (props.tintColorClassName ?? iconTintClassName)
+              ? props.tintColor
+                ? undefined
+                : (props.tintColorClassName ?? iconTintClassName)
               : iconTintClassName
         }
       />

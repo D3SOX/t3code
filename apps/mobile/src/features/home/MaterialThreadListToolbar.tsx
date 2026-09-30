@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { BackHandler, Keyboard, type TextInput, View, type LayoutChangeEvent } from "react-native";
+import {
+  BackHandler,
+  Keyboard,
+  StatusBar,
+  type TextInput,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MenuAction } from "@react-native-menu/menu";
 
@@ -14,6 +22,8 @@ import { WorkspaceConnectionTitle } from "./WorkspaceConnectionTitle";
 import { useWorkspaceState } from "../../state/workspace";
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
 import { useMaterialToolbarLayout } from "../../components/useMaterialToolbarLayout";
+import { EnvironmentArtwork } from "../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../state/environmentIdentification";
 
 /** One toolbar height for the compact list and expanded sidebar, including search. */
 export function MaterialThreadListToolbar(props: {
@@ -29,6 +39,8 @@ export function MaterialThreadListToolbar(props: {
   readonly onRequestVisibility?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { artworkStage } = useEnvironmentIdentification();
+  const isFocused = useIsFocused();
   const { fabSize } = useAndroidControlSizing();
   const { height: toolbarHeight, ...headerPadding } = useMaterialToolbarLayout();
   const { state } = useWorkspaceState();
@@ -75,6 +87,7 @@ export function MaterialThreadListToolbar(props: {
 
   return (
     <>
+      {artworkStage && isFocused ? <StatusBar barStyle="light-content" /> : null}
       <View
         onLayout={props.onLayout}
         className={
@@ -82,6 +95,7 @@ export function MaterialThreadListToolbar(props: {
         }
         style={headerPadding}
       >
+        {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
         <View className="flex-row items-center gap-1" style={{ minHeight: toolbarHeight }}>
           {searching ? (
             <>
@@ -89,6 +103,7 @@ export function MaterialThreadListToolbar(props: {
                 accessibilityLabel="Close search"
                 icon="arrow.left"
                 onPress={closeSearch}
+                tintColor={artworkStage ? "white" : undefined}
               />
               {searchField}
             </>
@@ -106,11 +121,13 @@ export function MaterialThreadListToolbar(props: {
                 accessibilityLabel="Search threads"
                 icon="magnifyingglass"
                 onPress={openSearch}
+                tintColor={artworkStage ? "white" : undefined}
               />
               <AndroidHeaderIconButton
                 accessibilityLabel="Open settings"
                 icon="gearshape"
                 onPress={props.onOpenSettings}
+                tintColor={artworkStage ? "white" : undefined}
               />
             </>
           )}

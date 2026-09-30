@@ -8,7 +8,6 @@ import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
 import { useEnvironmentIdentification } from "../state/environmentIdentification";
-import { EnvironmentArtwork } from "./EnvironmentArtwork";
 
 /**
  * Horizontal correction applied to content rendered in the brand title slot,
@@ -41,18 +40,8 @@ export function CompactBrandTitle(
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
-      style={[
-        { marginLeft: titleOffset },
-        Platform.OS === "android" && { gap: 5.25 * scale },
-        artworkStage && {
-          overflow: "hidden",
-          borderRadius: 8,
-          paddingHorizontal: 8 * scale,
-          paddingVertical: 8 * scale,
-        },
-      ]}
+      style={[{ marginLeft: titleOffset }, Platform.OS === "android" && { gap: 5.25 * scale }]}
     >
-      {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
       <T3Wordmark
         color={artworkStage ? "white" : undefined}
         colorClassName={artworkStage ? undefined : "accent-icon"}

@@ -10,12 +10,15 @@ import {
 } from "../layout/native-mail-search-toolbar";
 import { buildHomeListFilterMenu } from "./home-list-filter-menu";
 import type { HomeHeaderProps } from "./HomeHeader.types";
+import { renderEnvironmentHeaderBackground } from "../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../state/environmentIdentification";
 
 export type { HomeHeaderEnvironment } from "./HomeHeader.types";
 
 export function HomeHeader(props: HomeHeaderProps) {
   const searchBarRef = useRef<SearchBarCommands>(null);
   const iconColor = useUniwindTheme()["--color-icon"];
+  const { artworkStage } = useEnvironmentIdentification();
   // The list uses a fixed creation order and ignores sort/group options, so
   // the filter menu only carries the filters and the "customized" icon state
   // keys off those alone.
@@ -31,11 +34,13 @@ export function HomeHeader(props: HomeHeaderProps) {
   return (
     <>
       <NativeStackScreenOptions
-        optionsVersion={filterMenu.items}
+        optionsVersion={[filterMenu.items, artworkStage]}
         options={{
           // Static header config (glass, title, fonts) lives in Stack.tsx
           // (GLASS_HEADER_OPTIONS). Only dynamic values are set here.
-          headerTintColor: iconColor,
+          headerTintColor: artworkStage ? "white" : iconColor,
+          headerBackground: artworkStage ? renderEnvironmentHeaderBackground : undefined,
+          statusBarStyle: artworkStage ? "light" : "auto",
           unstable_headerRightItems: () => [
             withNativeGlassHeaderItem({
               accessibilityLabel: "Open settings",
