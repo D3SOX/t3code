@@ -556,7 +556,7 @@ export interface GhosttyTerminalSurfaceOptions {
    * reporting. The host owns the menu, so it also owns preventing the browser
    * default — whose Paste entry can never reach a canvas terminal.
    */
-  readonly onContextMenu?: (event: MouseEvent) => void;
+  readonly onContextMenu?: (event: MouseEvent, link: string | null) => void;
 }
 
 export class GhosttyTerminalSurface {
@@ -1619,7 +1619,7 @@ export class GhosttyTerminalSurface {
       event.preventDefault();
       return;
     }
-    this.options.onContextMenu?.(event);
+    this.options.onContextMenu?.(event, this.linkAt(event.clientX, event.clientY)?.text ?? null);
   };
 
   private readonly onScrollbarPointerDown = (event: PointerEvent) => {

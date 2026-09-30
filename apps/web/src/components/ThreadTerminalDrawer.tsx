@@ -255,7 +255,7 @@ export function terminalSelectionLineRange(position: {
   };
 }
 
-export type TerminalContextMenuAction = "add-to-chat" | "copy" | "paste";
+export type TerminalContextMenuAction = "add-to-chat" | "copy" | "copy-link" | "paste";
 
 /** Post-selection popup: available selection actions, always enabled. */
 export function terminalSelectionMenuItems(options?: {
@@ -270,21 +270,28 @@ export function terminalSelectionMenuItems(options?: {
 }
 
 /**
- * Right-click menu for the terminal canvas: the selection actions (disabled
- * until a selection exists) plus Paste. Paste is always offered: the browser
+ * Right-click menu for the terminal canvas: selection actions (disabled
+ * until a selection exists), the link or path under the pointer, and Paste.
+ * Paste is always offered: the browser
  * (and Electron's default editing menu) can only paste into an editable
  * element, so a canvas terminal never gets a usable entry from them.
  */
 export function terminalContextMenuItems(options: {
   hasSelection: boolean;
+  link?: string | null;
   canAddToChat?: boolean;
 }): ContextMenuItem<TerminalContextMenuAction>[] {
-  const { hasSelection, canAddToChat = true } = options;
+  const { hasSelection, link = null, canAddToChat = true } = options;
   return [
     ...terminalSelectionMenuItems({ canAddToChat }).map((item) => ({
       ...item,
       disabled: !hasSelection,
     })),
+    ...(link !== null
+      ? ([
+          { id: "copy-link", label: isTerminalUrl(link) ? "Copy link" : "Copy path" },
+        ] satisfies ContextMenuItem<"copy-link">[])
+      : []),
     { id: "paste", label: "Paste" },
   ];
 }
@@ -526,8 +533,8 @@ export function TerminalViewport({
         // The surface listens from construction, so a right-click can land
         // while `create` is still awaiting WASM — before the handler below it
         // exists. The ref is only assigned once that setup has run.
-        onContextMenu: (event) => {
-          if (terminalRef.current) void showTerminalContextMenu(event);
+        onContextMenu: (event, link) => {
+          if (terminalRef.current) void showTerminalContextMenu(event, link);
         },
       };
       const terminal = await GhosttyTerminalSurface.create(mount, terminalOptions);
@@ -644,11 +651,15 @@ export function TerminalViewport({
         }
       };
 
-      const copySelection = async (text: string, requestId: number) => {
+      const copyTerminalText = async (
+        text: string,
+        kind: "selection" | "link" | "path",
+        requestId: number,
+      ) => {
         try {
-          await writeTextToClipboard(text, "terminal selection");
+          await writeTextToClipboard(text, `terminal ${kind}`);
         } catch (error) {
-          reportIfCurrent(requestId, error, "Unable to copy terminal selection");
+          reportIfCurrent(requestId, error, `Unable to copy terminal ${kind}`);
         }
         focusIfCurrent(requestId);
       };
@@ -671,7 +682,7 @@ export function TerminalViewport({
         focusIfCurrent(requestId);
       };
 
-      const showTerminalContextMenu = async (event: MouseEvent) => {
+      const showTerminalContextMenu = async (event: MouseEvent, link: string | null) => {
         if (!localApi || !terminalRef.current) return;
         // Own the gesture before anything async: leaving the default alive lets
         // the browser (or Electron's editing menu) answer with a Paste entry
@@ -686,6 +697,7 @@ export function TerminalViewport({
           clicked = await localApi.contextMenu.show(
             terminalContextMenuItems({
               hasSelection: selectionAction !== null,
+              link,
               canAddToChat: canAddSelectionToChat(),
             }),
             { x: event.clientX, y: event.clientY },
@@ -705,7 +717,12 @@ export function TerminalViewport({
             }
             return;
           case "copy":
-            if (selectionAction) await copySelection(selectionAction.clipboardText, requestId);
+            if (selectionAction)
+              await copyTerminalText(selectionAction.clipboardText, "selection", requestId);
+            return;
+          case "copy-link":
+            if (link !== null)
+              await copyTerminalText(link, isTerminalUrl(link) ? "link" : "path", requestId);
             return;
           case "paste":
             await pasteFromClipboard(requestId);
@@ -746,7 +763,7 @@ export function TerminalViewport({
             if (canAddSelectionToChat()) addSelectionToChat(nextAction.selection);
             return;
           case "copy":
-            await copySelection(nextAction.clipboardText, requestId);
+            await copyTerminalText(nextAction.clipboardText, "selection", requestId);
             return;
         }
       };

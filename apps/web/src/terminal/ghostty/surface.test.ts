@@ -218,6 +218,19 @@ describe("GhosttyTerminalSurface visibility", () => {
     vi.restoreAllMocks();
   });
 
+  it("passes the right-clicked link to the terminal context menu", async () => {
+    const harness = createHarness();
+    const onContextMenu = vi.fn();
+    const surface = await harness.create({ onContextMenu });
+    surface.write("https://t3.codes plain");
+    harness.flushFrame();
+
+    harness.pointer("contextmenu", 28, 0, false, 2);
+    harness.pointer("contextmenu", 156, 0, false, 2);
+
+    expect(onContextMenu.mock.calls.map(([, link]) => link)).toEqual(["https://t3.codes", null]);
+  });
+
   it("stops hidden snapshots and paint while preserving live VT replies and the next cursor", async () => {
     const harness = createHarness();
     const surface = await harness.create();

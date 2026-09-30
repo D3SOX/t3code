@@ -11,6 +11,27 @@ import {
 } from "./ThreadTerminalDrawer";
 
 describe("terminal selection menus", () => {
+  it("labels the copy action for the link under the pointer", () => {
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "https://t3.codes" }).map(
+        ({ id, label }) => [id, label],
+      ),
+    ).toContainEqual(["copy-link", "Copy link"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "/workspace/project" }).map(
+        ({ id, label }) => [id, label],
+      ),
+    ).toContainEqual(["copy-link", "Copy path"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "https://t3.codes" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual(["add-to-chat", "copy", "copy-link", "paste"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: null }).map(({ id }) => id),
+    ).toEqual(["add-to-chat", "copy", "paste"]);
+  });
+
   it("omits Add to chat when the terminal has no chat target", () => {
     expect(terminalSelectionMenuItems().map(({ id }) => id)).toEqual(["add-to-chat", "copy"]);
     expect(terminalContextMenuItems({ hasSelection: true }).map(({ id }) => id)).toEqual([

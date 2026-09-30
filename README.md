@@ -12,7 +12,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. Shift-click the button to choose a different project.
 - Switching Codex accounts in an existing thread preserves its agent-session context.
 - You can turn off automatic thread titles and worktree branch names for the current environment or one project in Settings → Source Control.
-- Terminal path clicks open files in T3 Code or workspace folders in its file explorer, including on remote machines. Hold Ctrl or Shift to select path text without opening it.
+- Terminal path clicks open files in T3 Code or workspace folders in its file explorer, including on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path in the terminal for **Copy link** or **Copy path**.
 - Closing a terminal does not ask for confirmation. Ctrl+W and Ctrl+D still go to the terminal.
 - Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
 
