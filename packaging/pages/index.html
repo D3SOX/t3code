@@ -153,6 +153,12 @@
         </li>
         <li>Switching Codex accounts in an existing thread preserves its agent-session context.</li>
         <li>
+          If Codex has archived an idle session, sending a follow-up automatically unarchives it and
+          retries once, keeping the same conversation and context. No manual
+          <code>codex unarchive</code>
+          command is needed; update the host/server to use this fix.
+        </li>
+        <li>
           Codex model-capacity failures retry automatically after 10 seconds, then 20, 40, and so
           on. Web, desktop, and mobile show a countdown with <strong>Cancel retry</strong>. Retries
           keep your context and remain one T3 turn for checkpoint restore; update both the client
