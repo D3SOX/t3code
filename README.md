@@ -10,7 +10,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - When you pin a thread, the sidebar keeps the Pinned and Active section labels visible without dragging.
 - Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
-- The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. Shift-click the button to choose a different project.
+- The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. On desktop/web, right-click or Shift-click the sidebar button to choose a different project. The composer shows the selected project's icon beside its name on web, desktop, and mobile.
 - Switching Codex accounts in an existing thread preserves its agent-session context.
 - Codex model-capacity failures retry automatically after 10 seconds, then 20, 40, and so on. Web, desktop, and mobile show a countdown with **Cancel retry**. Retries keep your context and remain one T3 turn for checkpoint restore; update both the client and host/server to use this feature.
 - Focusing the desktop app clears only the notification for the thread you're viewing, leaving other threads' alerts in your system's notification history. Opening another thread clears its retained alert too. The app's unread badge still resets when you return to T3 Code.

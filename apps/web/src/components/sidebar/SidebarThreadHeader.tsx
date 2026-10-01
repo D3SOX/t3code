@@ -32,8 +32,9 @@ export interface SidebarThreadHeaderProps {
   /** The project scope combobox, rendered as the first icon of the group. */
   projectScope: ReactNode;
   onNewProject: () => void;
-  /** Receives the click so Shift+click can skip the project picker. */
+  /** Receives the click so Shift+click can open the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
+  onNewThreadProjectPicker: () => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadPickerShortcutLabel: string | null | undefined;
@@ -55,6 +56,7 @@ export function SidebarThreadHeader({
   projectScope,
   onNewProject,
   onNewThread,
+  onNewThreadProjectPicker,
   newThreadDisabled,
   newThreadShortcutLabel,
   newThreadPickerShortcutLabel,
@@ -139,7 +141,7 @@ export function SidebarThreadHeader({
               <span className="flex flex-col gap-0.5">
                 <span>{newThreadLabel}</span>
                 <span className="text-muted-foreground">
-                  Choose another project: Shift+click
+                  Choose another project: right-click or Shift+click
                   {newThreadPickerShortcutLabel ? ` (${newThreadPickerShortcutLabel})` : ""}
                 </span>
               </span>
@@ -149,6 +151,10 @@ export function SidebarThreadHeader({
           }
           disabled={newThreadDisabled}
           onClick={onNewThread}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            if (!newThreadDisabled) onNewThreadProjectPicker();
+          }}
         >
           <SquarePenIcon />
         </SidebarHeaderIconButton>

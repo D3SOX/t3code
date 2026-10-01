@@ -4409,8 +4409,13 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
 
+  const handleNewThreadProjectPicker = useCallback(() => {
+    if (isMobile) setOpenMobile(false);
+    openCommandPalette({ open: "new-thread-in" });
+  }, [isMobile, setOpenMobile]);
+
   // The last project used for a new thread wins; otherwise use the viewed
-  // thread's project. Shift+click still opens the project picker.
+  // thread's project. Shift+click and right-click open the project picker.
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
       // One project: nothing to pick, create immediately. With several
@@ -4426,10 +4431,9 @@ export default function Sidebar() {
         });
         return;
       }
-      if (isMobile) setOpenMobile(false);
-      openCommandPalette({ open: "new-thread-in" });
+      handleNewThreadProjectPicker();
     },
-    [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
+    [handleNewThreadProjectPicker, isMobile, newThreadContext, projectGroups.length, setOpenMobile],
   );
 
   // The primary button mirrors chat.newLocal. Shift+click opens the picker.
@@ -4583,6 +4587,7 @@ export default function Sidebar() {
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
+              onNewThreadProjectPicker={handleNewThreadProjectPicker}
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadPickerShortcutLabel={newThreadPickerShortcutLabel}
