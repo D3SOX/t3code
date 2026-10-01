@@ -3,7 +3,7 @@ import {
   BackHandler,
   Keyboard,
   StatusBar,
-  type TextInput,
+  type TextInputInstance,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -45,7 +45,7 @@ export function MaterialThreadListToolbar(props: {
   const { height: toolbarHeight, ...headerPadding } = useMaterialToolbarLayout();
   const { state } = useWorkspaceState();
   const { onRequestVisibility, onSearchQueryChange } = props;
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searching = searchOpen || props.searchQuery.length > 0;
   const openSearch = useCallback(() => {

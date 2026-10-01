@@ -21,6 +21,16 @@ vi.mock("~/hooks/useSettings", () => ({
   useClientSettings: (select: (settings: Record<string, unknown>) => unknown) =>
     select({ sidebarProjectSortOrder: "manual" }),
 }));
+vi.mock("~/hooks/useScratchProject", () => ({
+  useScratchProject: () => ({
+    scratchEnvironmentId: () => null,
+    scratchWorkspaceRootFor: () => null,
+    openScratchProject: vi.fn(),
+  }),
+}));
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
+vi.mock("~/state/server", () => ({ primaryServerKeybindingsAtom: {} }));
+vi.mock("~/keybindings", () => ({ shortcutLabelForCommand: () => null }));
 vi.mock("~/logicalProject", () => ({ selectProjectGroupingSettings: () => ({}) }));
 vi.mock("~/lib/chatThreadActions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/chatThreadActions")>()),
