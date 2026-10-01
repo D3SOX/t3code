@@ -13,11 +13,12 @@ const state = vi.hoisted(() => ({
   sound: vi.fn(),
   badge: vi.fn(),
   environmentIds: ["one", "two"],
+  route: {} as { environmentId?: string; threadId?: string },
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: (id: string) => state.shells.get(id) }));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => state.navigate,
-  useParams: () => ({}),
+  useParams: () => state.route,
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
 vi.mock("../state/shell", () => ({ environmentShell: { stateValueAtom: (id: string) => id } }));
@@ -91,6 +92,7 @@ beforeEach(() => {
   state.mode = "notifications";
   state.inApp = false;
   state.environmentIds = ["one", "two"];
+  state.route = {};
   state.shells.set("one", shell());
   state.shells.set("two", shell());
   focused = false;
@@ -117,7 +119,8 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it("counts notifying threads across environments, replaces repeat alerts, and clears on focus", async () => {
+it("clears the badge on focus but dismisses only the viewed thread's notification", async () => {
+  state.route = { environmentId: "one", threadId: "thread" };
   await render();
   complete();
   await render();
@@ -130,13 +133,87 @@ it("counts notifying threads across environments, replaces repeat alerts, and cl
   focused = true;
   window.dispatchEvent(new Event("focus"));
   expect(state.badge).toHaveBeenLastCalledWith(0);
-  expect(
-    TestNotification.sent.every((notification) => notification.close.mock.calls.length > 0),
-  ).toBe(true);
+  expect(TestNotification.sent[1]!.close).toHaveBeenCalledOnce();
+  expect(TestNotification.sent[2]!.close).not.toHaveBeenCalled();
   focused = false;
   complete("two", "2026-09-13T08:02:00Z");
   await render();
   expect(state.badge).toHaveBeenLastCalledWith(1);
+});
+
+it("dismisses a retained notification when its thread is opened while focused", async () => {
+  await render();
+  complete("one");
+  complete("two");
+  await render();
+  focused = true;
+  window.dispatchEvent(new Event("focus"));
+  expect(
+    TestNotification.sent.every((notification) => notification.close.mock.calls.length === 0),
+  ).toBe(true);
+  state.route = { environmentId: "two", threadId: "thread" };
+  await render();
+  expect(TestNotification.sent[0]!.close).not.toHaveBeenCalled();
+  expect(TestNotification.sent[1]!.close).toHaveBeenCalledOnce();
+});
+
+it("does not dismiss notifications when another native window receives focus", async () => {
+  let clear: (() => void) | undefined;
+  Object.assign(window, {
+    desktopBridge: {
+      onNotificationBadgeClear: (listener: () => void) => {
+        clear = listener;
+        return vi.fn();
+      },
+    },
+  });
+  state.route = { environmentId: "one", threadId: "thread" };
+  await render();
+  complete("one");
+  complete("two");
+  await render();
+  clear!();
+  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(
+    TestNotification.sent.every((notification) => notification.close.mock.calls.length === 0),
+  ).toBe(true);
+});
+
+it("preserves another thread's notification in the same environment until that thread is viewed", async () => {
+  state.route = { environmentId: "one", threadId: "thread" };
+  const setThreads = (completed: boolean) =>
+    state.shells.set("one", {
+      status: "live",
+      snapshot: Option.some({
+        threads: ["thread", "other-thread"].map((id) => ({
+          ...thread,
+          id,
+          latestTurn: {
+            ...thread.latestTurn,
+            state: completed ? "completed" : "running",
+            completedAt: completed ? "2026-09-13T08:00:00Z" : null,
+          },
+        })),
+      }),
+    });
+  setThreads(false);
+  await render();
+  setThreads(true);
+  await render();
+  const [viewed, other] = TestNotification.sent;
+  expect(TestNotification.sent).toHaveLength(2);
+  focused = true;
+  window.dispatchEvent(new Event("focus"));
+  expect(viewed!.close).toHaveBeenCalledOnce();
+  expect(other!.close).not.toHaveBeenCalled();
+  focused = false;
+  state.route = { environmentId: "one", threadId: "other-thread" };
+  await render();
+  expect(other!.close).not.toHaveBeenCalled();
+  focused = true;
+  window.dispatchEvent(new Event("focus"));
+  expect(other!.close).toHaveBeenCalledOnce();
+  expect(state.badge).toHaveBeenLastCalledWith(0);
 });
 
 it("does not badge old completions on first load or reconnect", async () => {

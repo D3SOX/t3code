@@ -8,7 +8,7 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironments } from "../state/environments";
@@ -25,6 +25,9 @@ import { toastManager } from "./ui/toast";
 
 export function ThreadNotificationCoordinator() {
   const { environments } = useEnvironments();
+  const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
+    strict: false,
+  });
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -32,10 +35,29 @@ export function ThreadNotificationCoordinator() {
   const pending = useRef(
     new Map<string, { environmentId: EnvironmentId; notification: Notification }>(),
   );
+  const unread = useRef(new Set<string>());
+  const dismissViewedThread = useEffectEvent(() => {
+    if (
+      !document.hasFocus() ||
+      document.visibilityState !== "visible" ||
+      !activeEnvironmentId ||
+      !activeThreadId
+    )
+      return;
+    const tag = `${activeEnvironmentId}:${activeThreadId}`;
+    const entry = pending.current.get(tag);
+    if (!entry) return;
+    entry.notification.close();
+    pending.current.delete(tag);
+    unread.current.delete(tag);
+    setNotificationBadge(unread.current.size);
+  });
+
   const onNotification = useCallback((environmentId: EnvironmentId, notification: Notification) => {
     pending.current.get(notification.tag)?.notification.close();
     pending.current.set(notification.tag, { environmentId, notification });
-    setNotificationBadge(pending.current.size);
+    unread.current.add(notification.tag);
+    setNotificationBadge(unread.current.size);
   }, []);
 
   useEffect(() => {
@@ -45,26 +67,38 @@ export function ThreadNotificationCoordinator() {
       if (activeIds.has(environmentId)) continue;
       notification.close();
       pending.current.delete(tag);
+      unread.current.delete(tag);
     }
-    if (count !== pending.current.size) setNotificationBadge(pending.current.size);
+    if (count !== pending.current.size) setNotificationBadge(unread.current.size);
   }, [environments]);
 
   useEffect(() => {
-    const clear = () => {
+    const clearAll = () => {
       for (const { notification } of pending.current.values()) notification.close();
       pending.current.clear();
+      unread.current.clear();
       setNotificationBadge(0);
     };
-    clear();
+    const clearBadge = () => {
+      // Returning to the app clears its badge, not other threads' OS history.
+      unread.current.clear();
+      setNotificationBadge(0);
+      dismissViewedThread();
+    };
+    clearAll();
     if (!hasDesktopNotifications(mode)) return;
-    const unsubscribe = window.desktopBridge?.onNotificationBadgeClear?.(clear);
-    window.addEventListener("focus", clear);
+    const unsubscribe = window.desktopBridge?.onNotificationBadgeClear?.(clearBadge);
+    window.addEventListener("focus", clearBadge);
     return () => {
       unsubscribe?.();
-      window.removeEventListener("focus", clear);
-      clear();
+      window.removeEventListener("focus", clearBadge);
+      clearAll();
     };
   }, [mode]);
+
+  useEffect(() => {
+    if (activeEnvironmentId && activeThreadId) dismissViewedThread();
+  }, [activeEnvironmentId, activeThreadId]);
 
   useEffect(() => {
     if (!hasNotificationSound(mode)) return;
