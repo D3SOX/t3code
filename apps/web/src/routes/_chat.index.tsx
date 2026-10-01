@@ -21,6 +21,7 @@ import {
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
+import { useUiStateStore } from "~/uiStateStore";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -36,7 +37,7 @@ function ChatIndexRouteView() {
 
 /**
  * Landing on the index route drops straight into a draft thread for the most
- * recently active project, so the first screen is a prompt instead of a dead
+ * recently chosen project, so the first screen is a prompt instead of a dead
  * end. Falls back to an add-project hero when no project exists yet.
  */
 function IndexDraftLanding() {
@@ -44,15 +45,22 @@ function IndexDraftLanding() {
   const threads = useThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
+  const lastNewThreadProjectRef = useUiStateStore((store) => store.lastNewThreadProjectRef);
   const startingRef = useRef(false);
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
 
   const mostRecentProject = useMemo(
     () =>
       bootstrapped
-        ? (sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ?? null)
+        ? (projects.find(
+            (project) =>
+              project.environmentId === lastNewThreadProjectRef?.environmentId &&
+              project.id === lastNewThreadProjectRef.projectId,
+          ) ??
+          sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
+          null)
         : null,
-    [bootstrapped, projects, threads],
+    [bootstrapped, lastNewThreadProjectRef, projects, threads],
   );
 
   useEffect(() => {
