@@ -24,6 +24,7 @@ import {
   openCodexThread,
   readCodexThread,
   rollbackCodexThread,
+  retryWithUnarchivedCodexThread,
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -988,7 +989,132 @@ describe("isRecoverableThreadResumeError", () => {
   });
 });
 
+describe("retryWithUnarchivedCodexThread", () => {
+  it.effect("retries the same follow-up once after unarchiving", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      let archived = true;
+      const result = yield* retryWithUnarchivedCodexThread({
+        threadId: "saved-thread",
+        request: () => {
+          calls.push("turn/start");
+          return archived
+            ? Effect.fail(
+                CodexErrors.CodexAppServerRequestError.invalidRequest(
+                  "session saved-thread is archived",
+                ),
+              )
+            : Effect.succeed({ turn: { id: "follow-up" } });
+        },
+        unarchive: () =>
+          Effect.sync(() => {
+            calls.push("thread/unarchive");
+            archived = false;
+          }),
+      });
+      NodeAssert.deepStrictEqual(result, { turn: { id: "follow-up" } });
+      NodeAssert.deepStrictEqual(calls, ["turn/start", "thread/unarchive", "turn/start"]);
+    }),
+  );
+
+  for (const message of [
+    "session saved-thread is archived",
+    "session other-thread is archived",
+    "Permission denied",
+  ]) {
+    it.effect(`bounds retries and preserves the error: ${message}`, () =>
+      Effect.gen(function* () {
+        let attempts = 0;
+        let unarchives = 0;
+        const rejection = CodexErrors.CodexAppServerRequestError.invalidRequest(message);
+        const error = yield* retryWithUnarchivedCodexThread({
+          threadId: "saved-thread",
+          request: () => {
+            attempts++;
+            return Effect.fail(rejection);
+          },
+          unarchive: () =>
+            Effect.sync(() => {
+              unarchives++;
+            }),
+        }).pipe(Effect.flip);
+        NodeAssert.strictEqual(error, rejection);
+        NodeAssert.equal(attempts, message === "session saved-thread is archived" ? 2 : 1);
+        NodeAssert.equal(unarchives, message === "session saved-thread is archived" ? 1 : 0);
+      }),
+    );
+  }
+});
+
 describe("openCodexThread", () => {
+  it.effect("does not replace the conversation when unarchiving fails", () =>
+    Effect.gen(function* () {
+      const unarchiveError =
+        CodexErrors.CodexAppServerRequestError.invalidRequest("thread not found");
+      const error = yield* openCodexThread({
+        client: {
+          request: () => Effect.die("An unarchive failure must not start a fresh thread"),
+          raw: {
+            request: (method) =>
+              Effect.fail(
+                method === "thread/unarchive"
+                  ? unarchiveError
+                  : CodexErrors.CodexAppServerRequestError.invalidRequest(
+                      "session saved-thread is archived",
+                    ),
+              ),
+          },
+        },
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: undefined,
+        serviceTier: undefined,
+        resumeThreadId: "saved-thread",
+      }).pipe(Effect.flip);
+      NodeAssert.strictEqual(error, unarchiveError);
+    }),
+  );
+
+  it.effect("unarchives an idle session and resumes its existing context", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      let archived = true;
+      const opened = yield* openCodexThread({
+        client: {
+          request: () => Effect.die("An archived session must not start a fresh thread"),
+          raw: {
+            request: (method, payload) => {
+              calls.push(method);
+              NodeAssert.equal(payload.threadId, "saved-thread");
+              if (method === "thread/unarchive") {
+                archived = false;
+                return Effect.succeed({ thread: { id: "saved-thread" } });
+              }
+              return archived
+                ? Effect.fail(
+                    new CodexErrors.CodexAppServerRequestError({
+                      code: -32600,
+                      errorMessage:
+                        "session saved-thread is archived. Run `codex unarchive saved-thread` to unarchive it first.",
+                    }),
+                  )
+                : Effect.succeed(makeThreadOpenResponse("saved-thread"));
+            },
+          },
+        },
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "saved-thread",
+      });
+      NodeAssert.equal(opened.thread.id, "saved-thread");
+      NodeAssert.deepStrictEqual(calls, ["thread/resume", "thread/unarchive", "thread/resume"]);
+    }),
+  );
+
   it.effect("resumes metadata when historical turns contain unknown error values", () =>
     Effect.gen(function* () {
       const response = makeThreadOpenResponse("saved-thread");
@@ -1083,13 +1209,18 @@ describe("openCodexThread", () => {
 
   it.effect("falls back to thread/start when resume fails recoverably", () =>
     Effect.gen(function* () {
-      const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+      const calls: Array<{
+        method: "thread/start" | "thread/resume" | "thread/unarchive";
+        payload: unknown;
+      }> = [];
       const started = makeThreadOpenResponse("fresh-thread");
       const client = {
         raw: {
           request: (
-            method: "thread/resume",
-            payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+            method: "thread/resume" | "thread/unarchive",
+            payload:
+              | CodexRpc.ClientRequestParamsByMethod["thread/resume"]
+              | CodexRpc.ClientRequestParamsByMethod["thread/unarchive"],
           ) => {
             calls.push({ method, payload });
             return Effect.fail(

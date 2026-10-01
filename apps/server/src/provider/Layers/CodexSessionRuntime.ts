@@ -716,12 +716,33 @@ const CodexThreadResumeMetadata = Schema.Struct({
   thread: Schema.Struct({ id: Schema.String }),
 });
 const decodeCodexThreadResumeMetadata = Schema.decodeUnknownEffect(CodexThreadResumeMetadata);
+const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
+
+// Only retry a rejected request, once, and keep the same native conversation.
+export const retryWithUnarchivedCodexThread = <A>(input: {
+  readonly threadId: string;
+  readonly request: () => Effect.Effect<A, CodexErrors.CodexAppServerError>;
+  readonly unarchive: () => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
+}): Effect.Effect<A, CodexErrors.CodexAppServerError> =>
+  Effect.suspend(input.request).pipe(
+    Effect.catchIf(
+      (error) =>
+        isCodexAppServerRequestError(error) &&
+        ["session", "thread"].some((kind) =>
+          error.errorMessage.includes(`${kind} ${input.threadId} is archived`),
+        ),
+      () => input.unarchive().pipe(Effect.andThen(Effect.suspend(input.request))),
+    ),
+  );
 
 interface CodexThreadOpenClient {
   readonly raw: {
     readonly request: (
-      method: "thread/resume",
-      payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"] & {
+      method: "thread/resume" | "thread/unarchive",
+      payload: (
+        | CodexRpc.ClientRequestParamsByMethod["thread/resume"]
+        | CodexRpc.ClientRequestParamsByMethod["thread/unarchive"]
+      ) & {
         readonly excludeTurns?: boolean;
       },
     ) => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
@@ -759,34 +780,40 @@ export const openCodexThread = (input: {
   // Older providers may still return history despite excludeTurns. Only the
   // session metadata is needed here, so unrelated historical items cannot
   // prevent resuming a valid provider thread.
-  return input.client.raw
-    .request("thread/resume", {
-      threadId: resumeThreadId,
-      ...startParams,
-      excludeTurns: true,
-    })
-    .pipe(
-      Effect.flatMap((response) =>
-        decodeCodexThreadResumeMetadata(response).pipe(
-          Effect.mapError((error) =>
-            CodexErrors.CodexAppServerRequestError.invalidPayload(
-              "thread/resume",
-              "decode-payload",
-              error,
-            ),
+  return retryWithUnarchivedCodexThread({
+    threadId: resumeThreadId,
+    unarchive: () => input.client.raw.request("thread/unarchive", { threadId: resumeThreadId }),
+    request: () =>
+      input.client.raw
+        .request("thread/resume", {
+          threadId: resumeThreadId,
+          ...startParams,
+          excludeTurns: true,
+        })
+        .pipe(
+          Effect.catchIf(isRecoverableThreadResumeError, (error) =>
+            Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+              threadId: input.threadId,
+              requestedRuntimeMode: input.runtimeMode,
+              resumeThreadId,
+              recoverable: true,
+              cause: error,
+            }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+          ),
+        ),
+  }).pipe(
+    Effect.flatMap((response) =>
+      decodeCodexThreadResumeMetadata(response).pipe(
+        Effect.mapError((error) =>
+          CodexErrors.CodexAppServerRequestError.invalidPayload(
+            "thread/resume",
+            "decode-payload",
+            error,
           ),
         ),
       ),
-      Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-          threadId: input.threadId,
-          requestedRuntimeMode: input.runtimeMode,
-          resumeThreadId,
-          recoverable: true,
-          cause: error,
-        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
-      ),
-    );
+    ),
+  );
 };
 
 function readNotificationThreadId(notification: CodexServerNotification): string | undefined {
@@ -2601,7 +2628,11 @@ export const makeCodexSessionRuntime = (
             ),
           });
           yield* Ref.set(lastAdditionalContextRef, params.additionalContext);
-          const rawResponse = yield* client.raw.request("turn/start", params);
+          const rawResponse = yield* retryWithUnarchivedCodexThread({
+            threadId: providerThreadId,
+            request: () => client.raw.request("turn/start", params),
+            unarchive: () => client.raw.request("thread/unarchive", { threadId: providerThreadId }),
+          });
           const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
             Effect.mapError((error) =>
               CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
