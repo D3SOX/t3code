@@ -287,6 +287,35 @@ function buildSnapShotTimelineEntry(previewUrl?: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it("renders an inline video player for a cited recording", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            workspaceRoot="/workspace"
+            timelineEntries={[buildAssistantTimelineEntry("See [recording](/tmp/demo.mp4).")]}
+          />,
+        );
+      });
+      expect(
+        renderer!.root.findAll(
+          (node) =>
+            node.type === "span" &&
+            node.children.some(
+              (child) => typeof child === "string" && child.includes("Video unavailable"),
+            ),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("shows cited image files beneath an assistant message", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("requestAnimationFrame", () => 0);

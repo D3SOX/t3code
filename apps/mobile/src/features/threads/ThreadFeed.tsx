@@ -36,7 +36,7 @@ import {
   classifyMarkdownImageSource,
   markdownImageSourceFragment,
 } from "@t3tools/client-runtime/markdown-images";
-import { citedImagePaths } from "@t3tools/client-runtime/cited-images";
+import { citedMediaPaths } from "@t3tools/client-runtime/cited-media";
 import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presentation";
 import {
   renderCodexFileCitationsAsMarkdown,
@@ -829,14 +829,14 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   });
 });
 
-const AssistantCitedImages = memo(function AssistantCitedImages(props: {
+const AssistantCitedMedia = memo(function AssistantCitedMedia(props: {
   readonly markdown: string;
   readonly streaming: boolean;
   readonly availableWidth: number;
   readonly renderImage: MarkdownImageRenderer;
 }) {
   const paths = useMemo(
-    () => (props.streaming ? [] : citedImagePaths(props.markdown)),
+    () => (props.streaming ? [] : citedMediaPaths(props.markdown)),
     [props.markdown, props.streaming],
   );
   if (paths.length === 0) return null;
@@ -1757,7 +1757,7 @@ function renderFeedEntry(
             />
           </MarkdownImageAvailableWidthContext>
         ) : null}
-        <AssistantCitedImages
+        <AssistantCitedMedia
           markdown={renderedText}
           streaming={Boolean(message.streaming)}
           availableWidth={props.markdownContentWidth}
@@ -2309,11 +2309,23 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         ? resolveMarkdownMediaPreview(image.href, {
             environmentId: props.environmentId,
             threadId: props.threadId,
-            workspaceRoot: props.workspaceRoot,
+            workspaceRoot: props.workspaceRoot ?? ".",
             imageEmbed: true,
           })
         : null;
       const actionsSource = media?.source.actionsSource;
+      if (media?.kind === "video" && viewedImage) {
+        return (
+          <ThreadMarkdownVideo
+            key={image.href}
+            source={{
+              ...media.source,
+              environmentId: props.environmentId,
+              resource: viewedImage.resource,
+            }}
+          />
+        );
+      }
       return viewedImage ? (
         <ThreadMarkdownImage
           environmentId={props.environmentId}

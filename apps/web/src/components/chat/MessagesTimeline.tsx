@@ -24,7 +24,8 @@ import {
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { citedImagePaths } from "@t3tools/client-runtime/cited-images";
+import { citedMediaPaths } from "@t3tools/client-runtime/cited-media";
+import { mediaKindFromPath } from "@t3tools/shared/filePreview";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import {
@@ -2413,8 +2414,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const threadRef = ctx.threadRef;
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const citedImages = useMemo(
-    () => (row.message.streaming ? [] : citedImagePaths(messageText)),
+  const citedMedia = useMemo(
+    () => (row.message.streaming ? [] : citedMediaPaths(messageText)),
     [messageText, row.message.streaming],
   );
 
@@ -2442,9 +2443,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             onImageExpand={ctx.onImageExpand}
           />
         </AssistantCitationSource>
-        {threadRef && citedImages.length > 0 ? (
+        {threadRef && citedMedia.length > 0 ? (
           <div className="flex flex-wrap gap-2 pt-2">
-            {citedImages.map((path) => {
+            {citedMedia.map((path) => {
               const image = resolveViewedImageAsset(path, {
                 threadId: threadRef.threadId,
                 workspaceRoot: ctx.workspaceRoot,
@@ -2453,6 +2454,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
                 <ChatMarkdownAssetImage
                   key={path}
                   environmentId={threadRef.environmentId}
+                  kind={mediaKindFromPath(path) ?? "image"}
                   resource={image.resource}
                   alt={image.alt}
                   srcFragment={image.srcFragment}

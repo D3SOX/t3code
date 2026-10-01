@@ -43,9 +43,9 @@
       "types": "./src/markdownImages.ts",
       "default": "./src/markdownImages.ts"
     },
-    "./cited-images": {
-      "types": "./src/citedImages.ts",
-      "default": "./src/citedImages.ts"
+    "./cited-media": {
+      "types": "./src/citedMedia.ts",
+      "default": "./src/citedMedia.ts"
     },
     "./markdown-links": {
       "types": "./src/markdownLinks.ts",

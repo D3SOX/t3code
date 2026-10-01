@@ -4,7 +4,8 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 - Follow-up messages wait until the agent finishes its current turn. You can change the timing in Settings to the next tool call or immediately. The oldest queued message also has buttons for both actions.
 - Images an agent opens appear in their own timeline rows, even when the rest of the turn is collapsed. Open a row to show its preview, then click the preview to see the full image.
-- Images an agent cites also appear as previews below its message on web, desktop, and mobile.
+- Images and videos an agent cites appear as previews below its message on web, desktop, and mobile. Videos have playback controls and do not autoplay.
+- Mobile shows Nightly sky or Dev blueprint artwork across the full app header by default. In Settings → Appearance → Environment identification, choose Artwork, Pill, or None; the choice is saved on your device.
 - The Android usage widget shows each Codex or Claude subscription separately instead of averaging accounts into one bar, without putting account emails on the home screen.
 - The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - When you pin a thread, the sidebar keeps the Pinned and Active section labels visible without dragging.

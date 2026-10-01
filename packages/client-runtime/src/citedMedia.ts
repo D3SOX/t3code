@@ -1,4 +1,4 @@
-import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
+import { mediaKindFromPath } from "@t3tools/shared/filePreview";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
@@ -13,8 +13,8 @@ interface MarkdownNode {
   readonly children?: ReadonlyArray<MarkdownNode>;
 }
 
-/** Local image links in an answer, excluding images already embedded in its Markdown. */
-export function citedImagePaths(markdown: string): string[] {
+/** Local image and video links in an answer, excluding media already embedded in its Markdown. */
+export function citedMediaPaths(markdown: string): string[] {
   const root = markdownParser.parse(renderCodexFileCitationsAsMarkdown(markdown)) as MarkdownNode;
   const paths = new Set<string>();
   const embeddedPaths = new Set<string>();
@@ -29,7 +29,7 @@ export function citedImagePaths(markdown: string): string[] {
     }
     if (node.type === "link" && node.url) {
       const target = parseMarkdownFileLink(node.url);
-      if (target && isWorkspaceImagePreviewPath(target.path)) paths.add(target.path);
+      if (target && mediaKindFromPath(target.path) !== null) paths.add(target.path);
     }
     node.children?.forEach(visit);
   }
