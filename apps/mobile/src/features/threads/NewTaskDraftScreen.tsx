@@ -62,6 +62,7 @@ import {
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/VideoPreviewModal";
 import { ProviderIcon } from "../../components/ProviderIcon";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { hasProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
@@ -1469,10 +1470,20 @@ export function NewTaskDraftScreen(props: {
             accessibilityRole="button"
             disabled={isComposerInteractionLocked}
             onPress={chooseProject}
-            className="min-w-0 max-w-[250px] border-b border-foreground-muted active:opacity-65"
+            className="min-w-0 max-w-[250px] flex-row items-center gap-1.5 border-b border-foreground-muted active:opacity-65"
           >
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <ProjectFavicon
+                environmentId={selectedProject.environmentId}
+                projectTitle={selectedProject.title}
+                workspaceRoot={selectedProject.workspaceRoot}
+                faviconPath={selectedProject.faviconPath}
+                projectIcon={selectedProject.projectIcon}
+                size={20}
+              />
+            </View>
             <Text
-              className="text-2xl font-t3-medium tracking-tight text-foreground"
+              className="min-w-0 shrink text-2xl font-t3-medium tracking-tight text-foreground"
               numberOfLines={1}
             >
               {selectedProject.title}

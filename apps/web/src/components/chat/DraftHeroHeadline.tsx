@@ -148,6 +148,11 @@ export function DraftHeroHeadline({
             />
           }
         >
+          {activeProjectGroup ? (
+            <span aria-hidden="true" className="inline-flex shrink-0">
+              <ProjectFavicon project={activeProjectGroup} className="size-[0.8em] shrink-0" />
+            </span>
+          ) : null}
           <span className="min-w-0 truncate">{activeProjectDisplayName ?? "Choose a project"}</span>
         </TooltipTrigger>
         {activeProjectDisplayName ? (
