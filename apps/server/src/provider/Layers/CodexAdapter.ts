@@ -85,6 +85,8 @@ const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 import { classifyCodexManagedError } from "../CodexManagedErrors.ts";
+import { makeCodexCapacityRetry } from "./codexCapacityRetry.ts";
+import { groupCodexCapacityRetries } from "./codexCapacityHistory.ts";
 const PROVIDER = ProviderDriverKind.make("codex");
 
 export interface CodexAdapterLiveOptions {
@@ -113,6 +115,7 @@ interface CodexAdapterSessionContext {
   readonly threadId: ThreadId;
   readonly scope: Scope.Closeable;
   readonly runtime: CodexSessionRuntimeShape;
+  readonly capacityRetry: ReturnType<typeof makeCodexCapacityRetry>;
   readonly eventFiber: Fiber.Fiber<void, never>;
   readonly turnTokenUsage: CodexTurnTokenUsageState;
   readonly startInput: Parameters<CodexAdapterShape["startSession"]>[0];
@@ -2366,9 +2369,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         // this a child of `startSession`, and Effect interrupts a fiber's
         // children when it completes, so the consumer died on return and every
         // runtime event the session emitted afterwards was dropped.
-        const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
+        const capacityRetry = makeCodexCapacityRetry(runtime, sessionScope, (event) =>
+          Queue.offer(runtimeEventQueue, event),
+        );
+        const eventFiber = yield* Stream.runForEach(runtime.events, (nativeEvent) =>
           Effect.gen(function* () {
-            yield* writeNativeEvent(event);
+            yield* writeNativeEvent(nativeEvent);
+            const event = yield* capacityRetry.mapEvent(nativeEvent);
+            if (!event) return;
             if (event.method === "turn/started" && event.turnId) {
               if (turnTokenUsage.activeTurnId !== event.turnId) {
                 turnTokenUsage.byTurnId.clear();
@@ -2381,7 +2389,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 event.payload,
               );
               if (payload) {
-                accumulateCodexTurnTokenUsage(turnTokenUsage, payload.turnId, payload.tokenUsage);
+                accumulateCodexTurnTokenUsage(
+                  turnTokenUsage,
+                  event.turnId ?? payload.turnId,
+                  payload.tokenUsage,
+                );
               }
             } else if (turnTokenUsage.activeTurnId) {
               const collabPayload =
@@ -2541,6 +2553,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           threadId: input.threadId,
           scope: sessionScope,
           runtime,
+          capacityRetry,
           eventFiber,
           turnTokenUsage,
           startInput: input,
@@ -2616,7 +2629,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       !options?.resolveRuntime && input.modelSelection?.instanceId === boundInstanceId
         ? getCodexServiceTierOptionValue(input.modelSelection)
         : undefined;
-    return yield* session.runtime
+    return yield* session.capacityRetry
       .sendTurn({
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.modelSelection?.instanceId === boundInstanceId
@@ -2647,7 +2660,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
   const interruptTurn: CodexAdapterShape["interruptTurn"] = (threadId, turnId) =>
     requireSession(threadId).pipe(
-      Effect.flatMap((session) => session.runtime.interruptTurn(turnId)),
+      Effect.flatMap((session) => session.capacityRetry.interruptTurn(turnId)),
       Effect.mapError((cause) =>
         cause._tag === "ProviderAdapterSessionNotFoundError"
           ? cause
@@ -2672,7 +2685,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       ),
       Effect.map((snapshot) => ({
         threadId,
-        turns: snapshot.turns,
+        turns: groupCodexCapacityRetries(snapshot.turns).map((group) => group.turn),
       })),
     );
 
@@ -2706,7 +2719,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       ),
       Effect.map((snapshot) => ({
         threadId,
-        turns: snapshot.turns,
+        turns: groupCodexCapacityRetries(snapshot.turns).map((group) => group.turn),
       })),
     );
   };
@@ -2761,6 +2774,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     }
     session.stopped = true;
     sessions.delete(session.threadId);
+    yield* session.capacityRetry.cancelTimers();
     yield* session.runtime.close.pipe(Effect.ignore);
     yield* Effect.ignore(Scope.close(session.scope, Exit.void));
     yield* Fiber.interrupt(session.eventFiber).pipe(Effect.ignore);
@@ -2778,7 +2792,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const listSessions: CodexAdapterShape["listSessions"] = () =>
     Effect.forEach(
       Array.from(sessions.values()).filter((session) => !session.stopped),
-      (session) => session.runtime.getSession,
+      (session) => session.capacityRetry.getSession,
       { concurrency: 1 },
     );
 

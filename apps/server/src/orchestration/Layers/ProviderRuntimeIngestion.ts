@@ -611,6 +611,9 @@ export function runtimeEventToActivities(
           summary: truncateDetail(event.payload.message, 120),
           payload: {
             message: truncateDetail(event.payload.message),
+            ...(event.payload.capacityRetry !== undefined
+              ? { capacityRetry: event.payload.capacityRetry }
+              : {}),
             ...(event.payload.detail !== undefined ? { detail: event.payload.detail } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,

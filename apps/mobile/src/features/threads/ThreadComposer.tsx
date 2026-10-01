@@ -1,4 +1,5 @@
 import { ChatGptUsageLimitNotice } from "./ChatGptUsageLimitNotice";
+import { ModelCapacityRetryNotice } from "./ModelCapacityRetryNotice";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useAtomValue } from "@effect/atom-react";
@@ -641,6 +642,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         <ChatGptUsageLimitNotice
           environmentId={props.environmentId}
           thread={props.selectedThread}
+        />
+        <ModelCapacityRetryNotice
+          environmentId={props.environmentId}
+          thread={props.selectedThread}
+          onCancel={props.onStopThread}
         />
         {!voiceInput.isBusy &&
         composerMenu.trigger &&

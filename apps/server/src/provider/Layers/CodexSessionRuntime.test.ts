@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { describe } from "vite-plus/test";
-import { DEFAULT_MODEL, ThreadId } from "@t3tools/contracts";
+import { DEFAULT_MODEL, ThreadId, TurnId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
@@ -14,6 +14,7 @@ import {
   buildCodexDeveloperInstructions,
 } from "../CodexDeveloperInstructions.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
+import { groupCodexCapacityRetries } from "./codexCapacityHistory.ts";
 import {
   buildTurnStartParams,
   describeMcpElicitation,
@@ -26,8 +27,95 @@ import {
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
+const asHistoryTurnId = TurnId.make;
 
 describe("Codex thread history", () => {
+  it("does not fold a new user request into a failed capacity turn", () => {
+    const groups = groupCodexCapacityRetries([
+      { id: asHistoryTurnId("failed"), items: [], capacityFailure: true },
+      {
+        id: asHistoryTurnId("new-request"),
+        items: [
+          {
+            type: "userMessage",
+            id: "user-2",
+            content: [{ type: "text", text: "Use another model" }],
+          },
+        ],
+      },
+      { id: asHistoryTurnId("ordinary-continuation"), items: [] },
+    ]);
+    NodeAssert.deepEqual(
+      groups.map((group) => [group.turn.id, group.nativeCount]),
+      [
+        ["failed", 1],
+        ["new-request", 1],
+        ["ordinary-continuation", 1],
+      ],
+    );
+  });
+  it.effect(
+    "restores across all native capacity attempts as one T3 turn, using persisted history",
+    () =>
+      Effect.gen(function* () {
+        let beforeTurnId: string | undefined;
+        const client: Parameters<typeof rollbackCodexThread>[0] = {
+          request: () => Effect.die("Unexpected legacy request"),
+          raw: {
+            request: (method, params) =>
+              Effect.sync(() => {
+                if (method === "thread/read") return { thread: { historyMode: "paginated" } };
+                if (method === "thread/turns/list")
+                  return {
+                    data: [
+                      { id: "previous", items: [], status: "completed" },
+                      {
+                        id: "capacity-first",
+                        items: [],
+                        status: "failed",
+                        error: {
+                          message: "Selected model is at capacity.",
+                          codexErrorInfo: "serverOverloaded",
+                        },
+                      },
+                      {
+                        id: "capacity-second",
+                        items: [],
+                        status: "failed",
+                        error: {
+                          message: "Selected model is at capacity.",
+                          codexErrorInfo: "serverOverloaded",
+                        },
+                      },
+                      { id: "capacity-success", items: [], status: "completed" },
+                    ],
+                    nextCursor: null,
+                  };
+                NodeAssert.equal(method, "thread/revert");
+                beforeTurnId = (params as { beforeTurnId: string }).beforeTurnId;
+                return {};
+              }),
+          },
+        };
+        const snapshot = yield* readCodexThread(client, "thread-1");
+        NodeAssert.deepEqual(
+          groupCodexCapacityRetries(snapshot.turns).map((group) => [
+            group.turn.id,
+            group.nativeCount,
+          ]),
+          [
+            ["previous", 1],
+            ["capacity-first", 3],
+          ],
+        );
+        const restored = yield* rollbackCodexThread(client, "thread-1", 1);
+        NodeAssert.equal(beforeTurnId, "capacity-first");
+        NodeAssert.deepEqual(
+          restored.turns.map((turn) => turn.id),
+          ["previous"],
+        );
+      }),
+  );
   for (const numTurns of [1, 2, 3, 5]) {
     it.effect(`reverts ${numTurns} paginated turns at the durable boundary`, () =>
       Effect.gen(function* () {

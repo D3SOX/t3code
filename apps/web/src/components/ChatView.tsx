@@ -392,6 +392,8 @@ import {
   shouldShowThreadErrorBanner,
   ThreadErrorBanner,
 } from "./chat/ThreadErrorBanner";
+import { ModelCapacityRetryBanner } from "./chat/ModelCapacityRetryBanner";
+import { getModelCapacityRetry } from "@t3tools/shared/modelCapacityRetry";
 import type { ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import {
@@ -2880,6 +2882,10 @@ export default function ChatView(props: ChatViewProps) {
     conversationProviderStatus.supportsConversationRollback !== false;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const modelCapacityRetry = useMemo(
+    () => getModelCapacityRetry(threadActivities, activeThread?.session?.activeTurnId),
+    [threadActivities, activeThread?.session?.activeTurnId],
+  );
   const latestCheckpointCompletedAt = activeThread?.checkpoints.at(-1)?.completedAt ?? null;
   const workspaceMutationId = useMemo(() => {
     const activityId = latestWorkspaceMutationId(threadActivities);
@@ -3694,7 +3700,8 @@ export default function ChatView(props: ChatViewProps) {
   )
     ? activeProviderStatus
     : null;
-  const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
+  const hasTimelineTopBanner =
+    Boolean(visibleThreadError) || visibleProviderStatus !== null || modelCapacityRetry !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -9783,6 +9790,10 @@ export default function ChatView(props: ChatViewProps) {
                   dismissThreadErrorBannerForSession(threadErrorBannerKey);
                   setThreadErrorBannerDismissTick((tick) => tick + 1);
                 }}
+              />
+              <ModelCapacityRetryBanner
+                retry={modelCapacityRetry}
+                onCancel={() => void onInterrupt()}
               />
             </div>
             {/* Messages Wrapper */}

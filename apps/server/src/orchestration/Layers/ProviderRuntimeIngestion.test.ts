@@ -4025,6 +4025,7 @@ describe("ProviderRuntimeIngestion", () => {
       turnId: asTurnId("turn-warning"),
       payload: {
         message: "Reconnecting... 2/5",
+        capacityRetry: { attempt: 1, retryAt: "2026-01-01T00:00:10.000Z" },
         detail: {
           willRetry: true,
         },
@@ -4044,6 +4045,11 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.status).toBe("running");
     expect(thread.session?.activeTurnId).toBe("turn-warning");
     expect(thread.session?.lastError).toBeNull();
+    expect(
+      thread.activities.find((activity) => activity.id === "evt-warning-runtime"),
+    ).toMatchObject({
+      payload: { capacityRetry: { attempt: 1, retryAt: "2026-01-01T00:00:10.000Z" } },
+    });
   });
 
   it("maps session/thread lifecycle and item.started into session/activity projections", async () => {

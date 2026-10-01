@@ -23,6 +23,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, vi } from "@effect/vitest";
 
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -633,6 +634,30 @@ const lifecycleLayer = it.layer(
   ),
 );
 
+function capacityTurnFailed(id: string, turnId: string): ProviderEvent {
+  return {
+    id: asEventId(id),
+    kind: "notification",
+    provider: ProviderDriverKind.make("codex"),
+    threadId: asThreadId("thread-1"),
+    turnId: asTurnId(turnId),
+    createdAt: "2026-01-01T00:00:00.000Z",
+    method: "turn/completed",
+    payload: {
+      threadId: "thread-1",
+      turn: {
+        id: turnId,
+        items: [],
+        status: "failed",
+        error: {
+          message: "Selected model is at capacity. Please try a different model.",
+          codexErrorInfo: "serverOverloaded",
+        },
+      },
+    },
+  };
+}
+
 function startLifecycleRuntime() {
   return Effect.gen(function* () {
     const adapter = yield* CodexAdapter;
@@ -718,6 +743,180 @@ function codexTurnEvent(method: "turn/started" | "turn/completed", turnId: strin
 }
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
+  it.effect(
+    "retries capacity failures after 10s, 20s and 40s without duplicating the prompt or changing the logical turn",
+    () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        let sent = Promise.withResolvers<CodexSessionRuntimeSendTurnInput>();
+        let nativeTurn = 0;
+        runtime.sendTurnImpl.mockImplementation((input) => {
+          sent.resolve(input);
+          return Promise.resolve({
+            threadId: asThreadId("thread-1"),
+            turnId: asTurnId(`turn-${++nativeTurn}`),
+          });
+        });
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-1"),
+          input: "Original request",
+          attachments: [],
+          modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
+            { id: "reasoningEffort", value: "high" },
+          ]),
+        });
+        yield* Effect.promise(() => sent.promise);
+        sent = Promise.withResolvers<CodexSessionRuntimeSendTurnInput>();
+        for (const [index, delay] of [10_000, 20_000, 40_000].entries()) {
+          if (index === 0)
+            yield* runtime.emit({
+              ...capacityTurnFailed("capacity-error", "turn-1"),
+              method: "error",
+              payload: {
+                threadId: "thread-1",
+                turnId: "turn-1",
+                willRetry: false,
+                error: {
+                  message: "Selected model is at capacity.",
+                  codexErrorInfo: "serverOverloaded",
+                },
+              },
+            });
+          yield* runtime.emit(capacityTurnFailed(`capacity-${index}`, `turn-${index + 1}`));
+          const notice = yield* Stream.runHead(adapter.streamEvents);
+          NodeAssert.equal(notice._tag, "Some");
+          if (notice._tag !== "Some" || notice.value.type !== "runtime.warning")
+            return yield* Effect.die("Missing retry notice");
+          NodeAssert.equal(notice.value.turnId, "turn-1");
+          NodeAssert.equal(notice.value.payload.capacityRetry?.attempt, index + 1);
+          NodeAssert.equal(
+            Date.parse(notice.value.payload.capacityRetry!.retryAt!) -
+              (yield* Clock.currentTimeMillis),
+            delay,
+          );
+          yield* TestClock.adjust(delay - 1);
+          NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, index + 1);
+          yield* TestClock.adjust(1);
+          const continuation = yield* Effect.promise(() => sent.promise);
+          sent = Promise.withResolvers<CodexSessionRuntimeSendTurnInput>();
+          NodeAssert.equal(continuation.input, undefined);
+          NodeAssert.equal(continuation.attachments, undefined);
+          NodeAssert.equal(continuation.model, "gpt-5.3-codex");
+          NodeAssert.equal(continuation.effort, "high");
+          const retrying = yield* Stream.runHead(adapter.streamEvents);
+          NodeAssert.equal(
+            retrying._tag === "Some" &&
+              retrying.value.type === "runtime.warning" &&
+              retrying.value.payload.capacityRetry?.retryAt,
+            null,
+          );
+        }
+        const success = capacityTurnFailed("capacity-success", "turn-4");
+        yield* runtime.emit({
+          ...success,
+          payload: {
+            threadId: "thread-1",
+            turn: { id: "turn-4", items: [], status: "completed", error: null },
+          },
+        });
+        const completion = yield* Stream.runHead(adapter.streamEvents);
+        NodeAssert.equal(completion._tag === "Some" && completion.value.type, "turn.completed");
+        NodeAssert.equal(completion._tag === "Some" && completion.value.turnId, "turn-1");
+      }),
+  );
+
+  it.effect(
+    "Stop cancels a capacity countdown without interrupting an already failed native turn",
+    () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-1"),
+          input: "Request",
+          attachments: [],
+        });
+        yield* runtime.emit(capacityTurnFailed("capacity-stop", "turn-1"));
+        yield* Stream.runHead(adapter.streamEvents);
+        NodeAssert.equal((yield* adapter.listSessions())[0]?.status, "running");
+        yield* adapter.interruptTurn(asThreadId("thread-1"), asTurnId("turn-1"));
+        const aborted = yield* Stream.runHead(adapter.streamEvents);
+        NodeAssert.equal(aborted._tag === "Some" && aborted.value.type, "turn.aborted");
+        yield* TestClock.adjust(60_000);
+        NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 1);
+        NodeAssert.equal(runtime.interruptTurnImpl.mock.calls.length, 0);
+      }),
+  );
+
+  it.effect("sending another request cancels a pending capacity retry", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-1"),
+        input: "First",
+        attachments: [],
+      });
+      yield* runtime.emit(capacityTurnFailed("capacity-replaced", "turn-1"));
+      yield* Stream.runHead(adapter.streamEvents);
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-1"),
+        input: "Use another model",
+        attachments: [],
+      });
+      const aborted = yield* Stream.runHead(adapter.streamEvents);
+      NodeAssert.equal(aborted._tag === "Some" && aborted.value.type, "turn.aborted");
+      yield* TestClock.adjust(60_000);
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 2);
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls[1]?.[0].input, "Use another model");
+    }),
+  );
+
+  it.effect("does not retry usage limits or authentication failures", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      for (const error of [
+        { message: "Model at capacity", codexErrorInfo: "usageLimitExceeded" },
+        { message: "Authentication failed", codexErrorInfo: "unauthorized" },
+      ]) {
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-1"),
+          input: "Request",
+          attachments: [],
+        });
+        const failed = capacityTurnFailed(`no-retry-${error.codexErrorInfo}`, "turn-1");
+        yield* runtime.emit({
+          ...failed,
+          payload: {
+            threadId: "thread-1",
+            turn: { id: "turn-1", items: [], status: "failed", error },
+          },
+        });
+        const terminal = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => event.type === "turn.completed"),
+          Stream.runHead,
+        );
+        NodeAssert.equal(terminal._tag === "Some" && terminal.value.type, "turn.completed");
+        yield* TestClock.adjust(60_000);
+      }
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 2);
+    }),
+  );
+
+  it.effect("stopping a session cancels its pending capacity retry", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-1"),
+        input: "Request",
+        attachments: [],
+      });
+      yield* runtime.emit(capacityTurnFailed("capacity-stopped-session", "turn-1"));
+      yield* Stream.runHead(adapter.streamEvents);
+      yield* adapter.stopSession(asThreadId("thread-1"));
+      yield* TestClock.adjust(60_000);
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 1);
+    }),
+  );
+
   it.effect("calculates one Codex turn total from cumulative counters", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

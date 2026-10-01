@@ -801,8 +801,15 @@ const ToolDeniedPayload = Schema.Struct({
 });
 export type ToolDeniedPayload = typeof ToolDeniedPayload.Type;
 
+export const ModelCapacityRetry = Schema.Struct({
+  attempt: Schema.Int.check(Schema.isGreaterThan(0)),
+  retryAt: Schema.NullOr(IsoDateTime),
+});
+export type ModelCapacityRetry = typeof ModelCapacityRetry.Type;
+
 const RuntimeWarningPayload = Schema.Struct({
   message: TrimmedNonEmptyStringSchema,
+  capacityRetry: Schema.optional(Schema.NullOr(ModelCapacityRetry)),
   detail: Schema.optional(Schema.Unknown),
 });
 export type RuntimeWarningPayload = typeof RuntimeWarningPayload.Type;

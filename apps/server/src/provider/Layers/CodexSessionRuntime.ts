@@ -39,6 +39,8 @@ import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
+import { isCodexCapacityError } from "./codexCapacityError.ts";
+import { groupCodexCapacityRetries } from "./codexCapacityHistory.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
   buildCodexAdditionalContext,
@@ -204,6 +206,7 @@ export interface CodexSessionRuntimeSendTurnInput {
 export interface CodexThreadTurnSnapshot {
   readonly id: TurnId;
   readonly items: ReadonlyArray<CodexThreadItem>;
+  readonly capacityFailure?: boolean;
 }
 
 export interface CodexThreadSnapshot {
@@ -1204,6 +1207,9 @@ function parseThreadSnapshot(
     turns: response.thread.turns.map((turn) => ({
       id: TurnId.make(turn.id),
       items: turn.items,
+      ...(turn.status === "failed" && isCodexCapacityError(turn.error)
+        ? { capacityFailure: true }
+        : {}),
     })),
   };
 }
@@ -1274,7 +1280,15 @@ export const readCodexThread = Effect.fn("readCodexThread")(function* (
         ),
       ),
     );
-    turns.push(...page.data.map((turn) => ({ id: TurnId.make(turn.id), items: turn.items })));
+    turns.push(
+      ...page.data.map((turn) => ({
+        id: TurnId.make(turn.id),
+        items: turn.items,
+        ...(turn.status === "failed" && isCodexCapacityError(turn.error)
+          ? { capacityFailure: true }
+          : {}),
+      })),
+    );
     cursor = page.nextCursor;
   } while (cursor !== null);
   return { threadId, turns };
@@ -1288,7 +1302,11 @@ export const rollbackCodexThread = Effect.fn("rollbackCodexThread")(function* (
   // Codex replaces history at a turn boundary. It rejects threads that still
   // use legacy history, which have no rollback API since Codex 0.156.
   const snapshot = yield* readCodexThread(client, threadId);
-  const retainedCount = Math.max(0, snapshot.turns.length - numTurns);
+  const groups = groupCodexCapacityRetries(snapshot.turns);
+  const nativeCount = groups
+    .slice(-numTurns)
+    .reduce((count, group) => count + group.nativeCount, 0);
+  const retainedCount = Math.max(0, snapshot.turns.length - nativeCount);
   const firstRemoved = snapshot.turns[retainedCount];
   if (firstRemoved) {
     yield* client.raw.request("thread/revert", { threadId, beforeTurnId: firstRemoved.id });
