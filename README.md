@@ -12,6 +12,8 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
 - The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. Shift-click the button to choose a different project.
 - Switching Codex accounts in an existing thread preserves its agent-session context.
+- Codex model-capacity failures retry automatically after 10 seconds, then 20, 40, and so on. Web, desktop, and mobile show a countdown with **Cancel retry**. Retries keep your context and remain one T3 turn for checkpoint restore; update both the client and host/server to use this feature.
+- Focusing the desktop app clears only the notification for the thread you're viewing, leaving other threads' alerts in your system's notification history. Opening another thread clears its retained alert too. The app's unread badge still resets when you return to T3 Code.
 - You can turn off automatic thread titles and worktree branch names for the current environment or one project in Settings → Source Control.
 - Terminal path clicks open files in T3 Code or workspace folders in its file explorer, including on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path in the terminal for **Copy link** or **Copy path**.
 - Closing a terminal does not ask for confirmation. Ctrl+W and Ctrl+D still go to the terminal.
