@@ -68,6 +68,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2SectionDivider,
 } from "./thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
 import {
@@ -807,6 +808,8 @@ function ThreadNavigationSidebarPane(
             />
           );
         }
+        case "v2-section":
+          return <ThreadListV2SectionDivider label={item.label} pane="sidebar" />;
         case "v2-snoozed-shelf":
           return (
             <ThreadListV2SnoozedShelfHeader

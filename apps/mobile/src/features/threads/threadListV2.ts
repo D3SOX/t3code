@@ -285,11 +285,18 @@ export interface ThreadListV2SettledShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2SectionListItem {
+  readonly type: "v2-section";
+  readonly key: "v2-pinned-header" | "v2-active-header";
+  readonly label: "Pinned" | "Active";
+}
+
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2SnoozedShelfListItem
-  | ThreadListV2SettledShelfListItem;
+  | ThreadListV2SettledShelfListItem
+  | ThreadListV2SectionListItem;
 
 /** Narrows a wider list-item union (e.g. the sidebar's legacy + v2 mix) to
     the v2 item kinds the shared equality understands. */
@@ -297,6 +304,7 @@ export function isThreadListV2ListItem(value: {
   readonly type: string;
 }): value is ThreadListV2ListItem {
   return (
+    value.type === "v2-section" ||
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
     value.type === "v2-snoozed-shelf" ||
@@ -316,6 +324,8 @@ export function threadListV2ListItemsAreEqual(
   item: ThreadListV2ListItem,
 ): boolean {
   switch (item.type) {
+    case "v2-section":
+      return previous.type === "v2-section" && previous.key === item.key;
     case "v2-thread":
       return (
         previous.type === "v2-thread" &&
@@ -455,7 +465,14 @@ export function buildThreadListV2ListItems(input: {
   const settledShelfHeaderIndex = input.settledShelfHeaderIndex ?? null;
   const activeEnd = snoozedShelfHeaderIndex ?? settledShelfHeaderIndex ?? threadItems.length;
   const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
-  const result: ThreadListV2ListItem[] = [...threadItems.slice(0, activeEnd), ...pendingItems];
+  const pinnedCount = input.items.filter((item) => item.pinned).length;
+  const result: ThreadListV2ListItem[] = [];
+  if (pinnedCount > 0) {
+    result.push({ type: "v2-section", key: "v2-pinned-header", label: "Pinned" });
+    result.push(...threadItems.slice(0, pinnedCount));
+    result.push({ type: "v2-section", key: "v2-active-header", label: "Active" });
+  }
+  result.push(...threadItems.slice(pinnedCount, activeEnd), ...pendingItems);
   const shelfDisabled = input.shelfPreferencesLoading === true;
   if (snoozedShelfHeaderIndex !== null && snoozedCount > 0) {
     result.push({

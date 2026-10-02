@@ -923,6 +923,48 @@ function makePendingTask(id: string): PendingNewTask {
 }
 
 describe("buildThreadListV2ListItems", () => {
+  it.each([0, 1, 2])(
+    "shows Pinned and Active headings only with pinned threads (%s pins)",
+    (pinCount) => {
+      const layout = buildThreadListV2Items({
+        threads: [
+          ...Array.from({ length: pinCount }, (_, index) =>
+            makeThread({
+              id: ThreadId.make(`pin-${index}`),
+              title: `Pin ${index}`,
+              pinnedAt: NOW,
+            }),
+          ),
+          makeThread({ id: ThreadId.make("active"), title: "Active" }),
+        ],
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+      });
+      const items = buildThreadListV2ListItems({ items: layout.items, pendingTasks: [] });
+      expect(
+        items.map((item) =>
+          item.type === "v2-section"
+            ? item.label
+            : item.type === "v2-thread"
+              ? item.item.thread.id
+              : item.type,
+        ),
+      ).toEqual(
+        pinCount > 0
+          ? [
+              "Pinned",
+              ...layout.items.filter((item) => item.pinned).map((item) => item.thread.id),
+              "Active",
+              "active",
+            ]
+          : ["active"],
+      );
+      const lastPin = items.findLast((item) => item.type === "v2-thread" && item.item.pinned);
+      if (lastPin?.type === "v2-thread") expect(lastPin.showTrailingDivider).toBe(false);
+    },
+  );
+
   const layout = buildThreadListV2Items({
     threads: [
       makeThread({ id: ThreadId.make("active"), title: "active" }),

@@ -48,6 +48,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2SectionDivider,
 } from "../threads/thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider-instance";
 import {
@@ -735,6 +736,9 @@ export function HomeScreen(props: HomeScreenProps) {
             onDeletePendingTask={props.onDeletePendingTask}
           />
         );
+      }
+      if (item.type === "v2-section") {
+        return <ThreadListV2SectionDivider label={item.label} />;
       }
       if (item.type === "v2-snoozed-shelf") {
         return (
