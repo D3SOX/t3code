@@ -1,3 +1,5 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import * as Option from "effect/Option";
 import { act } from "react";
@@ -79,6 +81,32 @@ vi.mock("./ui/toast", () => ({
 }));
 
 import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
+import { useQueuedMessageStore } from "../queuedMessageStore";
+
+const threadKey = scopedThreadKey({
+  environmentId: EnvironmentId.make("env-1"),
+  threadId: ThreadId.make("thread-1"),
+});
+
+function enqueue() {
+  return useQueuedMessageStore.getState().enqueue(threadKey, {
+    prompt: "Follow up",
+    images: [],
+    files: [],
+    terminalContexts: [],
+    previewAnnotations: [],
+    reviewComments: [],
+    delivery: "after-turn",
+    queuedAfterToolActivityId: null,
+    sendSettings: {
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      promptEffort: null,
+    },
+    createdAt: "2026-09-13T09:59:00.000Z",
+  });
+}
 
 let renderer: ReactTestRenderer | undefined;
 
@@ -96,6 +124,7 @@ async function complete() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useQueuedMessageStore.setState({ queuesByThreadKey: {}, lastDispatchByThreadKey: {} });
   Object.assign(state, {
     mode: "off",
     inApp: true,
@@ -130,6 +159,43 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  it.each([true, false])(
+    "waits for all queued turns before notifying (focused: %s)",
+    async (focused) => {
+      state.focused = focused;
+      state.mode = "notifications-and-sound";
+      const first = enqueue();
+      const second = enqueue();
+      await render();
+      await complete();
+      expect(state.add).not.toHaveBeenCalled();
+      expect(state.notification).not.toHaveBeenCalled();
+      expect(state.sound).not.toHaveBeenCalled();
+
+      useQueuedMessageStore.getState().finishSend(threadKey, first.id);
+      state.completedAt = null;
+      await render();
+      state.completedAt = "2026-09-13T10:01:00.000Z";
+      await render();
+      expect(state.add).not.toHaveBeenCalled();
+      expect(state.notification).not.toHaveBeenCalled();
+      expect(state.sound).not.toHaveBeenCalled();
+
+      useQueuedMessageStore.getState().finishSend(threadKey, second.id);
+      // Removing the last sent message must not replay the previous completion.
+      await render();
+      expect(state.sound).not.toHaveBeenCalled();
+      state.completedAt = null;
+      await render();
+      state.completedAt = "2026-09-13T10:02:00.000Z";
+      await render();
+      await render();
+      expect(state.sound).toHaveBeenCalledTimes(1);
+      expect(state.add).toHaveBeenCalledTimes(focused ? 1 : 0);
+      expect(state.notification).toHaveBeenCalledTimes(focused ? 0 : 1);
+    },
+  );
+
   it("alerts once with system alerts off and opens the completed thread", async () => {
     await render();
     await complete();
@@ -145,6 +211,23 @@ describe("thread notifications", () => {
       params: { environmentId: "env-1", threadId: "thread-1" },
     });
     expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it("does not replay an intermediate completion when the queue is cancelled", async () => {
+    enqueue();
+    await render();
+    await complete();
+    useQueuedMessageStore.getState().drain(threadKey);
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+  });
+
+  it("still notifies when a failed queued send is held for user action", async () => {
+    const message = enqueue();
+    useQueuedMessageStore.getState().failSend(threadKey, message.id);
+    await render();
+    await complete();
+    expect(state.add).toHaveBeenCalledWith(expect.objectContaining({ title: "Thread completed" }));
   });
 
   it.each(["active", "blurred", "hidden", "archived", "disabled"])(
@@ -168,6 +251,7 @@ describe("thread notifications", () => {
     ["turnError", "Thread failed"],
   ] as const)("uses the same %s event for in-app and desktop alerts", async (event, title) => {
     state.mode = "notifications-and-sound";
+    enqueue();
     await render();
     state[event] = true;
     await render();

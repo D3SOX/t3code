@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import {
@@ -11,6 +12,7 @@ import {
 import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
+import { useQueuedMessageStore } from "../queuedMessageStore";
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import {
@@ -164,10 +166,21 @@ function EnvironmentNotifications({
           : (prior?.completion ?? null);
       next.set(thread.id, { attention, completion });
       if (!prior || thread.archivedAt !== null) continue;
+      // Consume intermediate completions so removing a sent or cancelled
+      // message cannot replay them while the next turn is starting.
+      const queued =
+        useQueuedMessageStore.getState().queuesByThreadKey[
+          scopedThreadKey({ environmentId, threadId: thread.id })
+        ];
+      const hasQueuedWork = queued?.some(
+        (message) => message.sending || !message.holdUntilUserAction,
+      );
       const kind =
         attention && attention !== prior.attention
           ? "input"
-          : completion !== null && (prior.completion === null || completion > prior.completion)
+          : !hasQueuedWork &&
+              completion !== null &&
+              (prior.completion === null || completion > prior.completion)
             ? "completion"
             : null;
       if (!kind) continue;
