@@ -557,7 +557,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const selected = props.selected === true;
   const hasUnsentDraft =
     useThreadHasUnsentDraft(scopedThreadKey(thread.environmentId, thread.id)) && !selected;
-  const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
+  const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected, hasUnsentDraft);
 
   const status = resolveThreadListV2Status(thread);
   const statusLabel = STATUS_LABEL_BY_STATUS[status];
@@ -906,9 +906,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       />
     </View>
   ) : null;
-  const draftHighlight = hasUnsentDraft ? (
-    <View pointerEvents="none" className="absolute inset-0 bg-warning/4" />
-  ) : null;
 
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   const cardContent = (
@@ -1105,7 +1102,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         }}
         style={rowAppearance.cardStyle}
       >
-        {draftHighlight}
         {sidebarPane ? (
           cardContent
         ) : (
@@ -1137,7 +1133,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         }}
         style={rowAppearance.style}
       >
-        {draftHighlight}
         {/* Settled history recedes: dimmed favicon + muted title. */}
         <View
           className={cn(
