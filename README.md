@@ -9,7 +9,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - The Android usage widget shows each Codex or Claude subscription separately instead of averaging accounts into one bar, without putting account emails on the home screen.
 - The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - When you pin a thread, the sidebar keeps the Pinned and Active section labels visible without dragging.
-- Threads with unsent composer drafts show a yellow pen and subtle highlight in the thread list. The indicator clears when you send or remove the draft.
+- Mobile gains the yellow pen and subtle thread highlight for unsent drafts already available upstream on web and desktop. The indicator clears when you send or remove the draft.
 - Pull request links open in your system browser by default. On desktop, right-click a link to choose T3 Code instead. When a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
 - The new-thread button remembers the last project you used, including one chosen in the “What should we build in…” composer. On desktop/web, right-click or Shift-click the sidebar button to choose a different project. The composer shows the selected project's icon beside its name on web, desktop, and mobile.
 - Switching Codex accounts in an existing thread preserves its agent-session context.
