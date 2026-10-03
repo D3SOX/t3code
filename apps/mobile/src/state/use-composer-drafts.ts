@@ -18,7 +18,7 @@ import {
   type RuntimeMode,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { Atom } from "effect/unstable/reactivity";
 
 import { writeFileAtomically } from "../lib/atomic-file";
@@ -1920,6 +1920,30 @@ export async function clearComposerDraftsEnvironment(environmentId: EnvironmentI
     writePersistedComposerState(next, appAtomRegistry.get(stickyComposerModelSelectionAtom)),
   );
   await releaseUnusedComposerAttachmentFiles(removedAttachments);
+}
+
+export function composerDraftHasUserContent(draft: ComposerDraft | undefined): boolean {
+  return (
+    draft !== undefined &&
+    (draft.text.trim().length > 0 ||
+      draft.attachments.length > 0 ||
+      (draft.context?.records.length ?? 0) > 0)
+  );
+}
+
+/** Select a boolean so draft indicators change only when content appears or disappears. */
+export function useThreadHasUnsentDraft(draftKey: string): boolean {
+  const hasDraft = useAtomValue(
+    composerDraftsAtom,
+    useCallback(
+      (drafts: Record<string, ComposerDraft>) => composerDraftHasUserContent(drafts[draftKey]),
+      [draftKey],
+    ),
+  );
+  useEffect(() => {
+    ensureComposerDraftsLoaded();
+  }, []);
+  return hasDraft;
 }
 
 export function useComposerDraft(draftKey: string | null): ComposerDraft {

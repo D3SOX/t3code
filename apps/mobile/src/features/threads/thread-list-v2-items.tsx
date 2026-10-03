@@ -35,6 +35,8 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
+import { useThreadHasUnsentDraft } from "../../state/use-composer-drafts";
+import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useSwipeRowDormant } from "../home/swipe-row-activation";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
@@ -553,6 +555,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const theme = useUniwindTheme();
   const sidebarPane = props.pane === "sidebar";
   const selected = props.selected === true;
+  const hasUnsentDraft =
+    useThreadHasUnsentDraft(scopedThreadKey(thread.environmentId, thread.id)) && !selected;
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
 
   const status = resolveThreadListV2Status(thread);
@@ -884,6 +888,27 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     secondaryAction === null
       ? `Opens the thread. Swipe left to ${primaryAction.label.toLowerCase()}.`
       : `Opens the thread. Swipe left for ${primaryAction.label.toLowerCase()} and snooze actions.`;
+  const rowAccessibilityLabel = [
+    thread.title,
+    props.hasQueuedMessages ? "messages queued to send" : null,
+    hasUnsentDraft ? "unsent draft" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const draftIndicator = hasUnsentDraft ? (
+    <View accessibilityLabel="Unsent draft" accessibilityRole="image">
+      <SymbolView
+        name="square.and.pencil"
+        size={12}
+        tintColorClassName="accent-adaptive-amber-700-300"
+        type="monochrome"
+      />
+    </View>
+  ) : null;
+  const draftHighlight = hasUnsentDraft ? (
+    <View pointerEvents="none" className="absolute inset-0 bg-warning/4" />
+  ) : null;
 
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   const cardContent = (
@@ -911,6 +936,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
         {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+        {draftIndicator}
         {pinnedRow ? (
           <SymbolView
             name="pin"
@@ -1070,9 +1096,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionOpacity={rowAppearance.interactionOpacity}
         className={rowAppearance.className}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
-        }
+        accessibilityLabel={rowAccessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         onPress={() => {
@@ -1081,6 +1105,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         }}
         style={rowAppearance.cardStyle}
       >
+        {draftHighlight}
         {sidebarPane ? (
           cardContent
         ) : (
@@ -1102,9 +1127,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         interactionClassName={rowAppearance.interactionClassName}
         interactionOpacity={rowAppearance.interactionOpacity}
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={
-          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
-        }
+        accessibilityLabel={rowAccessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         className={rowAppearance.className}
@@ -1114,6 +1137,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         }}
         style={rowAppearance.style}
       >
+        {draftHighlight}
         {/* Settled history recedes: dimmed favicon + muted title. */}
         <View
           className={cn(
@@ -1155,6 +1179,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+          {draftIndicator}
           <Text
             className={cn(
               "text-sm tabular-nums",
