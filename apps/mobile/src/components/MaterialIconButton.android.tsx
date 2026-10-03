@@ -5,7 +5,7 @@ import {
   IconButton,
 } from "@expo/ui/jetpack-compose";
 import { size } from "@expo/ui/jetpack-compose/modifiers";
-import { View } from "react-native";
+import { View, type ColorValue } from "react-native";
 
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
@@ -19,6 +19,7 @@ export function MaterialIconButton(props: {
   readonly selected?: boolean;
   readonly variant?: "standard" | "primary" | "tonal" | "danger";
   readonly tintColorClassName?: string;
+  readonly tintColor?: ColorValue;
 }) {
   const { themeAppearance, themeVariables: colors } = useAppearancePreferences();
   const { iconSize, buttonSize } = useAndroidControlSizing();
@@ -81,7 +82,10 @@ export function MaterialIconButton(props: {
         <SymbolView
           name={props.icon === "ellipsis" ? { ios: "ellipsis", android: "more_vert" } : props.icon}
           size={iconSize}
-          tintColorClassName={iconTint}
+          tintColor={!props.disabled && variant === "standard" ? props.tintColor : undefined}
+          tintColorClassName={
+            !props.disabled && variant === "standard" && props.tintColor ? undefined : iconTint
+          }
           type="monochrome"
         />
       </View>
