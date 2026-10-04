@@ -4800,6 +4800,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           rootNodeId,
           activeAttemptId: attemptId,
           status: "queued",
+          ...(dispatchMode.type === "queue_after_active" && dispatchMode.afterNextTool === true
+            ? { queueAfterNextTool: true }
+            : {}),
           ...(projection.runs.some(
             (candidate) => candidate.status === "queued" && candidate.queueHeld === true,
           )
@@ -7141,6 +7144,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandType: command.type,
           cause: "Automatic completion deliveries cannot be promoted to Steer.",
         });
+      }
+
+      if (command.afterNextTool !== undefined) {
+        const now = yield* DateTime.now;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "run.updated",
+          threadId: command.threadId,
+          runId: queuedRun.id,
+          providerInstanceId: queuedRun.providerInstanceId,
+          occurredAt: now,
+          payload: { ...queuedRun, queueAfterNextTool: command.afterNextTool },
+        });
+        return;
       }
 
       const now = yield* DateTime.now;
@@ -9905,6 +9924,94 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   // below. Replaying the full event table on every server start delays live
   // queue promotion in proportion to the lifetime size of the database.
   const terminalEventsAfterSequence = yield* eventSink.latestSequence().pipe(Effect.orDie);
+  // Keep only tool identity while waiting for the thread lock, not its output body.
+  yield* eventSink
+    .stream({ afterSequence: terminalEventsAfterSequence, eventType: "turn-item.updated" })
+    .pipe(
+      Stream.filter((stored) => {
+        if (stored.event.type !== "turn-item.updated") return false;
+        const item = stored.event.payload;
+        return (
+          item.runId !== null &&
+          item.parentItemId === null &&
+          [
+            "command_execution",
+            "dynamic_tool",
+            "file_change",
+            "file_search",
+            "web_search",
+          ].includes(item.type) &&
+          ["completed", "failed", "interrupted"].includes(item.status)
+        );
+      }),
+      Stream.map((stored) => ({
+        threadId: stored.event.threadId,
+        sequence: stored.sequence,
+        occurredAt:
+          stored.event.type === "turn-item.updated"
+            ? (stored.event.payload.completedAt ?? stored.event.occurredAt)
+            : stored.event.occurredAt,
+        item:
+          stored.event.type === "turn-item.updated"
+            ? {
+                id: stored.event.payload.id,
+                runId: stored.event.payload.runId,
+                nodeId: stored.event.payload.nodeId,
+              }
+            : null,
+      })),
+      Stream.runForEach((tool) =>
+        threadDispatch
+          .withLock(
+            tool.threadId,
+            Effect.gen(function* () {
+              const records = yield* projectionStore.getThreadRecords(tool.threadId, ["runs"]);
+              if (
+                !records.runs.some(
+                  (run) => run.status === "queued" && run.queueAfterNextTool && !run.queueHeld,
+                )
+              )
+                return;
+              const projection = yield* projectionStore.getThreadRecords(
+                tool.threadId,
+                ["runs", "messages"],
+                { messageRoles: ["user"] },
+              );
+              const activeRun = projection.runs.find(isBlockingRun);
+              const queuedRun = nextQueuedRun(projection);
+              if (
+                activeRun?.status !== "running" ||
+                queuedRun?.queueAfterNextTool !== true ||
+                queuedRun.queueHeld ||
+                tool.item?.runId !== activeRun.id ||
+                tool.item.nodeId !== activeRun.rootNodeId ||
+                DateTime.toEpochMillis(tool.occurredAt) <
+                  DateTime.toEpochMillis(queuedRun.requestedAt)
+              )
+                return;
+              const commandId = CommandId.make(`command:next-tool:${activeRun.id}:${tool.item.id}`);
+              if (Option.isSome(yield* commandReceipts.getByCommandId(commandId))) return;
+              yield* dispatchWithReceiptEffect({
+                type: "queued-message.promote-to-steer",
+                commandId,
+                threadId: tool.threadId,
+                queuedRunId: queuedRun.id,
+                targetRunId: activeRun.id,
+              });
+            }),
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to steer queued message after tool", {
+                threadId: tool.threadId,
+                cause,
+              }),
+            ),
+          ),
+      ),
+      Effect.forkDetach,
+    );
+
   // Queue promotion can wait on a provider or a thread lock. Subscribe to run
   // updates before buffering so that wait never retains unrelated tool bodies.
   yield* eventSink

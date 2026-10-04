@@ -406,7 +406,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/general",
-    searchTerms: ["queue follow up steer after current turn immediately send default composer"],
+    searchTerms: [
+      "queue follow up steer next tool call after current turn immediately send default composer",
+    ],
   },
   {
     id: "provider-update-checks",

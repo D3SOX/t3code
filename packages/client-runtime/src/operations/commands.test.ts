@@ -78,6 +78,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly projection?: OrchestrationV2ThreadProjection;
   readonly projectionRequests?: ThreadId[];
   readonly advertiseServerResolvedCommandContext?: boolean;
+  readonly advertiseNextToolQueue?: boolean;
 }) {
   const client = {
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
@@ -125,6 +126,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
       environment: {
         capabilities: {
           repositoryIdentity: true,
+          ...(input.advertiseNextToolQueue === false ? {} : { nextToolQueue: true }),
           ...(input.advertiseServerResolvedCommandContext === false
             ? {}
             : { serverResolvedCommandContext: true }),
@@ -409,6 +411,7 @@ describe("V2 environment commands", () => {
 
       for (const [mode, expectedType] of [
         ["queue", "queue_after_active"],
+        ["next-tool", "queue_after_active"],
         ["auto", "start_immediately"],
         ["steer", "start_immediately"],
         ["restart", "start_immediately"],
@@ -429,8 +432,11 @@ describe("V2 environment commands", () => {
 
         expect(commands.at(-1)).toMatchObject({
           type: "message.dispatch",
-          dispatchMode: { type: expectedType },
-          ...(mode === "queue" ? {} : { deliveryIntent: mode }),
+          dispatchMode: {
+            type: expectedType,
+            ...(mode === "next-tool" ? { afterNextTool: true } : {}),
+          },
+          ...(mode === "queue" || mode === "next-tool" ? {} : { deliveryIntent: mode }),
         });
       }
       expect(projectionRequests).toEqual([]);
@@ -575,6 +581,45 @@ describe("V2 environment commands", () => {
               },
             ],
       );
+    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
+  );
+
+  it.effect("changes saved queue timing only on servers advertising support", () =>
+    Effect.gen(function* () {
+      for (const supported of [false, true]) {
+        const commands: OrchestrationV2Command[] = [];
+        const supervisor = yield* makeSupervisor({
+          commands,
+          projects: [],
+          advertiseNextToolQueue: supported,
+        });
+        const result = yield* promoteQueuedRun({
+          commandId: CommandId.make("change-timing"),
+          threadId: v2ThreadId,
+          queuedRunId: RunId.make("queued"),
+          targetRunId: RunId.make("active"),
+          afterNextTool: true,
+        }).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.result,
+        );
+        if (supported) {
+          expect(commands).toEqual([
+            {
+              type: "queued-message.promote-to-steer",
+              commandId: CommandId.make("change-timing"),
+              threadId: v2ThreadId,
+              queuedRunId: RunId.make("queued"),
+              targetRunId: RunId.make("active"),
+              afterNextTool: true,
+            },
+          ]);
+          expect(result._tag).toBe("Success");
+        } else {
+          expect(result._tag).toBe("Failure");
+          expect(commands).toEqual([]);
+        }
+      }
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
   );
 

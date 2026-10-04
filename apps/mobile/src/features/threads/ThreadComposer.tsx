@@ -252,20 +252,22 @@ const COMPOSER_ATTACHMENT_ENTERING =
 const AnimatedGlassSurface = Animated.createAnimatedComponent(GlassSurface);
 
 const FOLLOW_UP_ACTION_LABEL = {
-  queue: "Queue",
+  queue: "After current turn",
+  "next-tool": "After next tool call",
   steer: "Steer now",
   restart: "Restart turn",
 } as const;
 
 const FOLLOW_UP_ACTION_SUBTITLE = {
   queue: "Run after the current turn",
+  "next-tool": "Steer when the next tool finishes",
   steer: "Interrupt what the agent is doing",
   restart: "Start the turn over with this message",
 } as const;
 
 /**
  * The composer's primary button. While a turn is running it also long-presses
- * into the two follow-up behaviors, which is mobile's stand-in for the Command
+ * into the follow-up timings, which is mobile's stand-in for the Command
  * modifier a hardware keyboard has.
  */
 function SendActionButton(props: {
@@ -287,9 +289,7 @@ function SendActionButton(props: {
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
     return button;
   }
-  const actions = [presentation.action, presentation.alternate].filter(
-    (action): action is ActiveTurnComposerAction => action !== null,
-  );
+  const actions = ["queue", "next-tool", "steer"] as const;
   return (
     <ControlPillMenu
       accessibilityLabel="Choose how to send this message"

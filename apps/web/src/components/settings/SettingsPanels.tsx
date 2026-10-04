@@ -2855,7 +2855,7 @@ export function GeneralSettingsPanel() {
             <Select
               value={settings.followUpBehavior}
               onValueChange={(value) => {
-                if (value === "queue" || value === "steer") {
+                if (value === "queue" || value === "next-tool" || value === "steer") {
                   updateSettings({ followUpBehavior: value });
                 }
               }}
@@ -2867,6 +2867,7 @@ export function GeneralSettingsPanel() {
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem value="queue">After current turn</SelectItem>
+                <SelectItem value="next-tool">At next tool call</SelectItem>
                 <SelectItem value="steer">Immediately</SelectItem>
               </SelectPopup>
             </Select>

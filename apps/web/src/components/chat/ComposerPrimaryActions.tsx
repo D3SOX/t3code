@@ -31,7 +31,7 @@ interface ComposerPrimaryActionsProps {
   isRunning: boolean;
   /** Stop can reach a run, including one still preparing or starting. */
   canInterrupt: boolean;
-  followUpBehavior?: "queue" | "steer";
+  followUpBehavior?: "queue" | "next-tool" | "steer";
   alternateShortcutLabel?: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
@@ -107,13 +107,15 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     : undefined;
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const shortcutModifiers = useShortcutModifierState();
+  const dispatchAction = resolveComposerDispatchMode({
+    running: isRunning,
+    activeTurnDefault: followUpBehavior,
+    alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
+  });
   const isQueuing =
     !isEditingQueuedMessage &&
-    resolveComposerDispatchMode({
-      running: isRunning,
-      activeTurnDefault: followUpBehavior,
-      alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
-    }) === "queue";
+    isRunning &&
+    (dispatchAction === "queue" || dispatchAction === "next-tool");
   const alternateAction = alternateComposerDispatchAction(followUpBehavior);
   const isSendDisabled = sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(
@@ -257,7 +259,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     : isEditingQueuedMessage
       ? "Update queued message"
       : isQueuing
-        ? "Queue message"
+        ? dispatchAction === "next-tool"
+          ? "Queue after next tool call"
+          : "Queue after current turn"
         : isRunning
           ? "Steer message"
           : "Submit message";
@@ -276,7 +280,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const submitTooltip =
     submitStatus ??
     (isRunning && !isEditingQueuedMessage
-      ? `Click to ${followUpBehavior}, Ctrl/⌘-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
+      ? `${submitLabel}. Ctrl/⌘-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction === "queue" ? "queue after current turn" : "queue after next tool call"}`
       : submitLabel);
 
   const sendButton = (

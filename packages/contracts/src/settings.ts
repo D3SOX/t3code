@@ -456,13 +456,6 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
   followUpBehavior: Schema.Literals(["queue", "next-tool", "steer"]).pipe(
-    Schema.decodeTo(
-      Schema.Literals(["queue", "steer"]),
-      SchemaTransformation.transform({
-        decode: (behavior) => (behavior === "next-tool" ? "queue" : behavior),
-        encode: (behavior) => behavior,
-      }),
-    ),
     Schema.withDecodingDefault(Effect.succeed("queue" as const)),
   ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1803,7 +1796,7 @@ export const ClientSettingsPatch = Schema.Struct({
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
-  followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
+  followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "next-tool", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),

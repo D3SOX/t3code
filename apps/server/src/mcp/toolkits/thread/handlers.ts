@@ -271,6 +271,7 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
       type: "queued-message.promote-to-steer",
       queuedRunId: input.queuedRunId,
       targetRunId: input.targetRunId,
+      ...(input.afterNextTool === undefined ? {} : { afterNextTool: input.afterNextTool }),
     })),
   t3_thread_organize: (input) =>
     Effect.gen(function* () {

@@ -32,7 +32,8 @@ describe("resolveComposerDispatchMode", () => {
     ).toBe("queue");
   });
   it.each([
-    ["queue", "steer"],
+    ["queue", "next-tool"],
+    ["next-tool", "queue"],
     ["steer", "queue"],
   ] as const)(
     "uses configured %s behavior only during a running turn",
@@ -65,7 +66,7 @@ describe("resolveComposerDispatchMode", () => {
   );
 
   it("names the alternate action so the affordance can be labelled", () => {
-    expect(alternateComposerDispatchAction("queue")).toBe("steer");
+    expect(alternateComposerDispatchAction("queue")).toBe("next-tool");
     expect(alternateComposerDispatchAction("steer")).toBe("queue");
     expect(alternateComposerDispatchAction()).toBe("queue");
   });

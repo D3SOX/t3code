@@ -24,6 +24,7 @@ import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useAssetUrl } from "../../state/assets";
 import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
+import { useServerConfigs } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
@@ -39,7 +40,7 @@ const REMOVE_ACTION_WIDTH = 76;
 const THUMBNAIL_LIMIT = 3;
 
 type QueueTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
-type QueueAction = "steer" | "edit" | "up" | "down" | "remove";
+type QueueAction = "next-tool" | "after-turn" | "steer" | "edit" | "up" | "down" | "remove";
 type QueueRowLayout = { readonly id: RunId; readonly y?: number; readonly height?: number };
 
 export function useThreadQueueWorkflow(target: QueueTarget) {
@@ -56,6 +57,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const insets = useSafeAreaInsets();
   const theme = useUniwindTheme();
   const workflow = useThreadQueueWorkflow(target);
+  const supportsNextToolQueue =
+    useServerConfigs().get(target.environmentId)?.environment.capabilities.nextToolQueue === true;
   const threadKey = scopedThreadKey(target.environmentId, target.threadId);
   const editing = useQueuedRunEdit(threadKey);
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun, "reorder queued message");
@@ -138,7 +141,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       navigation.goBack();
       return;
     }
-    if (action !== "steer" && action !== "remove") return;
+    if (!["steer", "remove", "next-tool", "after-turn"].includes(action)) return;
     busyRef.current = true;
     setBusyRunId(runId);
     void Haptics.selectionAsync();
@@ -152,6 +155,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             threadId: target.threadId,
             queuedRunId: runId,
             targetRunId: workflow.activeRun.id,
+            ...(action === "next-tool" || action === "after-turn"
+              ? { afterNextTool: action === "next-tool" }
+              : {}),
           },
         });
       }
@@ -329,6 +335,17 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   actions={[
                     ...(workflow?.canPromoteToSteer
                       ? [
+                          ...(supportsNextToolQueue
+                            ? [
+                                {
+                                  id: run.queueAfterNextTool ? "after-turn" : "next-tool",
+                                  title: run.queueAfterNextTool
+                                    ? "Run after current turn"
+                                    : "Steer after next tool call",
+                                  attributes: { disabled: !controls.canSteer },
+                                },
+                              ]
+                            : []),
                           {
                             id: "steer",
                             title: "Steer now",
@@ -362,7 +379,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={title}
-                    accessibilityHint="Opens this message in the composer for editing"
+                    accessibilityHint={`${run.queueAfterNextTool ? "Sends after next tool call" : "Sends after current turn"}. Opens this message in the composer for editing`}
                     disabled={!controls.canEdit}
                     onPress={() => void act(run.id, "edit")}
                     className="min-h-14 flex-row items-center gap-2.5 py-2.5 active:opacity-70"
@@ -381,6 +398,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                     >
                       {title}
                     </Text>
+                    {run.queueAfterNextTool ? (
+                      <Text className="shrink-0 text-2xs text-foreground-muted">After tool</Text>
+                    ) : null}
                     {controls.isEditing ? (
                       <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
                         Editing

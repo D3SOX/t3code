@@ -1363,7 +1363,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   } | null;
   isRunning: boolean;
   canInterrupt: boolean;
-  followUpBehavior: "queue" | "steer";
+  followUpBehavior: "queue" | "next-tool" | "steer";
   alternateShortcutLabel: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;

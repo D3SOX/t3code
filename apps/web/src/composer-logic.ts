@@ -21,7 +21,7 @@ export function followUpBehaviorForSubmission(
   intent: ComposerSubmissionIntent,
 ): ClientSettings["followUpBehavior"] {
   if (intent !== "alternate") return preference;
-  return preference === "queue" ? "steer" : "queue";
+  return preference === "queue" ? "next-tool" : "queue";
 }
 
 export interface ComposerTrigger {

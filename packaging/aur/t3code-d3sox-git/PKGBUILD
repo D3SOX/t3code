@@ -2,7 +2,7 @@
 
 pkgname=t3code-d3sox-git
 _pkgname=t3code
-_ssh_archive_version=0.0.41-nightly.20260915.1752
+_ssh_archive_version=0.0.46-nightly.20261004.2644
 pkgver=0.0.40.r4006.gae1f057
 pkgrel=1
 pkgdesc='T3 Code nightly desktop app built from the latest D3SOX fork commit'

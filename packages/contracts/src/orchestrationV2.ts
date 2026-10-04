@@ -545,6 +545,8 @@ export const OrchestrationV2Run = Schema.Struct({
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   /** Restart recovery holds the queue until the user explicitly resumes it. */
   queueHeld: Schema.optional(Schema.Boolean),
+  /** The queue head steers the active run after its next completed tool. */
+  queueAfterNextTool: Schema.optional(Schema.Boolean),
   requestedAt: Schema.DateTimeUtc,
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
@@ -2728,7 +2730,10 @@ export const OrchestrationV2Command = Schema.Union([
       }),
       Schema.Struct({ type: Schema.Literal("steer_active"), targetRunId: RunId }),
       Schema.Struct({ type: Schema.Literal("restart_active"), targetRunId: RunId }),
-      Schema.Struct({ type: Schema.Literal("queue_after_active") }),
+      Schema.Struct({
+        type: Schema.Literal("queue_after_active"),
+        afterNextTool: Schema.optional(Schema.Boolean),
+      }),
       Schema.Struct({ type: Schema.Literal("start_immediately") }),
     ]),
   }),
@@ -2779,6 +2784,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     queuedRunId: RunId,
+    afterNextTool: Schema.optional(Schema.Boolean),
     targetRunId: RunId,
   }),
   Schema.Struct({

@@ -18,6 +18,7 @@ export interface ComposerSendPresentation {
 
 const ACTION_LABEL: Record<ActiveTurnComposerAction, string> = {
   queue: "Queue",
+  "next-tool": "After next tool",
   steer: "Steer",
   restart: "Restart",
 };

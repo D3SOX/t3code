@@ -119,8 +119,12 @@ const QueueReorderTool = Tool.make("t3_queue_reorder", {
 const QueuePromoteTool = Tool.make("t3_queue_promote_to_steer", {
   ...commandTool,
   description:
-    "Deliver a queued message as steering to the specified active run. Existing provider and run-state rules apply.",
-  parameters: Schema.Struct({ ...queueTarget, targetRunId: RunId }),
+    "Deliver a queued message as steering to the specified active run. Set afterNextTool=true to keep it queued until the next completed tool, or false to wait for the turn to finish. Omit afterNextTool to steer immediately. Existing provider and run-state rules apply.",
+  parameters: Schema.Struct({
+    ...queueTarget,
+    targetRunId: RunId,
+    afterNextTool: Schema.optional(Schema.Boolean),
+  }),
 }).annotate(Tool.Destructive, true);
 
 const requestTarget = { threadId: Schema.optional(ThreadId), requestId: RuntimeRequestId };

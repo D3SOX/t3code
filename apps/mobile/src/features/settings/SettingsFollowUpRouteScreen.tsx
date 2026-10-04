@@ -19,8 +19,14 @@ const FOLLOW_UP_OPTIONS: ReadonlyArray<{
 }> = [
   {
     behavior: "queue",
-    label: "Queue",
+    label: "After current turn",
     description: "Your message waits and runs after the current turn finishes.",
+  },
+  {
+    behavior: "next-tool",
+    label: "After next tool call",
+    description:
+      "Wait for the next tool to finish, then steer the active turn. If the turn ends first, run next.",
   },
   {
     behavior: "steer",
@@ -68,7 +74,7 @@ export function SettingsFollowUpRouteScreen() {
           ))}
         </SettingsSection>
         <Text className="px-2 text-sm text-foreground-muted">
-          Long-press the send button to use the other option for a single message. With a hardware
+          Long-press the send button to choose a timing for a single message. With a hardware
           keyboard, hold Command while sending.
         </Text>
       </ScrollView>

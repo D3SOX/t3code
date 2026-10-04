@@ -786,6 +786,238 @@ it.layer(TestLayer)("OrchestrationV2LayerLive", (it) => {
     }).pipe(Effect.provide(Layer.fresh(TestLayer))),
   );
 
+  it.effect("steers server-saved next-tool queues once per root tool and preserves order", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const threadId = ThreadId.make("runtime-next-tool");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-next-tool-create"),
+        threadId,
+        projectId: ProjectId.make("runtime-next-tool-project"),
+        title: "Delivery intent",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: process.cwd(),
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-next-tool-first"),
+        threadId,
+        messageId: MessageId.make("runtime-next-tool-first"),
+        text: "Start work.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+      });
+      const initial = yield* orchestrator.getThreadProjection(threadId);
+      const run = initial.runs[0]!;
+      const providerThread = initial.providerThreads[0]!;
+      const now = yield* DateTime.now;
+      const providerSession = {
+        id: providerThread.providerSessionId!,
+        driver,
+        providerInstanceId: modelSelection.instanceId,
+        status: "running" as const,
+        cwd: process.cwd(),
+        model: modelSelection.model,
+        capabilities: CodexProviderCapabilitiesV2,
+        createdAt: now,
+        updatedAt: now,
+        lastError: null,
+      };
+      const providerTurn = {
+        id: ProviderTurnId.make("runtime-next-tool-turn"),
+        providerThreadId: providerThread.id,
+        nodeId: run.rootNodeId!,
+        runAttemptId: run.activeAttemptId,
+        nativeTurnRef: null,
+        ordinal: 1,
+        status: "running" as const,
+        startedAt: now,
+        completedAt: null,
+      };
+      yield* eventSink.write({
+        commandId: CommandId.make("runtime-next-tool-running"),
+        events: [
+          {
+            id: EventId.make("runtime-next-tool-run-event"),
+            type: "run.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, status: "running", startedAt: now },
+          },
+          {
+            id: EventId.make("runtime-next-tool-session-event"),
+            type: "provider-session.attached",
+            threadId,
+            occurredAt: now,
+            payload: providerSession,
+          },
+          {
+            id: EventId.make("runtime-next-tool-turn-event"),
+            type: "provider-turn.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: providerTurn,
+          },
+        ],
+      });
+      const sessionSpy = vi
+        .spyOn(sessions, "get")
+        .mockReturnValue(
+          Effect.succeed(Option.some({ providerSession } as ProviderAdapterV2SessionRuntime)),
+        );
+      yield* Effect.addFinalizer(() => Effect.sync(() => sessionSpy.mockRestore()));
+
+      for (const id of ["first", "second"]) {
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "mobile",
+          commandId: CommandId.make(`next-tool-queue-${id}`),
+          threadId,
+          messageId: MessageId.make(`next-tool-queued-${id}`),
+          text: `Follow up ${id}`,
+          attachments: [],
+          dispatchMode: { type: "queue_after_active", afterNextTool: id === "second" },
+        });
+      }
+      const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.filter(
+        (r) => r.status === "queued",
+      );
+      assert.lengthOf(queued, 2);
+      assert.isUndefined(queued[0]!.queueAfterNextTool);
+      assert.isTrue(queued[1]!.queueAfterNextTool);
+      const writeTool = (id: string, eventSuffix: string, parentItemId: TurnItemId | null = null) =>
+        eventSink.write({
+          commandId: CommandId.make(`next-tool-event-${eventSuffix}`),
+          events: [
+            {
+              id: EventId.make(`next-tool-event-${eventSuffix}`),
+              type: "turn-item.updated",
+              threadId,
+              runId: run.id,
+              occurredAt: now,
+              payload: {
+                type: "command_execution",
+                id: TurnItemId.make(id),
+                threadId,
+                runId: run.id,
+                nodeId: run.rootNodeId,
+                providerThreadId: providerThread.id,
+                providerTurnId: providerTurn.id,
+                nativeItemRef: null,
+                parentItemId,
+                ordinal: 2,
+                status: "completed",
+                title: null,
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                input: "pwd",
+                output: process.cwd(),
+                exitCode: 0,
+              },
+            },
+          ],
+        });
+      // Drain the tool listener through its thread lock; no sleeps or polling.
+      const executor = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+      const withLock = executor.withLock;
+      const toolProcessed = yield* Deferred.make<void>();
+      const observedLock: typeof executor.withLock = (key, effect) =>
+        withLock(key, effect).pipe(
+          Effect.tap(() =>
+            key === threadId ? Deferred.succeed(toolProcessed, undefined) : Effect.void,
+          ),
+        );
+      const lockSpy = vi.spyOn(executor, "withLock").mockImplementation(observedLock);
+      yield* Effect.addFinalizer(() => Effect.sync(() => lockSpy.mockRestore()));
+      yield* writeTool("next-tool-blocked", "blocked");
+      yield* Deferred.await(toolProcessed);
+      lockSpy.mockRestore();
+      const afterBlocked = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(
+        afterBlocked.runs.filter((r) => r.status === "queued").map((r) => r.id),
+        queued.map((r) => r.id),
+      );
+
+      yield* orchestrator.dispatch({
+        type: "queued-message.promote-to-steer",
+        threadId,
+        commandId: CommandId.make("next-tool-change-timing"),
+        queuedRunId: queued[0]!.id,
+        targetRunId: run.id,
+        afterNextTool: true,
+      });
+      const scheduled = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(scheduled.runs.find((r) => r.id === queued[0]!.id)?.status, "queued");
+      assert.isTrue(scheduled.runs.find((r) => r.id === queued[0]!.id)?.queueAfterNextTool);
+      assert.deepEqual(
+        yield* outbox.listByCommandId(CommandId.make("next-tool-change-timing")),
+        [],
+      );
+
+      const awaitPromotion = (id: string) =>
+        Effect.gen(function* () {
+          const commandId = CommandId.make(`command:next-tool:${run.id}:${id}`);
+          const afterSequence = yield* eventSink.latestSequence();
+          return yield* eventSink.stream({ afterSequence, eventType: "run.updated" }).pipe(
+            Stream.filter(
+              (stored) =>
+                stored.commandId === commandId &&
+                stored.event.type === "run.updated" &&
+                stored.event.payload.status === "cancelled",
+            ),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+        });
+
+      const firstPromotion = yield* awaitPromotion("next-tool-first");
+      yield* writeTool("next-tool-child", "child", TurnItemId.make("parent-tool"));
+      yield* writeTool("next-tool-first", "first");
+      yield* Fiber.join(firstPromotion);
+      const afterFirst = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(afterFirst.runs.find((r) => r.id === queued[0]!.id)?.status, "cancelled");
+      assert.equal(afterFirst.runs.find((r) => r.id === queued[1]!.id)?.status, "queued");
+      assert.equal(
+        afterFirst.messages.find((m) => m.id === queued[0]!.userMessageId)?.runId,
+        run.id,
+      );
+      const effects = yield* outbox.listByCommandId(
+        CommandId.make(`command:next-tool:${run.id}:next-tool-first`),
+      );
+      assert.deepEqual(
+        effects.map((effect) => effect.request.type),
+        ["provider-turn.steer"],
+      );
+
+      // A repeated completed-item update must not consume the next queued message.
+      const secondPromotion = yield* awaitPromotion("next-tool-second");
+      yield* writeTool("next-tool-first", "duplicate-first");
+      yield* writeTool("next-tool-second", "second");
+      yield* Fiber.join(secondPromotion);
+      const afterSecond = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(afterSecond.runs.find((r) => r.id === queued[1]!.id)?.status, "cancelled");
+      assert.equal(
+        afterSecond.messages.find((m) => m.id === queued[1]!.userMessageId)?.runId,
+        run.id,
+      );
+    }).pipe(Effect.provide(Layer.fresh(TestLayer))),
+  );
+
   it.effect("resolves delivery intent against the active run and starts after it completes", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

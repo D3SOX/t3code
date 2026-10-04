@@ -182,7 +182,11 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
   if (parsed.composerEnterBehavior === "send" || parsed.composerEnterBehavior === "newline") {
     preferences.composerEnterBehavior = parsed.composerEnterBehavior;
   }
-  if (parsed.followUpBehavior === "queue" || parsed.followUpBehavior === "steer") {
+  if (
+    parsed.followUpBehavior === "queue" ||
+    parsed.followUpBehavior === "next-tool" ||
+    parsed.followUpBehavior === "steer"
+  ) {
     preferences.followUpBehavior = parsed.followUpBehavior;
   }
   if (typeof parsed.projectGroupingEnabled === "boolean") {

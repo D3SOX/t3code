@@ -107,14 +107,14 @@ describe("composerSubmissionIntentForKey", () => {
       const running = { ...input, platform, sendShortcut, prompt: "two\nlines", isRunning: true };
       const intent = composerSubmissionIntentForKey({ ...running, event: modEnter });
       expect(intent).toBe("alternate");
-      for (const activeTurnDefault of ["queue", "steer"] as const) {
+      for (const activeTurnDefault of ["queue", "next-tool", "steer"] as const) {
         expect(
           resolveComposerDispatchMode({
             running: true,
             alternateModifier: intent === "alternate",
             activeTurnDefault,
           }),
-        ).toBe(activeTurnDefault === "queue" ? "steer" : "queue");
+        ).toBe(activeTurnDefault === "queue" ? "next-tool" : "queue");
       }
       expect(
         composerSubmissionIntentForKey({
@@ -248,7 +248,8 @@ describe("composerSubmissionIntentForKey", () => {
 
 describe("follow-up submission timing", () => {
   it.each([
-    ["queue", "queue", "steer"],
+    ["queue", "queue", "next-tool"],
+    ["next-tool", "next-tool", "queue"],
     ["steer", "steer", "queue"],
   ] as const)(
     "uses the %s preference and its one-message alternative",

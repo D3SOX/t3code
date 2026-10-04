@@ -4,10 +4,10 @@
  * is a long-press on the send button), so both clients agree on what the user's
  * configured follow-up behavior means.
  */
-export type ComposerDispatchMode = "auto" | "queue" | "steer" | "restart";
+export type ComposerDispatchMode = "auto" | "queue" | "next-tool" | "steer" | "restart";
 export type ActiveTurnComposerAction = Exclude<ComposerDispatchMode, "auto">;
 
-/** The alternate switches between queue and steer relative to the configured action. */
+/** The alternate queues after the next tool for Queue, or after the turn otherwise. */
 export function resolveComposerDispatchMode(input: {
   /** A turn is in flight, so the follow-up has to queue behind it or steer it. */
   readonly running: boolean;
@@ -16,7 +16,7 @@ export function resolveComposerDispatchMode(input: {
 }): ComposerDispatchMode {
   if (!input.running) return "auto";
   const defaultAction = input.activeTurnDefault ?? "steer";
-  if (input.alternateModifier) return defaultAction === "queue" ? "steer" : "queue";
+  if (input.alternateModifier) return defaultAction === "queue" ? "next-tool" : "queue";
   return defaultAction;
 }
 

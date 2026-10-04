@@ -43,7 +43,7 @@ describe("resolveComposerSendPresentation", () => {
     expect(queueing.label).toBe("Queue");
     expect(queueing.icon).toBe("list.number");
     expect(queueing.action).toBe("queue");
-    expect(queueing.alternate).toBe("steer");
+    expect(queueing.alternate).toBe("next-tool");
     expect(steering.label).toBe("Steer");
     expect(steering.icon).toBe("arrow.turn.left.up");
     expect(steering.action).toBe("steer");
@@ -63,6 +63,21 @@ describe("resolveComposerSendPresentation", () => {
     expect(presentation.action).toBe("queue");
     expect(presentation.alternate).toBeNull();
     expect(presentation.offersFollowUpChoice).toBe(false);
+  });
+
+  it("labels next-tool delivery and falls back to Queue without steering support", () => {
+    const input = { ...idle, running: true, followUpBehavior: "next-tool" as const };
+    expect(resolveComposerSendPresentation({ ...input, canSteer: true })).toMatchObject({
+      label: "After next tool",
+      action: "next-tool",
+      alternate: "queue",
+      offersFollowUpChoice: true,
+    });
+    expect(resolveComposerSendPresentation({ ...input, canSteer: false })).toMatchObject({
+      label: "Queue",
+      action: "queue",
+      offersFollowUpChoice: false,
+    });
   });
 
   it("keeps the save affordance while a queued message is being edited", () => {

@@ -681,15 +681,14 @@ describe("ClientSettings send shortcut", () => {
 });
 
 describe("ClientSettings follow-up behavior", () => {
-  it("defaults to sending after the current turn and accepts queue and steer", () => {
+  it("defaults to sending after the current turn and accepts all three timings", () => {
     expect(decodeClientSettings({}).followUpBehavior).toBe("queue");
-    for (const followUpBehavior of ["queue", "steer"]) {
+    for (const followUpBehavior of ["queue", "next-tool", "steer"]) {
       expect(decodeClientSettings({ followUpBehavior }).followUpBehavior).toBe(followUpBehavior);
       expect(decodeClientSettingsPatch({ followUpBehavior }).followUpBehavior).toBe(
         followUpBehavior,
       );
     }
-    expect(decodeClientSettings({ followUpBehavior: "next-tool" }).followUpBehavior).toBe("queue");
     expect(() => decodeClientSettingsPatch({ followUpBehavior: "invalid" })).toThrow();
   });
 });

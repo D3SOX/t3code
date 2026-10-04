@@ -35,11 +35,12 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 ## Send while the agent is working
 
 On web and desktop, choose **Settings → General → Follow-up behavior** to queue
-new messages for a later turn or steer the running turn immediately. The setting
+new messages after the current turn, after the next tool call, or steer immediately. The setting
 applies to this client; already queued messages keep their place. Queued messages
 are saved on the server and can be edited, reordered, or removed above the composer.
-`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses the opposite action:
-it steers when your default is Queue and queues when your default is Steer.
+`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses the alternate timing:
+it queues after the next tool call when your default is Queue, and queues after the
+current turn for the other defaults. Queue after the current turn is the default.
 
 Use `Cmd+Shift+Enter` on macOS or `Ctrl+Shift+Enter` on Windows and Linux to send
 the oldest queued message as a steer. This leaves the current draft intact and
@@ -51,8 +52,8 @@ start of the composer to edit the most recently queued message. Change
 `thread.editQueuedMessage` to use another shortcut.
 
 Mobile has the same choice under **Settings → Follow-ups**. While a turn is
-running the send button shows which action it will take. Long-press it to use the
-other action for a single message, or hold `Cmd` while sending from a hardware
+running the send button shows which action it will take. Long-press it to choose a
+timing for a single message, or hold `Cmd` while sending from a hardware
 keyboard. The button only offers Steer when the running agent supports it.
 
 ## Queue messages offline on mobile
@@ -153,14 +154,16 @@ transcription or cancellation; only the message text is sent when you submit.
 ## Queued messages
 
 On web and desktop, the composer shows **Interrupt** while the agent is working and the draft is
-empty. Adding text or attachments replaces it with a steer arrow. Click it to send a message into
-the active turn, or press `Enter` on desktop. Hold `Cmd` on macOS or `Ctrl` on Windows and Linux to
-switch the button to a queue icon. Click while holding that key, or press `Cmd+Enter` or
-`Ctrl+Enter` on desktop, to queue the message for after the active turn.
+empty. Adding text or attachments replaces it with the action chosen in Follow-up behavior.
+Click it, or press `Enter` on desktop, to send using that timing. Hold `Cmd` on macOS or `Ctrl`
+on Windows and Linux, or press `Cmd+Enter` or `Ctrl+Enter`, to use the alternate timing described above.
 
 Queued messages appear above the composer. Rows show a thumbnail of any attached image alongside
 the text. Drag a row by its handle to reorder it, use the handle's arrow keys, promote the message
-to a steer, or remove it.
+to a steer, change its timing between after the turn and after the next tool call, or remove it.
+The next-tool timing steers only the first queued message after a completed tool call; it respects
+queue order and falls back to a new turn if the agent finishes first or cannot steer.
+This timing requires an updated D3SOX fork server on the host. Upstream servers support Queue and Steer.
 
 If the server restarts, saved queued messages keep their order and are held. Press
 **Resume** in an empty composer on web or desktop, or **Resume queue** in the queue

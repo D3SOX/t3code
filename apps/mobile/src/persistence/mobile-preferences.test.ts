@@ -5,6 +5,12 @@ vi.mock("expo-secure-store", () => ({}));
 import { sanitizePreferences } from "./mobile-preferences";
 
 describe("environment identification preferences", () => {
+  it.each(["queue", "next-tool", "steer"] as const)(
+    "retains the saved %s follow-up timing",
+    (followUpBehavior) => {
+      expect(sanitizePreferences({ followUpBehavior })).toEqual({ followUpBehavior });
+    },
+  );
   it.each(["artwork", "pill", "none"] as const)("retains the saved %s choice", (mode) => {
     expect(sanitizePreferences({ environmentIdentificationMode: mode, baseFontSize: 17 })).toEqual({
       environmentIdentificationMode: mode,

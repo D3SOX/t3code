@@ -19,7 +19,7 @@ import { useId, useImperativeHandle, useMemo, useRef, useState, type Ref } from 
 
 import { useAssetUrls } from "../../assets/assetUrls";
 import { threadEnvironment } from "../../state/threads";
-import { useThreadProjection } from "../../state/entities";
+import { useServerConfigs, useThreadProjection } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { isImageAttachment, type ChatMessage } from "../../types";
 import { cn } from "~/lib/utils";
@@ -67,6 +67,8 @@ export function QueuedRunsControl({
   const projection = useThreadProjection(
     scopeThreadRef(props.environmentId, props.threadId),
   )?.projection;
+  const supportsNextToolQueue =
+    useServerConfigs().get(props.environmentId)?.environment.capabilities.nextToolQueue === true;
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
@@ -137,6 +139,7 @@ export function QueuedRunsControl({
       messageId: run.userMessageId,
       serverIndex,
       text,
+      afterNextTool: run.queueAfterNextTool === true,
       attachments,
       thumbnails: attachments
         .filter((attachment) => attachment.type === "image")
@@ -153,6 +156,7 @@ export function QueuedRunsControl({
       messageId: null,
       serverIndex: null,
       text: message.text,
+      afterNextTool: false,
       attachments: [] as ReadonlyArray<ContractChatAttachment>,
       thumbnails: (message.attachments ?? [])
         .filter(isImageAttachment)
@@ -189,14 +193,19 @@ export function QueuedRunsControl({
   };
 
   const steerInFlightRef = useRef(false);
-  const steer = async (queuedRunId: RunId) => {
+  const steer = async (queuedRunId: RunId, afterNextTool?: boolean) => {
     if (activeRun === null || !workflow?.canPromoteToSteer || steerInFlightRef.current) return;
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
     try {
       await promote({
         environmentId: props.environmentId,
-        input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
+        input: {
+          threadId: props.threadId,
+          queuedRunId,
+          targetRunId: activeRun.id,
+          ...(afterNextTool === undefined ? {} : { afterNextTool }),
+        },
       });
     } finally {
       steerInFlightRef.current = false;
@@ -404,6 +413,24 @@ export function QueuedRunsControl({
                     </Tooltip>
                   </ComposerBanner.Content>
                   <ComposerBanner.Actions>
+                    {item.runId &&
+                    activeRun &&
+                    workflow?.canPromoteToSteer &&
+                    supportsNextToolQueue ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={busyRunId !== null}
+                        aria-label={
+                          item.afterNextTool
+                            ? "Run after current turn"
+                            : "Steer after next tool call"
+                        }
+                        onClick={() => void steer(item.runId!, !item.afterNextTool)}
+                      >
+                        {item.afterNextTool ? "After tool" : "After turn"}
+                      </Button>
+                    ) : null}
                     {isEditing ? (
                       <Button
                         size="xs"

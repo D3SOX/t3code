@@ -177,7 +177,7 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly bootstrap?: StartThreadBootstrap;
   readonly sourceProposedPlan?: { readonly threadId: ThreadId; readonly planId: PlanId };
-  readonly dispatchMode?: "auto" | "queue" | "steer" | "restart" | "start";
+  readonly dispatchMode?: "auto" | "queue" | "next-tool" | "steer" | "restart" | "start";
 }
 
 export interface InterruptThreadTurnInput extends ThreadCommandInput {
@@ -230,6 +230,7 @@ export interface ReorderQueuedRunInput extends ThreadCommandInput {
 
 export interface PromoteQueuedRunInput extends ThreadCommandInput {
   readonly queuedRunId: RunId;
+  readonly afterNextTool?: boolean;
   readonly targetRunId: RunId;
 }
 
@@ -270,6 +271,17 @@ const dispatch = (command: OrchestrationV2Command) =>
 
 const getProjection = (threadId: ThreadId) =>
   request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId });
+
+const requireNextToolQueue = Effect.gen(function* () {
+  const config = yield* getInitialServerConfig();
+  if (config.environment.capabilities.nextToolQueue !== true) {
+    return yield* Effect.fail(
+      new Error(
+        "This timing requires an updated D3SOX fork server. Use Queue or Steer on upstream servers.",
+      ),
+    );
+  }
+});
 
 const supportsServerResolvedCommandContext = Effect.fn(
   "EnvironmentCommands.supportsServerResolvedCommandContext",
@@ -686,6 +698,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
   }
 
   const requestedMode = input.dispatchMode ?? "auto";
+  if (requestedMode === "next-tool") yield* requireNextToolQueue;
   if (requestedMode === "start") {
     return yield* dispatch({
       type: "message.dispatch",
@@ -729,9 +742,10 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
           (session) => session.id === activeProviderThread.providerSessionId,
         );
   const turnCapabilities = activeProviderSession?.capabilities.turns;
+  const afterNextTool = requestedMode === "next-tool";
   const dispatchMode = serverResolvesCommandContext
-    ? requestedMode === "queue"
-      ? ({ type: "queue_after_active" } as const)
+    ? requestedMode === "queue" || requestedMode === "next-tool"
+      ? ({ type: "queue_after_active", ...(afterNextTool ? { afterNextTool: true } : {}) } as const)
       : ({ type: "start_immediately" } as const)
     : activeRun === undefined
       ? ({ type: "start_immediately" } as const)
@@ -739,15 +753,24 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
         ? ({ type: "steer_active", targetRunId: activeRun.id } as const)
         : requestedMode === "restart"
           ? ({ type: "restart_active", targetRunId: activeRun.id } as const)
-          : requestedMode === "queue"
-            ? ({ type: "queue_after_active" } as const)
+          : requestedMode === "queue" || requestedMode === "next-tool"
+            ? ({
+                type: "queue_after_active",
+                ...(afterNextTool ? { afterNextTool: true } : {}),
+              } as const)
             : turnCapabilities?.supportsActiveSteering === true
               ? ({ type: "steer_active", targetRunId: activeRun.id } as const)
               : turnCapabilities?.supportsQueuedMessages === true
-                ? ({ type: "queue_after_active" } as const)
+                ? ({
+                    type: "queue_after_active",
+                    ...(afterNextTool ? { afterNextTool: true } : {}),
+                  } as const)
                 : turnCapabilities?.supportsSteeringByInterruptRestart === true
                   ? ({ type: "restart_active", targetRunId: activeRun.id } as const)
-                  : ({ type: "queue_after_active" } as const);
+                  : ({
+                      type: "queue_after_active",
+                      ...(afterNextTool ? { afterNextTool: true } : {}),
+                    } as const);
   const shouldSendTitleSeed =
     input.titleSeed !== undefined &&
     (serverResolvesCommandContext || projection?.messages.length === 0);
@@ -764,7 +787,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     ...(shouldSendTitleSeed ? { titleSeed: input.titleSeed } : {}),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
     ...(input.sourceProposedPlan === undefined ? {} : { sourcePlanRef: input.sourceProposedPlan }),
-    ...(serverResolvesCommandContext && requestedMode !== "queue"
+    ...(serverResolvesCommandContext && requestedMode !== "queue" && requestedMode !== "next-tool"
       ? { deliveryIntent: requestedMode }
       : {}),
     dispatchMode,
@@ -966,12 +989,14 @@ export const reorderQueuedRun = Effect.fn("EnvironmentCommands.reorderQueuedRun"
 export const promoteQueuedRun = Effect.fn("EnvironmentCommands.promoteQueuedRun")(function* (
   input: PromoteQueuedRunInput,
 ) {
+  if (input.afterNextTool !== undefined) yield* requireNextToolQueue;
   return yield* dispatch({
     type: "queued-message.promote-to-steer",
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     queuedRunId: input.queuedRunId,
     targetRunId: input.targetRunId,
+    ...(input.afterNextTool === undefined ? {} : { afterNextTool: input.afterNextTool }),
   });
 });
 
