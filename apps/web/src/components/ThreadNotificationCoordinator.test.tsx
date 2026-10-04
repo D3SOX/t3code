@@ -23,8 +23,12 @@ const state = vi.hoisted(() => ({
   subagent: false,
   background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
   add: vi.fn(
-    (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
-      "toast-1",
+    (_toast: {
+      title: string;
+      description: string;
+      timeout: number;
+      actionProps: { onClick: () => void };
+    }) => "toast-1",
   ),
   close: vi.fn(),
   navigate: vi.fn(),
@@ -216,6 +220,7 @@ describe("thread notifications", () => {
     const toast = state.add.mock.calls[0]?.[0];
     expect(toast?.title).toBe("Thread completed");
     expect(toast?.description).toBe("Fix the login form");
+    expect(toast?.timeout).toBe(0);
     toast?.actionProps.onClick();
     expect(state.close).toHaveBeenCalledWith("toast-1");
     expect(state.navigate).toHaveBeenCalledWith({
@@ -252,7 +257,7 @@ describe("thread notifications", () => {
     await render();
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(expect.objectContaining({ title }));
+    expect(state.add).toHaveBeenLastCalledWith(expect.objectContaining({ title, timeout: 0 }));
     expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
     expect(state.notification).not.toHaveBeenCalled();
 
