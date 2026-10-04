@@ -1,6 +1,5 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -19,6 +18,10 @@ const state = vi.hoisted(() => ({
   approval: false,
   sessionError: false,
   turnError: false,
+  queued: false,
+  limited: false,
+  subagent: false,
+  background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
       "toast-1",
@@ -31,26 +34,66 @@ const state = vi.hoisted(() => ({
   }),
 }));
 
+const SHELL_NOW = DateTime.makeUnsafe("2026-09-13T09:00:00.000Z");
+
+function mockThreadShell() {
+  return {
+    id: "thread-1",
+    projectId: "project-1",
+    title: "Fix the login form",
+    providerInstanceId: "codex",
+    modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    activeProviderThreadId: null,
+    lineage: {
+      rootThreadId: "thread-1",
+      parentThreadId: state.subagent ? "parent" : null,
+      relationshipToParent: state.subagent ? "subagent" : null,
+    },
+    forkedFrom: null,
+    createdBy: "user",
+    creationSource: "web",
+    latestRunId: "run-1",
+    activeRunId: null,
+    status: state.queued
+      ? "queued"
+      : state.completedAt
+        ? "completed"
+        : state.sessionError || state.turnError || state.limited
+          ? "failed"
+          : "running",
+    lastErrorClass: state.limited ? "usage_limit" : null,
+    pendingRuntimeRequest: state.input
+      ? { id: "request-1", kind: "user_input", createdAt: SHELL_NOW }
+      : state.approval
+        ? { id: "request-1", kind: "command", createdAt: SHELL_NOW }
+        : null,
+    latestVisibleMessage: null,
+    latestUserMessageAt: null,
+    hasActionableProposedPlan: false,
+    pendingBackgroundTasks: state.background,
+    itemCount: 0,
+    visibleItemCount: 0,
+    createdAt: SHELL_NOW,
+    updatedAt: SHELL_NOW,
+    latestRunRequestedAt: SHELL_NOW,
+    latestRunStartedAt: SHELL_NOW,
+    latestRunCompletedAt: state.completedAt ? DateTime.makeUnsafe(state.completedAt) : undefined,
+    archivedAt: state.archivedAt ? DateTime.makeUnsafe(state.archivedAt) : null,
+    settledOverride: null,
+    settledAt: null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  };
+}
+
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => ({
     status: state.live ? "live" : "disconnected",
-    snapshot: Option.some({
-      threads: [
-        {
-          id: "thread-1",
-          title: "Fix the login form",
-          archivedAt: state.archivedAt,
-          hasPendingUserInput: state.input,
-          hasPendingApprovals: state.approval,
-          session: state.sessionError ? { status: "error" } : null,
-          latestTurn: {
-            turnId: "turn-1",
-            state: state.turnError ? "error" : state.completedAt ? "completed" : "running",
-            completedAt: state.completedAt,
-          },
-        },
-      ],
-    }),
+    snapshot: Option.some({ threads: [mockThreadShell()] }),
   }),
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -66,7 +109,7 @@ vi.mock("../hooks/useSettings", () => ({
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
 vi.mock("../state/environments", () => ({
-  useEnvironments: () => ({ environments: [{ environmentId: "env-1" }] }),
+  useEnvironmentIds: () => ["env-1"],
 }));
 vi.mock("../state/shell", () => ({
   environmentShell: { stateValueAtom: vi.fn() },
@@ -81,32 +124,6 @@ vi.mock("./ui/toast", () => ({
 }));
 
 import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
-import { useQueuedMessageStore } from "../queuedMessageStore";
-
-const threadKey = scopedThreadKey({
-  environmentId: EnvironmentId.make("env-1"),
-  threadId: ThreadId.make("thread-1"),
-});
-
-function enqueue() {
-  return useQueuedMessageStore.getState().enqueue(threadKey, {
-    prompt: "Follow up",
-    images: [],
-    files: [],
-    terminalContexts: [],
-    previewAnnotations: [],
-    reviewComments: [],
-    delivery: "after-turn",
-    queuedAfterToolActivityId: null,
-    sendSettings: {
-      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      promptEffort: null,
-    },
-    createdAt: "2026-09-13T09:59:00.000Z",
-  });
-}
 
 let renderer: ReactTestRenderer | undefined;
 
@@ -124,7 +141,6 @@ async function complete() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useQueuedMessageStore.setState({ queuesByThreadKey: {}, lastDispatchByThreadKey: {} });
   Object.assign(state, {
     mode: "off",
     inApp: true,
@@ -138,6 +154,10 @@ beforeEach(() => {
     approval: false,
     sessionError: false,
     turnError: false,
+    queued: false,
+    limited: false,
+    subagent: false,
+    background: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
@@ -159,42 +179,34 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
-  it.each([true, false])(
-    "waits for all queued turns before notifying (focused: %s)",
-    async (focused) => {
-      state.focused = focused;
-      state.mode = "notifications-and-sound";
-      const first = enqueue();
-      const second = enqueue();
-      await render();
-      await complete();
-      expect(state.add).not.toHaveBeenCalled();
-      expect(state.notification).not.toHaveBeenCalled();
-      expect(state.sound).not.toHaveBeenCalled();
+  it("waits for queued follow-up turns before notifying completion", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    await render();
+    state.queued = true;
+    await complete();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+    state.queued = false;
+    state.completedAt = null;
+    await render();
+    await complete();
+    expect(state.sound).toHaveBeenCalledOnce();
+    expect(state.notification).toHaveBeenCalledOnce();
+  });
 
-      useQueuedMessageStore.getState().finishSend(threadKey, first.id);
-      state.completedAt = null;
-      await render();
-      state.completedAt = "2026-09-13T10:01:00.000Z";
-      await render();
-      expect(state.add).not.toHaveBeenCalled();
-      expect(state.notification).not.toHaveBeenCalled();
-      expect(state.sound).not.toHaveBeenCalled();
-
-      useQueuedMessageStore.getState().finishSend(threadKey, second.id);
-      // Removing the last sent message must not replay the previous completion.
-      await render();
-      expect(state.sound).not.toHaveBeenCalled();
-      state.completedAt = null;
-      await render();
-      state.completedAt = "2026-09-13T10:02:00.000Z";
-      await render();
-      await render();
-      expect(state.sound).toHaveBeenCalledTimes(1);
-      expect(state.add).toHaveBeenCalledTimes(focused ? 1 : 0);
-      expect(state.notification).toHaveBeenCalledTimes(focused ? 0 : 1);
-    },
-  );
+  it.each([true, false])("keeps subagents silent with focus=%s", async (focused) => {
+    state.subagent = true;
+    state.focused = focused;
+    state.mode = "notifications-and-sound";
+    await render();
+    await complete();
+    state.input = true;
+    await render();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
 
   it("alerts once with system alerts off and opens the completed thread", async () => {
     await render();
@@ -211,23 +223,6 @@ describe("thread notifications", () => {
       params: { environmentId: "env-1", threadId: "thread-1" },
     });
     expect(state.notification).not.toHaveBeenCalled();
-  });
-
-  it("does not replay an intermediate completion when the queue is cancelled", async () => {
-    enqueue();
-    await render();
-    await complete();
-    useQueuedMessageStore.getState().drain(threadKey);
-    await render();
-    expect(state.add).not.toHaveBeenCalled();
-  });
-
-  it("still notifies when a failed queued send is held for user action", async () => {
-    const message = enqueue();
-    useQueuedMessageStore.getState().failSend(threadKey, message.id);
-    await render();
-    await complete();
-    expect(state.add).toHaveBeenCalledWith(expect.objectContaining({ title: "Thread completed" }));
   });
 
   it.each(["active", "blurred", "hidden", "archived", "disabled"])(
@@ -249,9 +244,9 @@ describe("thread notifications", () => {
     ["approval", "Approval needed"],
     ["sessionError", "Thread failed"],
     ["turnError", "Thread failed"],
+    ["limited", "Usage limit reached"],
   ] as const)("uses the same %s event for in-app and desktop alerts", async (event, title) => {
     state.mode = "notifications-and-sound";
-    enqueue();
     await render();
     state[event] = true;
     await render();
@@ -274,6 +269,19 @@ describe("thread notifications", () => {
       tag: "env-1:thread-1",
       silent: true,
     });
+  });
+
+  it("alerts when only a dev server is left running, not while a monitor can wake the agent", async () => {
+    await render();
+    state.background = [{ taskId: "watch", kind: "monitor" }];
+    await complete();
+    expect(state.add).not.toHaveBeenCalled();
+    state.background = [{ taskId: "dev", kind: "command" }];
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: "Thread completed" }),
+    );
   });
 
   it("keeps background desktop alerts when in-app notifications are disabled", async () => {

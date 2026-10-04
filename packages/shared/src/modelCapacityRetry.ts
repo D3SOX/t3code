@@ -1,27 +1,32 @@
-import {
-  ModelCapacityRetry,
-  type OrchestrationThreadActivity,
-  type TurnId,
-} from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-
-const isCapacityRetry = Schema.is(
-  Schema.Struct({ capacityRetry: Schema.NullOr(ModelCapacityRetry) }),
-);
+import { ModelCapacityRetry, type OrchestrationV2TurnItem, type RunId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 export function getModelCapacityRetry(
-  activities: readonly OrchestrationThreadActivity[],
-  activeTurnId: TurnId | null | undefined,
+  items: readonly OrchestrationV2TurnItem[],
+  activeRunId: RunId | null | undefined,
 ) {
-  if (!activeTurnId) return null;
-  for (let index = activities.length - 1; index >= 0; index--) {
-    const activity = activities[index]!;
+  if (!activeRunId) return null;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index]!;
     if (
-      activity.turnId === activeTurnId &&
-      activity.kind === "runtime.warning" &&
-      isCapacityRetry(activity.payload)
+      item.runId === activeRunId &&
+      item.type === "error" &&
+      item.failure.code === "serverOverloaded" &&
+      item.retry !== undefined
     ) {
-      return activity.payload.capacityRetry;
+      return item.status !== "running"
+        ? null
+        : {
+            attempt: item.retry.attempt,
+            retryAt:
+              item.retry.retryDelayMs === null
+                ? null
+                : DateTime.formatIso(
+                    DateTime.makeUnsafe(
+                      DateTime.toEpochMillis(item.updatedAt) + item.retry.retryDelayMs,
+                    ),
+                  ),
+          };
     }
   }
   return null;

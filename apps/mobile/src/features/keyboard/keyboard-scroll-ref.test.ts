@@ -46,6 +46,7 @@ describe("keyboard chat scroll correction", () => {
           case "react-native":
             return { Platform: { OS: "android" } };
           case "react-native-reanimated":
+          case "../../../reanimated":
             return {
               useAnimatedReaction: (_prepare: unknown, reaction: typeof reactToPadding) => {
                 reactToPadding = reaction;

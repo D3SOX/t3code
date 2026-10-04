@@ -2,7 +2,7 @@
 
 This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with these changes:
 
-- Follow-up messages wait until the agent finishes its current turn. You can change the timing in Settings to the next tool call or immediately. The oldest queued message also has buttons for both actions.
+- Follow-up messages wait until the agent finishes its current turn. You can switch to immediate steering in Settings. Queued messages are saved on the server and can be edited, reordered, or sent immediately.
 - Images an agent opens appear in their own timeline rows, even when the rest of the turn is collapsed. Open a row to show its preview, then click the preview to see the full image.
 - Images and videos an agent cites appear as previews below its message on web, desktop, and mobile. Videos have playback controls and do not autoplay.
 - Mobile shows Nightly sky or Dev blueprint artwork across the full app header by default. In Settings → Appearance → Environment identification, choose Artwork, Pill, or None; the choice is saved on your device.
@@ -153,6 +153,7 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Permission modes](./docs/user/permission-modes.md)
 - [Keyboard shortcuts](./docs/user/keybindings.md)
 - [Project settings](./docs/user/project-settings.md)
+- [Appearance preferences](./docs/user/appearance.md)
 - [Remote access from a phone or another machine](./docs/user/remote-access.md)
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
