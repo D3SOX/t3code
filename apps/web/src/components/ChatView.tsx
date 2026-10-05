@@ -176,6 +176,7 @@ import {
   type ComposerSubmissionIntent,
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
+  isQueuedComposerDispatchMode,
 } from "../composer-logic";
 import {
   derivePendingApprovals,
@@ -8865,7 +8866,8 @@ export default function ChatView(props: ChatViewProps) {
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const shouldQueueBehindActiveRun = phase === "running" && dispatchMode === "queue";
+    const shouldQueueBehindActiveRun =
+      phase === "running" && isQueuedComposerDispatchMode(dispatchMode);
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,

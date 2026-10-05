@@ -1,4 +1,5 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import type { AssistantCitation, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -14,6 +15,10 @@ import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
 export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
+
+export function isQueuedComposerDispatchMode(mode: ComposerDispatchMode): boolean {
+  return mode === "queue" || mode === "next-tool";
+}
 
 /** The alternate shortcut swaps the configured timing with after-turn delivery. */
 export function followUpBehaviorForSubmission(
