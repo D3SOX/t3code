@@ -9988,17 +9988,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 return;
               const projection = yield* projectionStore.getThreadRecords(
                 tool.threadId,
-                ["runs", "messages"],
+                ["runs", "messages", "nodes"],
                 { messageRoles: ["user"] },
               );
               const activeRun = projection.runs.find(isBlockingRun);
               const queuedRun = nextQueuedRun(projection);
+              const toolNode = projection.nodes.find((node) => node.id === tool.item?.nodeId);
               if (
                 activeRun?.status !== "running" ||
                 queuedRun?.queueAfterNextTool !== true ||
                 queuedRun.queueHeld ||
                 tool.item?.runId !== activeRun.id ||
-                tool.item.nodeId !== activeRun.rootNodeId ||
+                (tool.item.nodeId !== activeRun.rootNodeId &&
+                  toolNode?.parentNodeId !== activeRun.rootNodeId) ||
                 DateTime.toEpochMillis(tool.occurredAt) <
                   DateTime.toEpochMillis(queuedRun.requestedAt)
               )

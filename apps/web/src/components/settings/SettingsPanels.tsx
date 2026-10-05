@@ -2785,7 +2785,7 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           {...searchableSetting("start-threads-in-background")}
-          description="Start new threads without opening them, keeping the new-thread composer ready for another task."
+          description="Start new threads in the background with Enter or the send button. Ctrl/⌘+Enter does the opposite; turning this off reverses those actions."
           resetAction={
             settings.startThreadsInBackground !==
             DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground ? (

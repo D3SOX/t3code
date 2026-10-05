@@ -36,7 +36,8 @@ directory itself sits inside a Git checkout.
 In a desktop browser or the desktop app, submitting a new thread starts it in the
 background and immediately opens another draft by default. Disable **Settings →
 General → Start threads in background** to open the submitted thread instead;
-`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux still starts it in the background. The
+`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux does the opposite of
+Enter, so the setting swaps their foreground and background actions. The
 next draft keeps the workspace mode and base branch you selected. With **New
 worktree**, each background submission creates its own worktree.
 

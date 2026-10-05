@@ -87,6 +87,33 @@ describe("composerSubmissionIntentForKey", () => {
     expect(composerSubmissionIntentForKey({ ...draft, isDraftThread: false })).toBe("foreground");
   });
 
+  it.each(["Linux", "Win32", "MacIntel"])(
+    "reverses Enter and Mod+Enter for new threads on %s",
+    (platform) => {
+      const draft = { ...input, platform, isDraftThread: true };
+      const modEnter = {
+        ...enter,
+        ctrlKey: platform !== "MacIntel",
+        metaKey: platform === "MacIntel",
+      };
+      for (const startThreadsInBackground of [true, false]) {
+        expect(
+          composerSubmissionIntentForKey({ ...draft, startThreadsInBackground, event: enter }),
+        ).toBe(startThreadsInBackground ? "background" : "foreground");
+        expect(
+          composerSubmissionIntentForKey({ ...draft, startThreadsInBackground, event: modEnter }),
+        ).toBe(startThreadsInBackground ? "foreground" : "background");
+        expect(
+          composerSubmissionIntentForKey({
+            ...draft,
+            startThreadsInBackground,
+            event: { ...modEnter, altKey: true },
+          }),
+        ).toBe("background");
+      }
+    },
+  );
+
   it.each([
     ["enter", "one line", false, "foreground"],
     ["enter", "two\nlines", false, "foreground"],
@@ -150,7 +177,7 @@ describe("composerSubmissionIntentForKey", () => {
           isDraftThread: true,
           event: modEnter,
         }),
-      ).toBe("background");
+      ).toBe("foreground");
       expect(
         composerSubmissionIntentForKey({ ...running, event: { ...enter, shiftKey: true } }),
       ).toBeNull();

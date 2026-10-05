@@ -899,10 +899,34 @@ it.layer(TestLayer)("OrchestrationV2LayerLive", (it) => {
       assert.lengthOf(queued, 2);
       assert.isUndefined(queued[0]!.queueAfterNextTool);
       assert.isTrue(queued[1]!.queueAfterNextTool);
-      const writeTool = (id: string, eventSuffix: string, parentItemId: TurnItemId | null = null) =>
+      const rootNode = (yield* orchestrator.getThreadProjection(threadId)).nodes.find(
+        (node) => node.id === run.rootNodeId,
+      )!;
+      const writeTool = (
+        id: string,
+        eventSuffix: string,
+        parentItemId: TurnItemId | null = null,
+        parentNodeId: NodeId | null = run.rootNodeId,
+      ) =>
         eventSink.write({
           commandId: CommandId.make(`next-tool-event-${eventSuffix}`),
           events: [
+            {
+              id: EventId.make(`next-tool-node-${eventSuffix}`),
+              type: "node.updated",
+              threadId,
+              runId: run.id,
+              occurredAt: now,
+              payload: {
+                ...rootNode,
+                id: NodeId.make(`tool-node-${id}`),
+                parentNodeId,
+                kind: "tool_call",
+                status: "completed",
+                countsForRun: false,
+                completedAt: now,
+              },
+            },
             {
               id: EventId.make(`next-tool-event-${eventSuffix}`),
               type: "turn-item.updated",
@@ -914,7 +938,7 @@ it.layer(TestLayer)("OrchestrationV2LayerLive", (it) => {
                 id: TurnItemId.make(id),
                 threadId,
                 runId: run.id,
-                nodeId: run.rootNodeId,
+                nodeId: NodeId.make(`tool-node-${id}`),
                 providerThreadId: providerThread.id,
                 providerTurnId: providerTurn.id,
                 nativeItemRef: null,
@@ -985,10 +1009,31 @@ it.layer(TestLayer)("OrchestrationV2LayerLive", (it) => {
           );
         });
 
-      const firstPromotion = yield* awaitPromotion("next-tool-first");
       yield* writeTool("next-tool-child", "child", TurnItemId.make("parent-tool"));
-      yield* writeTool("next-tool-first", "first");
-      yield* Fiber.join(firstPromotion);
+      const writeToolAndDrain = (...args: Parameters<typeof writeTool>) =>
+        Effect.gen(function* () {
+          const processed = yield* Deferred.make<void>();
+          const observedToolLock: typeof executor.withLock = (key, effect) =>
+            withLock(key, effect).pipe(
+              Effect.tap(() =>
+                key === threadId ? Deferred.succeed(processed, undefined) : Effect.void,
+              ),
+            );
+          const spy = vi.spyOn(executor, "withLock").mockImplementation(observedToolLock);
+          yield* writeTool(...args).pipe(
+            Effect.andThen(Deferred.await(processed)),
+            Effect.ensuring(Effect.sync(() => spy.mockRestore())),
+          );
+        });
+      // A subagent's tool can have no parent item, but still belongs to a
+      // nested node rather than the root provider turn.
+      yield* writeToolAndDrain("next-tool-nested", "nested", null, NodeId.make("subagent-node"));
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(threadId)).runs.find((r) => r.id === queued[0]!.id)
+          ?.status,
+        "queued",
+      );
+      yield* writeToolAndDrain("next-tool-first", "first");
       const afterFirst = yield* orchestrator.getThreadProjection(threadId);
       assert.equal(afterFirst.runs.find((r) => r.id === queued[0]!.id)?.status, "cancelled");
       assert.equal(afterFirst.runs.find((r) => r.id === queued[1]!.id)?.status, "queued");
