@@ -36,6 +36,7 @@ import {
   resolveSidebarThreadSection,
   resolveSidebarRowAccessibility,
   resolveSidebarThreadStatus,
+  shouldShowCollapsedSidebarThread,
   resolveSidebarV2TopStatus,
   resolveThreadLastVisitedAt,
   resolveThreadRowClassName,
@@ -503,6 +504,25 @@ function makeLatestRun(overrides?: {
 }
 
 describe("hasUnseenCompletion", () => {
+  it("keeps Done and Input visible in collapsed sections, while other unselected rows collapse", () => {
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "ready", isUnread: true, isActive: false }),
+    ).toBe(true);
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "input", isUnread: false, isActive: false }),
+    ).toBe(true);
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "ready", isUnread: false, isActive: false }),
+    ).toBe(false);
+    for (const status of ["working", "waiting", "failed", "limited", "approval"] as const) {
+      expect(shouldShowCollapsedSidebarThread({ status, isUnread: true, isActive: false })).toBe(
+        false,
+      );
+      expect(shouldShowCollapsedSidebarThread({ status, isUnread: false, isActive: true })).toBe(
+        true,
+      );
+    }
+  });
   it("returns true when a thread completed after its last visit", () => {
     expect(
       hasUnseenCompletion({

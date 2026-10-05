@@ -197,6 +197,7 @@ import {
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
+  shouldShowCollapsedSidebarThread,
   resolveThreadLastVisitedAt,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
@@ -3010,25 +3011,31 @@ export default function Sidebar() {
     true,
     Schema.Boolean,
   );
-  const visiblePinnedThreads = useMemo(
-    () =>
-      pinnedShelfExpanded
-        ? pinnedThreads
-        : pinnedThreads.filter(
-            (thread) =>
-              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+  const threadLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const isVisibleWhenCollapsed = useCallback(
+    (thread: EnvironmentThreadShell) => {
+      const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      return shouldShowCollapsedSidebarThread({
+        status: resolveSidebarThreadStatus(thread),
+        isUnread: hasUnseenCompletion({
+          ...thread,
+          lastVisitedAt: resolveThreadLastVisitedAt(
+            thread.lastVisitedAt,
+            threadLastVisitedAtById[threadKey],
           ),
-    [pinnedShelfExpanded, pinnedThreads, routeThreadKey],
+        }),
+        isActive: threadKey === routeThreadKey,
+      });
+    },
+    [routeThreadKey, threadLastVisitedAtById],
+  );
+  const visiblePinnedThreads = useMemo(
+    () => (pinnedShelfExpanded ? pinnedThreads : pinnedThreads.filter(isVisibleWhenCollapsed)),
+    [pinnedShelfExpanded, pinnedThreads, isVisibleWhenCollapsed],
   );
   const visibleActiveThreads = useMemo(
-    () =>
-      activeShelfExpanded
-        ? activeThreads
-        : activeThreads.filter(
-            (thread) =>
-              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-          ),
-    [activeShelfExpanded, activeThreads, routeThreadKey],
+    () => (activeShelfExpanded ? activeThreads : activeThreads.filter(isVisibleWhenCollapsed)),
+    [activeShelfExpanded, activeThreads, isVisibleWhenCollapsed],
   );
 
   const orderedThreads = useMemo(

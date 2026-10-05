@@ -1024,6 +1024,59 @@ function makePendingTask(id: string): PendingNewTask {
 
 describe("buildThreadListV2ListItems", () => {
   it.each(["pinned", "active"] as const)(
+    "keeps Done and Input threads visible in collapsed %s sections",
+    (section) => {
+      const done = makeThread({
+        id: ThreadId.make("done"),
+        title: "Done",
+        lastVisitedAt: "2026-06-01T00:00:00.000Z",
+        latestRun: {
+          runId: RunId.make("done-run"),
+          status: "completed",
+          requestedAt: NOW,
+          startedAt: NOW,
+          completedAt: NOW,
+          assistantMessageId: null,
+        },
+      });
+      const threads = [
+        done,
+        { ...done, id: ThreadId.make("read"), lastVisitedAt: NOW },
+        makeThread({ id: ThreadId.make("input"), title: "Input", hasPendingUserInput: true }),
+        makeThread({ id: ThreadId.make("ready"), title: "Ready" }),
+      ].map((thread) => ({ ...thread, pinnedAt: section === "pinned" ? NOW : null }));
+      const layout = buildThreadListV2Items({
+        threads,
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+      });
+      const input = {
+        items: layout.items,
+        pendingTasks: [],
+        pinnedShelfExpanded: false,
+        activeShelfExpanded: false,
+      };
+      const visibleIds = (items: ReturnType<typeof buildThreadListV2ListItems>) =>
+        items.flatMap((row) => (row.type === "v2-thread" ? [row.item.thread.id] : []));
+      expect(visibleIds(buildThreadListV2ListItems(input)).sort()).toEqual(["done", "input"]);
+      const acknowledged = buildThreadListV2Items({
+        threads: threads.map((thread) => ({
+          ...thread,
+          lastVisitedAt: NOW,
+          hasPendingUserInput: false,
+        })),
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+      });
+      expect(
+        visibleIds(buildThreadListV2ListItems({ ...input, items: acknowledged.items })),
+      ).toEqual([]);
+    },
+  );
+
+  it.each(["pinned", "active"] as const)(
     "collapses %s rows while keeping the selected thread and allowing expansion",
     (section) => {
       const layout = buildThreadListV2Items({

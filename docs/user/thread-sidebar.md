@@ -50,8 +50,9 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 Pin a thread from its menu to keep it above your active work.
 
 Click or tap the **Pinned** or **Active** heading to collapse or expand its section.
-Both start expanded and remember your choice on each client. The thread you are
-viewing stays visible even when its section is collapsed.
+Both start expanded and remember your choice on each client. Threads showing
+**Done** or **Input**, and the thread you are viewing, stay visible even when
+their section is collapsed.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous

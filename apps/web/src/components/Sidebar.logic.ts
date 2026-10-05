@@ -953,6 +953,14 @@ export type SidebarThreadStatus =
   | "limited"
   | "ready";
 
+export function shouldShowCollapsedSidebarThread(input: {
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isActive: boolean;
+}): boolean {
+  return input.isActive || input.status === "input" || (input.status === "ready" && input.isUnread);
+}
+
 export function shouldRecedeSidebarThread(input: {
   status: SidebarThreadStatus;
   isUnread: boolean;

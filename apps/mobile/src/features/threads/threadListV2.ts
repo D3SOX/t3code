@@ -588,11 +588,16 @@ export function buildThreadListV2ListItems(input: {
   const visibleRows = (rows: ThreadListV2ListItem[], expanded: boolean) =>
     expanded
       ? rows
-      : rows.filter(
-          (row) =>
-            row.type === "v2-thread" &&
-            `${row.item.thread.environmentId}:${row.item.thread.id}` === input.selectedThreadKey,
-        );
+      : rows.filter((row) => {
+          if (row.type !== "v2-thread") return false;
+          const thread = row.item.thread;
+          const status = resolveThreadListV2Status(thread);
+          return (
+            `${thread.environmentId}:${thread.id}` === input.selectedThreadKey ||
+            status === "input" ||
+            (status === "ready" && threadHasUnseenCompletion(thread))
+          );
+        });
   if (pinnedCount > 0) {
     result.push({
       type: "v2-section",
