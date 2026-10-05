@@ -1630,6 +1630,7 @@ export interface ChatComposerProps {
 
   // Queued runs strip rendered above the composer (v2 queue/steer).
   queuedRunsControl?: ReactNode;
+  onEditLatestQueuedMessage: (repeat: boolean) => boolean;
   // Queued-message edit mode: attachments already stored on the message being
   // edited. Rendered in the attachment strip with a remove control; removal is
   // client state in ChatView until the edit is saved.
@@ -1789,6 +1790,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onFileOpen,
     editingQueuedAttachments,
     onRemoveEditingQueuedAttachment,
+    onEditLatestQueuedMessage,
   } = props;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
@@ -4346,6 +4348,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (promptHistoryPositionRef.current === null && promptRef.current.length > 0) {
         return false;
       }
+      if (
+        direction === "backward" &&
+        promptRef.current.length === 0 &&
+        onEditLatestQueuedMessage(event.repeat)
+      ) {
+        return true;
+      }
       const editor = composerEditorRef.current;
       if (!editor?.isCaretOnVisualEdge(direction === "backward" ? "start" : "end")) {
         return false;
@@ -4368,6 +4377,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerPreviewAnnotations.length,
       composerReviewComments.length,
       isComposerApprovalState,
+      onEditLatestQueuedMessage,
       pendingUserInputs.length,
       promptRef,
       replacePromptFromHistory,

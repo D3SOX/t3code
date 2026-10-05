@@ -4532,6 +4532,10 @@ export default function ChatView(props: ChatViewProps) {
     reportFailure: false,
   });
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
+  const editLatestQueuedMessage = useCallback(
+    (repeat: boolean) => queuedRunsControlRef.current?.editLatest(repeat) ?? false,
+    [],
+  );
   const queuedEditSaveInFlightRef = useRef(false);
   const [isSavingQueuedEdit, setIsSavingQueuedEdit] = useState(false);
   const queuedEditImageResources = useMemo(
@@ -11315,6 +11319,7 @@ export default function ChatView(props: ChatViewProps) {
                               onFileOpen={openFileAttachment}
                               editingQueuedAttachments={composerEditingQueuedAttachments}
                               onRemoveEditingQueuedAttachment={removeEditingQueuedAttachment}
+                              onEditLatestQueuedMessage={editLatestQueuedMessage}
                             />
                           )}
                         </div>
