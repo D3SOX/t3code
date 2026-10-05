@@ -6,7 +6,7 @@ import type {
   Project,
   ThreadId,
 } from "@t3tools/contracts";
-import { ProviderInstanceId, RuntimeRequestId } from "@t3tools/contracts";
+import { MessageId, ProviderInstanceId, RuntimeRequestId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import { projectThreadAwarenessV2 } from "./agentAwareness.ts";
@@ -24,6 +24,7 @@ describe("projectThreadAwarenessV2", () => {
       Pick<
         OrchestrationV2ThreadShell,
         | "activityRunStatus"
+        | "latestRunUserMessageId"
         | "status"
         | "pendingBackgroundTasks"
         | "pendingRuntimeRequest"
@@ -53,6 +54,42 @@ describe("projectThreadAwarenessV2", () => {
         thread: v2Thread(),
       }),
     ).toMatchObject({ phase: "running", headline: "Agent is working" });
+  });
+
+  it.each([
+    ["completed", null],
+    ["running", "running"],
+    ["failed", "failed"],
+  ] as const)("projects PR-watch %s as %s", (status, phase) => {
+    const state = projectThreadAwarenessV2({
+      environmentId: "env-1" as EnvironmentId,
+      project,
+      thread: v2Thread({
+        status,
+        latestRunUserMessageId: MessageId.make("message:pr-watch:wake-1"),
+      }),
+    });
+    expect(state?.phase ?? null).toBe(phase);
+  });
+
+  it.each(["user_input", "command"] as const)("keeps PR-watch %s alerts", (kind) => {
+    expect(
+      projectThreadAwarenessV2({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: v2Thread({
+          status: "completed",
+          latestRunUserMessageId: MessageId.make("message:pr-watch:wake-1"),
+          pendingRuntimeRequest: {
+            id: RuntimeRequestId.make("request:pr-watch"),
+            kind,
+            createdAt: updatedAt,
+          },
+        }),
+      }),
+    ).toMatchObject({
+      phase: kind === "user_input" ? "waiting_for_input" : "waiting_for_approval",
+    });
   });
 
   it.each(["running", "completed", "failed"] as const)(

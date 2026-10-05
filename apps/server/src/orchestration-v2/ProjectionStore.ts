@@ -29,9 +29,9 @@ import type {
   ProviderTurnId,
   RunAttemptId,
   RuntimeRequestId,
-  MessageId,
 } from "@t3tools/contracts";
 import {
+  MessageId,
   OrchestrationV2AppThreadJson as OrchestrationV2AppThreadJsonSchema,
   OrchestrationV2CheckpointJson as OrchestrationV2CheckpointJsonSchema,
   OrchestrationV2CheckpointScopeJson as OrchestrationV2CheckpointScopeJsonSchema,
@@ -903,6 +903,7 @@ type ShellThreadRow = {
   readonly payload_json: string;
   readonly forked_from_run_source_thread_id: string | null;
   readonly latest_run_id: string | null;
+  readonly latest_run_user_message_id: string | null;
   readonly latest_run_status: string | null;
   readonly latest_run_requested_at: string | null;
   readonly latest_run_started_at: string | null;
@@ -913,6 +914,7 @@ type ShellThreadRow = {
   readonly last_error: string | null;
   readonly terminal_failure_payload_json: string | null;
   readonly blocking_run_id: string | null;
+  readonly blocking_run_user_message_id: string | null;
   readonly blocking_run_requested_at: string | null;
   readonly blocking_run_started_at: string | null;
   readonly blocking_run_completed_at: string | null;
@@ -1376,6 +1378,7 @@ export function threadShellFromProjection(
       ? {}
       : { historyOrigin: projection.thread.historyOrigin }),
     latestRunId: latestRun?.id ?? null,
+    latestRunUserMessageId: latestRun?.userMessageId ?? null,
     latestRunRequestedAt: latestRun?.requestedAt ?? null,
     latestRunStartedAt: latestRun?.startedAt ?? null,
     latestRunCompletedAt: latestRun?.completedAt ?? null,
@@ -1474,6 +1477,7 @@ function isActivityRunForShell(
 type ShellThreadState = {
   readonly thread: OrchestrationV2ThreadProjection["thread"];
   readonly latestRunId: RunId | null;
+  readonly latestRunUserMessageId: MessageId | null;
   readonly latestRunStatus: OrchestrationV2ShellThreadStatus;
   readonly latestRunRequestedAt: DateTime.Utc | null;
   readonly latestRunStartedAt: DateTime.Utc | null;
@@ -1612,6 +1616,7 @@ function shellFromState(input: {
       ? {}
       : { historyOrigin: input.state.thread.historyOrigin }),
     latestRunId: input.state.latestRunId,
+    latestRunUserMessageId: input.state.latestRunUserMessageId,
     latestRunRequestedAt: input.state.latestRunRequestedAt,
     latestRunStartedAt: input.state.latestRunStartedAt,
     latestRunCompletedAt: input.state.latestRunCompletedAt,
@@ -4820,6 +4825,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ELSE NULL
               END AS forked_from_run_source_thread_id,
               presented.run_id AS latest_run_id,
+              json_extract(presented.payload_json, '$.userMessageId') AS latest_run_user_message_id,
               presented.status AS latest_run_status,
               presented.requested_at AS latest_run_requested_at,
               json_extract(presented.payload_json, '$.startedAt') AS latest_run_started_at,
@@ -4877,6 +4883,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 LIMIT 1
               ) AS terminal_failure_payload_json,
               blocked.run_id AS blocking_run_id,
+              json_extract(blocked.payload_json, '$.userMessageId') AS blocking_run_user_message_id,
               blocked.requested_at AS blocking_run_requested_at,
               json_extract(blocked.payload_json, '$.startedAt') AS blocking_run_started_at,
               blocked.completed_at AS blocking_run_completed_at,
@@ -5270,6 +5277,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? null
             : yield* decodeTurnItemPayload(row.terminal_failure_payload_json);
         let latestRunId = row.latest_run_id === null ? null : RunId.make(row.latest_run_id);
+        let latestRunUserMessageId =
+          row.latest_run_user_message_id === null
+            ? null
+            : MessageId.make(row.latest_run_user_message_id);
         let latestRunStatus = shellStatusFromStoredRunStatus(row.latest_run_status);
         let latestRunRequestedAt =
           row.latest_run_requested_at === null
@@ -5295,6 +5306,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           if (blocksQueue && blockingFailure !== null) {
             terminalFailureItem = blockingFailure;
             latestRunId = RunId.make(row.blocking_run_id);
+            latestRunUserMessageId =
+              row.blocking_run_user_message_id === null
+                ? null
+                : MessageId.make(row.blocking_run_user_message_id);
             latestRunStatus = "failed";
             latestRunRequestedAt =
               row.blocking_run_requested_at === null
@@ -5329,6 +5344,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return {
           thread,
           latestRunId,
+          latestRunUserMessageId,
           latestRunStatus,
           latestRunRequestedAt,
           latestRunStartedAt,

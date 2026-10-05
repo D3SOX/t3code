@@ -43,6 +43,7 @@ export interface ProjectThreadAwarenessV2Input {
   readonly thread: Pick<
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
+    | "latestRunUserMessageId"
     | "id"
     | "lineage"
     | "modelSelection"
@@ -84,6 +85,13 @@ export function projectThreadAwarenessV2(
   };
 }
 
+/** PR-watch wakes use this reserved message ID prefix rather than a user prompt. */
+export function isPullRequestWatchRun(
+  thread: Pick<OrchestrationV2ThreadShell, "latestRunUserMessageId">,
+): boolean {
+  return thread.latestRunUserMessageId?.startsWith("message:pr-watch:") === true;
+}
+
 function resolveThreadAwarenessPhaseV2(
   thread: ProjectThreadAwarenessV2Input["thread"],
 ): AgentAwarenessPhase | null {
@@ -107,7 +115,9 @@ function resolveThreadAwarenessPhaseV2(
       // Work that will wake the agent keeps the run going; a dev server does not.
       return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
         ? "running"
-        : "completed";
+        : isPullRequestWatchRun(thread)
+          ? null
+          : "completed";
     case "failed":
       return "failed";
     case "idle":

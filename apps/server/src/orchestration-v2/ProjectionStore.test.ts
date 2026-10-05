@@ -1907,6 +1907,9 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
         DateTime.toEpochMillis(now),
       );
       assert.isNull(shell?.latestRunCompletedAt);
+      assert.equal(shell?.latestRunUserMessageId, run.userMessageId);
+
+      const prWatchMessageId = MessageId.make("message:pr-watch:shell-test");
 
       yield* projectionStore.apply({
         id: EventId.make("event:projection-shell-interruptible:waiting"),
@@ -1916,13 +1919,20 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
         nodeId: rootNodeId,
         driver,
         occurredAt: now,
-        payload: { ...run, status: "waiting" },
+        payload: { ...run, userMessageId: prWatchMessageId, status: "waiting" },
       });
 
       shell = (yield* projectionStore.getShellSnapshot()).threads.find(
         (thread) => thread.id === threadId,
       );
       assert.equal(shell?.status, "waiting");
+      assert.equal(shell?.latestRunUserMessageId, prWatchMessageId);
+      assert.equal(
+        ProjectionStore.threadShellFromProjection(
+          yield* projectionStore.getThreadProjection(threadId),
+        ).latestRunUserMessageId,
+        prWatchMessageId,
+      );
       assert.isNull(shell?.activeRunId);
       const later = DateTime.add(now, { hours: 1 });
       for (const status of ["queued", "cancelled"] as const) {

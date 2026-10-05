@@ -2,6 +2,7 @@ import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { isPullRequestWatchRun } from "@t3tools/shared/agentAwareness";
 import * as Option from "effect/Option";
 import {
   CircleAlertIcon,
@@ -208,7 +209,9 @@ function EnvironmentNotifications({
       const kind =
         attention && attention !== prior.attention
           ? "input"
-          : completion !== null && (prior.completion === null || completion > prior.completion)
+          : !isPullRequestWatchRun(rawThread) &&
+              completion !== null &&
+              (prior.completion === null || completion > prior.completion)
             ? "completion"
             : null;
       if (!kind) continue;

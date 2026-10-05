@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   queued: false,
   limited: false,
   subagent: false,
+  prWatch: false,
   background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
   add: vi.fn(
     (_toast: {
@@ -62,6 +63,7 @@ function mockThreadShell() {
     createdBy: "user",
     creationSource: "web",
     latestRunId: "run-1",
+    latestRunUserMessageId: state.prWatch ? "message:pr-watch:wake-1" : "message:user-1",
     activeRunId: null,
     status: state.queued
       ? "queued"
@@ -162,6 +164,7 @@ beforeEach(() => {
     queued: false,
     limited: false,
     subagent: false,
+    prWatch: false,
     background: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -262,6 +265,41 @@ describe("thread notifications", () => {
     expect(state.sound).toHaveBeenCalledOnce();
     expect(state.notification).toHaveBeenCalledOnce();
   });
+
+  it("keeps PR-watch completions silent and still notifies the next user turn", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    state.prWatch = true;
+    await render();
+    await complete();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+    await render();
+    expect(state.sound).not.toHaveBeenCalled();
+
+    state.prWatch = false;
+    state.completedAt = null;
+    await render();
+    state.completedAt = "2026-09-13T11:00:00.000Z";
+    await render();
+    expect(state.notification).toHaveBeenCalledOnce();
+    expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
+  });
+
+  it.each(["input", "approval", "turnError", "limited"] as const)(
+    "still alerts for PR-watch %s",
+    async (event) => {
+      state.mode = "notifications-and-sound";
+      state.focused = false;
+      state.prWatch = true;
+      await render();
+      state[event] = true;
+      await render();
+      expect(state.notification).toHaveBeenCalledOnce();
+      expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
+    },
+  );
 
   it.each([true, false])("keeps subagents silent with focus=%s", async (focused) => {
     state.subagent = true;
