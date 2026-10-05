@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 
@@ -13,6 +13,28 @@ export function useThreadListV2ShelfPreferences() {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const loaded = AsyncResult.isSuccess(preferencesResult);
+  const pinnedShelfExpanded =
+    !loaded || preferencesResult.value.threadListPinnedShelfExpanded !== false;
+  const activeShelfExpanded =
+    !loaded || preferencesResult.value.threadListActiveShelfExpanded !== false;
+  const pinnedShelfExpandedRef = useRef(pinnedShelfExpanded);
+  const activeShelfExpandedRef = useRef(activeShelfExpanded);
+  useEffect(() => {
+    pinnedShelfExpandedRef.current = pinnedShelfExpanded;
+    activeShelfExpandedRef.current = activeShelfExpanded;
+  }, [pinnedShelfExpanded, activeShelfExpanded]);
+  const togglePinnedShelf = useCallback(() => {
+    if (!loaded) return;
+    const expanded = !pinnedShelfExpandedRef.current;
+    pinnedShelfExpandedRef.current = expanded;
+    savePreferences({ threadListPinnedShelfExpanded: expanded });
+  }, [loaded, savePreferences]);
+  const toggleActiveShelf = useCallback(() => {
+    if (!loaded) return;
+    const expanded = !activeShelfExpandedRef.current;
+    activeShelfExpandedRef.current = expanded;
+    savePreferences({ threadListActiveShelfExpanded: expanded });
+  }, [loaded, savePreferences]);
   const snoozedShelfExpanded =
     loaded && preferencesResult.value.threadListSnoozedShelfExpanded === true;
   const settledShelfExpanded =
@@ -49,6 +71,10 @@ export function useThreadListV2ShelfPreferences() {
 
   return {
     loaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
+    togglePinnedShelf,
+    toggleActiveShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,

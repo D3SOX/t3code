@@ -1369,6 +1369,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
+  isInterruptBusy?: boolean;
   sendDisabledReason: string | null;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
@@ -1408,6 +1409,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
+        isInterruptBusy={props.isInterruptBusy ?? false}
         sendDisabledReason={props.sendDisabledReason}
         isConnecting={props.isConnecting}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
@@ -1534,6 +1536,7 @@ export interface ChatComposerProps {
   canInterrupt: boolean;
   isConnecting: boolean;
   isSendBusy: boolean;
+  isInterruptBusy?: boolean;
   canResume: boolean;
   isRevertingCheckpoint?: boolean;
   sendDisabledReason: string | null;
@@ -1710,6 +1713,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     canInterrupt,
     isConnecting,
     isSendBusy,
+    isInterruptBusy = false,
     canResume,
     isRevertingCheckpoint = false,
     sendDisabledReason: externalSendDisabledReason,
@@ -4189,7 +4193,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 alternateModifier: false,
                 activeTurnDefault: settings.followUpBehavior,
               }),
-            submissionIntent,
+            submissionIntent ??
+              (routeKind === "draft" && settings.startThreadsInBackground
+                ? "background"
+                : "foreground"),
           );
           return !providerInputRejectedRef.current;
         },
@@ -4209,6 +4216,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       noProviderAvailable,
       onSend,
       settings.followUpBehavior,
+      settings.startThreadsInBackground,
+      routeKind,
       phase,
       promptRef,
       shouldBlurMobileComposerOnSubmit,
@@ -4376,6 +4385,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isDraftThread: routeKind === "draft",
       isRunning: phase === "running",
       sendShortcut: settings.sendShortcut,
+      startThreadsInBackground: settings.startThreadsInBackground,
       prompt: promptRef.current,
     });
     if (key === "Tab" && event.shiftKey && submissionIntent === null) {
@@ -6724,6 +6734,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               showPlanFollowUpPrompt={false}
                               promptHasText={false}
                               isSendBusy={isSendBusy}
+                              isInterruptBusy={isInterruptBusy}
                               sendDisabledReason={sendDisabledReason}
                               isConnecting={isConnecting}
                               isEnvironmentUnavailable={
@@ -7411,6 +7422,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       showPlanFollowUpPrompt={false}
                       promptHasText={false}
                       isSendBusy={isSendBusy}
+                      isInterruptBusy={isInterruptBusy}
                       sendDisabledReason={sendDisabledReason}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
@@ -7535,6 +7547,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     promptHasText={prompt.trim().length > 0}
                     isSendBusy={isSendBusy}
+                    isInterruptBusy={isInterruptBusy}
                     sendDisabledReason={sendDisabledReason}
                     isConnecting={isConnecting}
                     isEnvironmentUnavailable={

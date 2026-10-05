@@ -1,5 +1,9 @@
 # Terminal history
 
+Closing a terminal stops its processes and deletes its saved history. Web and
+desktop clients close without confirmation by default. Enable **Settings →
+General → Confirmations → Terminal close confirmation** to ask before closing.
+
 Each terminal keeps up to 5,000 lines and 8 MiB of scrollback on its environment
 server. T3 Code removes the oldest output when either limit is reached. A long
 line can be shortened at the start. New terminal output is not truncated.

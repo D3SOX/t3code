@@ -292,6 +292,8 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
+const PINNED_SHELF_EXPANDED_KEY = "t3code:sidebar:pinned-expanded";
+const ACTIVE_SHELF_EXPANDED_KEY = "t3code:sidebar:active-expanded";
 
 // Working beta: when this client saw each thread leave the Working shelf.
 // Module scope keeps the inbox order across routes that unmount the sidebar.
@@ -727,14 +729,23 @@ function SidebarDragBoundary(props: {
   visible: boolean;
   persistent: boolean;
   isDropTarget: boolean;
+  toggle: { expanded: boolean; onToggle: () => void };
 }) {
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("pointer-events-none relative mx-0.5 -mb-px", props.persistent ? "h-6" : "h-0")}
+      className={cn("relative mx-0.5 -mb-px", props.persistent ? "h-8" : "pointer-events-none h-0")}
     >
-      {props.visible ? (
+      {props.persistent ? (
+        <CollapsibleSectionHeader
+          expanded={props.toggle.expanded}
+          onClick={props.toggle.onToggle}
+          tone={props.isDropTarget ? "accent" : "emphasized"}
+        >
+          {props.label}
+        </CollapsibleSectionHeader>
+      ) : props.visible ? (
         <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
           <span
             className={cn(
@@ -2989,17 +3000,48 @@ export default function Sidebar() {
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [routeThreadKey, workingShelfExpanded, workingThreads]);
 
+  const [pinnedShelfExpanded, setPinnedShelfExpanded] = useLocalStorage(
+    PINNED_SHELF_EXPANDED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const [activeShelfExpanded, setActiveShelfExpanded] = useLocalStorage(
+    ACTIVE_SHELF_EXPANDED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const visiblePinnedThreads = useMemo(
+    () =>
+      pinnedShelfExpanded
+        ? pinnedThreads
+        : pinnedThreads.filter(
+            (thread) =>
+              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+          ),
+    [pinnedShelfExpanded, pinnedThreads, routeThreadKey],
+  );
+  const visibleActiveThreads = useMemo(
+    () =>
+      activeShelfExpanded
+        ? activeThreads
+        : activeThreads.filter(
+            (thread) =>
+              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+          ),
+    [activeShelfExpanded, activeThreads, routeThreadKey],
+  );
+
   const orderedThreads = useMemo(
     () => [
-      ...pinnedThreads,
-      ...activeThreads,
+      ...visiblePinnedThreads,
+      ...visibleActiveThreads,
       ...visibleWorkingThreads,
       ...visibleSnoozedThreads,
       ...renderedSettledThreads,
     ],
     [
-      pinnedThreads,
-      activeThreads,
+      visiblePinnedThreads,
+      visibleActiveThreads,
       visibleWorkingThreads,
       visibleSnoozedThreads,
       renderedSettledThreads,
@@ -3692,8 +3734,11 @@ export default function Sidebar() {
       if (list && header) {
         const listRect = list.getBoundingClientRect();
         const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
+        const headerRect = header.getBoundingClientRect();
         dragLabelOffsetRef.current =
-          header.getBoundingClientRect().top - listRect.top + SIDEBAR_DRAG_LABEL_HEIGHT * scale;
+          headerRect.top -
+          listRect.top +
+          Math.max(headerRect.height, SIDEBAR_DRAG_LABEL_HEIGHT * scale);
       } else {
         dragLabelOffsetRef.current = 0;
       }
@@ -3731,10 +3776,10 @@ export default function Sidebar() {
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
+    const pinnedRows = rowsOf(visiblePinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
-    const activeRows = rowsOf(activeThreads, "active");
+    const activeRows = rowsOf(visibleActiveThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
     if (workingThreads.length > 0) {
@@ -3753,6 +3798,8 @@ export default function Sidebar() {
   }, [
     activeThreads,
     pinnedThreads,
+    visiblePinnedThreads,
+    visibleActiveThreads,
     renderedSettledThreads,
     settledThreads.length,
     snoozedThreads.length,
@@ -5266,10 +5313,18 @@ export default function Sidebar() {
                               <SidebarDragBoundary
                                 key="pinned-header"
                                 marker="pinned-header"
-                                label="Pinned"
+                                label={
+                                  pinnedShelfExpanded
+                                    ? "Pinned"
+                                    : `Pinned (${pinnedThreads.length})`
+                                }
                                 visible={from !== null || pinnedThreads.length > 0}
                                 persistent={pinnedThreads.length > 0}
                                 isDropTarget={dragTargetSection === "pinned"}
+                                toggle={{
+                                  expanded: pinnedShelfExpanded,
+                                  onToggle: () => setPinnedShelfExpanded((value) => !value),
+                                }}
                               />,
                             );
                             break;
@@ -5278,10 +5333,20 @@ export default function Sidebar() {
                               <SidebarDragBoundary
                                 key="pinned-divider"
                                 marker="pinned-divider"
-                                label="Active"
-                                visible={from !== null || pinnedThreads.length > 0}
-                                persistent={pinnedThreads.length > 0}
+                                label={
+                                  activeShelfExpanded
+                                    ? "Active"
+                                    : `Active (${activeThreads.length})`
+                                }
+                                visible={
+                                  from !== null || pinnedThreads.length + activeThreads.length > 0
+                                }
+                                persistent={pinnedThreads.length + activeThreads.length > 0}
                                 isDropTarget={dragTargetSection === "active"}
+                                toggle={{
+                                  expanded: activeShelfExpanded,
+                                  onToggle: () => setActiveShelfExpanded((value) => !value),
+                                }}
                               />,
                             );
                             break;

@@ -467,6 +467,10 @@ export function HomeScreen(props: HomeScreenProps) {
   );
   const {
     loaded: shelfPreferencesLoaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
+    togglePinnedShelf,
+    toggleActiveShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
@@ -637,6 +641,9 @@ export function HomeScreen(props: HomeScreenProps) {
         queuedThreadKeys,
         moveAvailability: threadMoveAvailability,
         shelfPreferencesLoading: !shelfPreferencesLoaded,
+        pinnedShelfExpanded,
+        activeShelfExpanded,
+        selectedThreadKey: null,
       }),
     [
       nowMinute,
@@ -644,6 +651,8 @@ export function HomeScreen(props: HomeScreenProps) {
       threadMoveAvailability,
       settledShelfExpanded,
       shelfPreferencesLoaded,
+      pinnedShelfExpanded,
+      activeShelfExpanded,
       snoozedShelfExpanded,
       snoozeEnvironmentIds,
       threadListV2Layout,
@@ -684,7 +693,15 @@ export function HomeScreen(props: HomeScreenProps) {
         );
       }
       if (item.type === "v2-section") {
-        return <ThreadListV2SectionDivider label={item.label} />;
+        return (
+          <ThreadListV2SectionDivider
+            label={item.label}
+            count={item.count}
+            expanded={item.expanded}
+            disabled={item.disabled}
+            onToggle={item.label === "Pinned" ? togglePinnedShelf : toggleActiveShelf}
+          />
+        );
       }
       if (item.type === "v2-working-shelf") {
         return (
@@ -817,6 +834,8 @@ export function HomeScreen(props: HomeScreenProps) {
       toggleSettledShelf,
       toggleSnoozedShelf,
       toggleWorkingShelf,
+      togglePinnedShelf,
+      toggleActiveShelf,
       v2ProjectTitleByProjectKey,
       props.searchQuery,
       workingShelfEnabled,

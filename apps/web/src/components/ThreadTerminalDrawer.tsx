@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { requestTerminalClose } from "../terminalCloseConfirmation";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -1508,7 +1509,7 @@ export default function ThreadTerminalDrawer({
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
-              onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
+              onClick={() => requestTerminalClose(() => onCloseTerminal(resolvedActiveTerminalId))}
               label={closeTerminalActionLabel}
             >
               <Trash2 className="size-3.25" />
@@ -1652,7 +1653,9 @@ export default function ThreadTerminalDrawer({
                   </TerminalActionButton>
                   <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
-                    onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
+                    onClick={() =>
+                      requestTerminalClose(() => onCloseTerminal(resolvedActiveTerminalId))
+                    }
                     label={closeTerminalActionLabel}
                   >
                     <Trash2 className="size-3.25" />
@@ -1719,7 +1722,9 @@ export default function ThreadTerminalDrawer({
                             >
                               <PanelTabCloseButton
                                 label={closeTerminalLabel}
-                                onClick={() => onCloseTerminal(terminalId)}
+                                onClick={() =>
+                                  requestTerminalClose(() => onCloseTerminal(terminalId))
+                                }
                                 tooltip={closeTerminalLabel}
                               >
                                 <TerminalSquare className="size-3 shrink-0" />

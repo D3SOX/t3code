@@ -374,6 +374,9 @@ export interface ThreadListV2SectionListItem {
   readonly type: "v2-section";
   readonly key: "v2-pinned-header" | "v2-active-header";
   readonly label: "Pinned" | "Active";
+  readonly count?: number;
+  readonly expanded?: boolean;
+  readonly disabled?: boolean;
 }
 
 export type ThreadListV2ListItem =
@@ -412,7 +415,13 @@ export function threadListV2ListItemsAreEqual(
 ): boolean {
   switch (item.type) {
     case "v2-section":
-      return previous.type === "v2-section" && previous.key === item.key;
+      return (
+        previous.type === "v2-section" &&
+        previous.key === item.key &&
+        previous.count === item.count &&
+        previous.expanded === item.expanded &&
+        previous.disabled === item.disabled
+      );
     case "v2-thread":
       return (
         previous.type === "v2-thread" &&
@@ -492,6 +501,9 @@ function resolveThreadListV2ItemTimeLabel(
 export function buildThreadListV2ListItems(input: {
   readonly items: ReadonlyArray<ThreadListV2Item>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
+  readonly pinnedShelfExpanded?: boolean;
+  readonly activeShelfExpanded?: boolean;
+  readonly selectedThreadKey?: string | null;
   readonly workingCount?: number;
   readonly workingShelfExpanded?: boolean;
   readonly workingShelfHeaderIndex?: number | null;
@@ -572,13 +584,42 @@ export function buildThreadListV2ListItems(input: {
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
   const pinnedCount = input.items.filter((item) => item.pinned).length;
   const result: ThreadListV2ListItem[] = [];
-  if (pinnedCount > 0) {
-    result.push({ type: "v2-section", key: "v2-pinned-header", label: "Pinned" });
-    result.push(...threadItems.slice(0, pinnedCount));
-    result.push({ type: "v2-section", key: "v2-active-header", label: "Active" });
-  }
-  result.push(...threadItems.slice(pinnedCount, activeEnd), ...pendingItems);
   const shelfDisabled = input.shelfPreferencesLoading === true;
+  const visibleRows = (rows: ThreadListV2ListItem[], expanded: boolean) =>
+    expanded
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.type === "v2-thread" &&
+            `${row.item.thread.environmentId}:${row.item.thread.id}` === input.selectedThreadKey,
+        );
+  if (pinnedCount > 0) {
+    result.push({
+      type: "v2-section",
+      key: "v2-pinned-header",
+      label: "Pinned",
+      count: pinnedCount,
+      expanded: input.pinnedShelfExpanded !== false,
+      disabled: shelfDisabled,
+    });
+    result.push(
+      ...visibleRows(threadItems.slice(0, pinnedCount), input.pinnedShelfExpanded !== false),
+    );
+  }
+  if (pinnedCount > 0 || activeEnd > pinnedCount || pendingItems.length > 0) {
+    result.push({
+      type: "v2-section",
+      key: "v2-active-header",
+      label: "Active",
+      count: activeEnd - pinnedCount + pendingItems.length,
+      expanded: input.activeShelfExpanded !== false,
+      disabled: shelfDisabled,
+    });
+  }
+  result.push(
+    ...visibleRows(threadItems.slice(pinnedCount, activeEnd), input.activeShelfExpanded !== false),
+  );
+  if (input.activeShelfExpanded !== false) result.push(...pendingItems);
   if (workingShelfHeaderIndex !== null && workingCount > 0) {
     result.push({
       type: "v2-working-shelf",

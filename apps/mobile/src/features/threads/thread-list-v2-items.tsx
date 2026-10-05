@@ -181,8 +181,28 @@ function ThreadListV2Section(props: {
 export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivider(props: {
   readonly label: string;
   readonly pane?: "screen" | "sidebar";
+  readonly count?: number;
+  readonly expanded?: boolean;
+  readonly disabled?: boolean;
+  readonly onToggle?: () => void;
 }) {
-  return <ThreadListV2Section {...props} />;
+  return (
+    <ThreadListV2Section
+      label={props.expanded === false ? `${props.label} (${props.count})` : props.label}
+      pane={props.pane}
+      disclosure={
+        props.onToggle === undefined
+          ? undefined
+          : {
+              expanded: props.expanded !== false,
+              disabled: props.disabled,
+              onToggle: props.onToggle,
+              accessibilityLabel: `${props.count} ${props.label.toLowerCase()} threads`,
+              accessibilityHint: `${props.expanded === false ? "Expands" : "Collapses"} the ${props.label.toLowerCase()} threads.`,
+            }
+      }
+    />
+  );
 });
 
 type ThreadListV2ShelfHeaderProps = {

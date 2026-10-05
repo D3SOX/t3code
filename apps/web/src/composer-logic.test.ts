@@ -78,6 +78,15 @@ describe("composerSubmissionIntentForKey", () => {
   };
   const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
 
+  it("starts drafts in the background by default and allows opting out", () => {
+    const draft = { ...input, event: enter, isDraftThread: true };
+    expect(composerSubmissionIntentForKey(draft)).toBe("background");
+    expect(composerSubmissionIntentForKey({ ...draft, startThreadsInBackground: false })).toBe(
+      "foreground",
+    );
+    expect(composerSubmissionIntentForKey({ ...draft, isDraftThread: false })).toBe("foreground");
+  });
+
   it.each([
     ["enter", "one line", false, "foreground"],
     ["enter", "two\nlines", false, "foreground"],

@@ -170,6 +170,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
+import { requestTerminalClose } from "../terminalCloseConfirmation";
 import { useDiffPanelStore } from "../diffPanelStore";
 import {
   type ComposerSubmissionIntent,
@@ -4478,20 +4479,29 @@ export default function ChatView(props: ChatViewProps) {
     activeThread !== undefined,
     activeRuntime,
   );
-  const onInterrupt = useCallback(async () => {
-    if (!activeThread) return;
-    const result = await interruptThreadTurn({
-      environmentId,
-      input: { threadId: activeThread.id },
-    });
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      const error = squashAtomCommandFailure(result);
-      setThreadError(
-        activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
-      );
+  const [pendingInterruptThreadKey, setPendingInterruptThreadKey] = useState<string | null>(null);
+  const interruptInFlight = useRef(false);
+  const onInterrupt = async () => {
+    if (!activeThread || interruptInFlight.current) return;
+    interruptInFlight.current = true;
+    setPendingInterruptThreadKey(routeThreadKey);
+    try {
+      const result = await interruptThreadTurn({
+        environmentId,
+        input: { threadId: activeThread.id },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        setThreadError(
+          activeThread.id,
+          error instanceof Error ? error.message : "Failed to interrupt the current turn.",
+        );
+      }
+    } finally {
+      interruptInFlight.current = false;
+      setPendingInterruptThreadKey(null);
     }
-  }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
+  };
   useEffect(() => subscribeSnapShotComposerFocus(focusComposer), [focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -5763,8 +5773,14 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeRightPanelSurface, activeThreadRef, closeTerminalMutation, storeCloseTerminal],
   );
-  const requestCloseTerminal = closeTerminal;
-  const requestClosePanelTerminal = closePanelTerminal;
+  const requestCloseTerminal = useCallback(
+    (terminalId: string) => requestTerminalClose(() => closeTerminal(terminalId)),
+    [closeTerminal],
+  );
+  const requestClosePanelTerminal = useCallback(
+    (terminalId: string) => requestTerminalClose(() => closePanelTerminal(terminalId)),
+    [closePanelTerminal],
+  );
   const activateRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
@@ -5836,15 +5852,22 @@ export default function ChatView(props: ChatViewProps) {
         surfaces,
         activePreviewState.desktopByTabId,
       );
+      const finishClose = () => {
+        if (surfaces.some((surface) => surface.kind === "terminal")) {
+          requestTerminalClose(closeSurfaces);
+        } else {
+          closeSurfaces();
+        }
+      };
       if (!message) {
-        closeSurfaces();
+        finishClose();
         return;
       }
       const localApi = readLocalApi();
       if (!localApi) return;
       void localApi.dialogs.confirm(message, { variant: "destructive" }).then(
         (confirmed) => {
-          if (confirmed) closeSurfaces();
+          if (confirmed) finishClose();
         },
         () => undefined,
       );
@@ -5885,14 +5908,9 @@ export default function ChatView(props: ChatViewProps) {
         finishClose();
         return;
       }
-      finishClose();
+      requestTerminalClose(finishClose);
     },
-    [
-      activeThreadRef,
-      activeTerminalLabelsById,
-      closeAfterAgentBrowserConfirmation,
-      finishRightPanelSurfaceClose,
-    ],
+    [activeThreadRef, closeAfterAgentBrowserConfirmation, finishRightPanelSurfaceClose],
   );
   const closeOtherRightPanelSurfaces = useCallback(
     (surface: RightPanelSurface) => {
@@ -8313,7 +8331,8 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
-  const onSend = async (
+  const [pendingSendThreadKey, setPendingSendThreadKey] = useState<string | null>(null);
+  const sendMessage = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
     submissionIntent: ComposerSubmissionIntent = "foreground",
@@ -9647,6 +9666,17 @@ export default function ChatView(props: ChatViewProps) {
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
       );
       resetLocalDispatch();
+    }
+  };
+
+  const onSend = async (...args: Parameters<typeof sendMessage>) => {
+    if (sendInFlightRef.current) return;
+    setPendingSendThreadKey(routeThreadKey);
+    try {
+      await sendMessage(...args);
+    } finally {
+      sendInFlightRef.current = false;
+      setPendingSendThreadKey((key) => (key === routeThreadKey ? null : key));
     }
   };
 
@@ -11138,7 +11168,13 @@ export default function ChatView(props: ChatViewProps) {
                               phase={phase}
                               canInterrupt={canInterruptRunningThread}
                               isConnecting={isConnecting}
-                              isSendBusy={isSendBusy || isSavingQueuedEdit || isResuming}
+                              isSendBusy={
+                                isSendBusy ||
+                                isSavingQueuedEdit ||
+                                isResuming ||
+                                pendingSendThreadKey === routeThreadKey
+                              }
+                              isInterruptBusy={pendingInterruptThreadKey === routeThreadKey}
                               canResume={resumableRunId !== null || hasHeldQueuedRuns}
                               isRevertingCheckpoint={isRevertingCheckpoint}
                               sendDisabledReason={

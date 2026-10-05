@@ -1023,8 +1023,76 @@ function makePendingTask(id: string): PendingNewTask {
 }
 
 describe("buildThreadListV2ListItems", () => {
+  it.each(["pinned", "active"] as const)(
+    "collapses %s rows while keeping the selected thread and allowing expansion",
+    (section) => {
+      const layout = buildThreadListV2Items({
+        threads: ["selected", "other"].map((id) =>
+          makeThread({
+            id: ThreadId.make(id),
+            title: id,
+            pinnedAt: section === "pinned" ? NOW : null,
+          }),
+        ),
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+      });
+      const input = {
+        items: layout.items,
+        pendingTasks: [],
+        selectedThreadKey: `${environmentId}:selected`,
+        pinnedShelfExpanded: section !== "pinned",
+        activeShelfExpanded: section !== "active",
+      };
+      const collapsed = buildThreadListV2ListItems(input);
+      expect(
+        collapsed.filter((row) => row.type === "v2-thread").map((row) => row.item.thread.id),
+      ).toEqual(["selected"]);
+      expect(collapsed.find((row) => row.key === `v2-${section}-header`)).toMatchObject({
+        count: 2,
+        expanded: false,
+      });
+      const expanded = buildThreadListV2ListItems({
+        ...input,
+        pinnedShelfExpanded: true,
+        activeShelfExpanded: true,
+      });
+      expect(expanded.filter((row) => row.type === "v2-thread")).toHaveLength(2);
+      expect(
+        threadListV2ListItemsAreEqual(
+          collapsed.find((row) => row.key === `v2-${section}-header`)!,
+          expanded.find((row) => row.key === `v2-${section}-header`)!,
+        ),
+      ).toBe(false);
+      expect(
+        buildThreadListV2ListItems({ ...input, selectedThreadKey: null }).filter(
+          (row) => row.type === "v2-thread",
+        ),
+      ).toHaveLength(0);
+    },
+  );
+
+  it("hides pending tasks in a collapsed Active section and restores them on expansion", () => {
+    const input = { items: [], pendingTasks: [makePendingTask("queued")] };
+    const collapsed = buildThreadListV2ListItems({ ...input, activeShelfExpanded: false });
+    expect(collapsed).toEqual([
+      {
+        type: "v2-section",
+        key: "v2-active-header",
+        label: "Active",
+        count: 1,
+        expanded: false,
+        disabled: false,
+      },
+    ]);
+    expect(
+      buildThreadListV2ListItems(input).filter((row) => row.type === "v2-pending"),
+    ).toHaveLength(1);
+  });
+
   it.each([0, 1, 2])(
-    "shows Pinned and Active headings only with pinned threads (%s pins)",
+    "shows an Active heading and a Pinned heading when pins exist (%s pins)",
     (pinCount) => {
       const layout = buildThreadListV2Items({
         threads: [
@@ -1058,7 +1126,7 @@ describe("buildThreadListV2ListItems", () => {
               "Active",
               "active",
             ]
-          : ["active"],
+          : ["Active", "active"],
       );
       const lastPin = items.findLast((item) => item.type === "v2-thread" && item.item.pinned);
       if (lastPin?.type === "v2-thread") expect(lastPin.showTrailingDivider).toBe(false);
@@ -1096,9 +1164,11 @@ describe("buildThreadListV2ListItems", () => {
             ? item.item.thread.id
             : item.type === "v2-snoozed-shelf"
               ? "snoozed-shelf"
-              : "settled-shelf",
+              : item.type === "v2-section"
+                ? item.label
+                : "settled-shelf",
       ),
-    ).toEqual(["active", "queued-1", "queued-2", "settled-shelf", "settled"]);
+    ).toEqual(["Active", "active", "queued-1", "queued-2", "settled-shelf", "settled"]);
     // Only the leading queued row labels the section, exactly like Settled.
     expect(
       items.filter((item) => item.type === "v2-pending" && item.showPendingDivider),
@@ -1117,7 +1187,7 @@ describe("buildThreadListV2ListItems", () => {
       pendingTasks: [makePendingTask("queued-1")],
     });
 
-    expect(items.map((item) => item.type)).toEqual(["v2-thread", "v2-pending"]);
+    expect(items.map((item) => item.type)).toEqual(["v2-section", "v2-thread", "v2-pending"]);
   });
 
   it("keeps the settled shelf between active and settled rows when nothing is queued", () => {
@@ -1129,6 +1199,7 @@ describe("buildThreadListV2ListItems", () => {
     });
 
     expect(items.map((item) => item.key)).toEqual([
+      "v2-active-header",
       `v2-thread:${environmentId}:active`,
       "v2-settled-shelf",
       `v2-thread:${environmentId}:settled`,
@@ -1167,6 +1238,7 @@ describe("buildThreadListV2ListItems", () => {
     });
 
     expect(items.map((item) => item.type)).toEqual([
+      "v2-section",
       "v2-thread",
       "v2-pending",
       "v2-snoozed-shelf",
@@ -1869,8 +1941,8 @@ describe("threadListV2ListItemsAreEqual", () => {
       settledShelfHeaderIndex: 1,
       snoozeLabelNow: NOW,
     });
-    const firstA = bare[0]!;
-    const secondA = withSettled[0]!;
+    const firstA = bare.find((item) => item.type === "v2-thread")!;
+    const secondA = withSettled.find((item) => item.type === "v2-thread")!;
     expect(firstA.type === "v2-thread" && firstA.showTrailingDivider).toBe(true);
     expect(secondA.type === "v2-thread" && secondA.showTrailingDivider).toBe(false);
     expect(threadListV2ListItemsAreEqual(firstA, secondA)).toBe(false);
@@ -2007,8 +2079,12 @@ describe("thread list v2 minute tick invalidation", () => {
       },
     });
     const options = { snoozeEnvironmentIds: new Set<EnvironmentId>() };
-    const first = buildTickList([unread], BASE_MS, [], options)[0]!;
-    const next = buildTickList([unread], BASE_MS + MINUTE_MS, [], options)[0]!;
+    const first = buildTickList([unread], BASE_MS, [], options).find(
+      (item) => item.type === "v2-thread",
+    )!;
+    const next = buildTickList([unread], BASE_MS + MINUTE_MS, [], options).find(
+      (item) => item.type === "v2-thread",
+    )!;
     expect(first.type === "v2-thread" && first.timeLabel).toBe("");
     expect(threadListV2ListItemsAreEqual(first, next)).toBe(true);
   });
@@ -2088,7 +2164,7 @@ describe("buildThreadListV2ListItems trailing dividers", () => {
     // thread A | thread B | queued 1 | queued 2: consecutive threads keep
     // their hairlines, the row before the Unsent section rule loses its own,
     // queued rows divide each other, and the last row has nothing under it.
-    expect(dividers).toEqual([true, false, true, false]);
+    expect(dividers).toEqual(["n/a", true, false, true, false]);
   });
 });
 
@@ -2333,6 +2409,7 @@ describe("Working section beta", () => {
             : item.type,
       ),
     ).toEqual([
+      "v2-section",
       "active",
       "queued",
       "v2-working-shelf",

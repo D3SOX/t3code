@@ -403,6 +403,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["enter return command ctrl multiline prompt new line composer"],
   },
   {
+    id: "start-threads-in-background",
+    title: "Start threads in background",
+    to: "/settings/general",
+    searchTerms: ["new thread enter send stay draft foreground"],
+  },
+  {
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/general",
@@ -462,6 +468,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     scope: "environment-defaults",
     searchTerms: ["base directory folder browser path home"],
+  },
+  {
+    id: "terminal-close-confirmation",
+    title: "Terminal close confirmation",
+    to: "/settings/general",
+    searchTerms: ["ask before closing terminal shell processes history"],
   },
   {
     id: "unpin-confirmation",

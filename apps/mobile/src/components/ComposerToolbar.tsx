@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
 import {
   Platform,
+  ActivityIndicator,
   Pressable,
   ScrollView,
   View,
@@ -229,6 +230,7 @@ export function ComposerToolbarScroller(props: {
 export function ComposerActionButton(props: {
   readonly accessibilityLabel: string;
   readonly disabled?: boolean;
+  readonly busy?: boolean;
   readonly icon: ComponentProps<typeof SymbolView>["name"];
   readonly onPress: () => void;
   readonly variant?: "primary" | "danger";
@@ -243,9 +245,9 @@ export function ComposerActionButton(props: {
     <Pressable
       accessibilityLabel={props.accessibilityLabel}
       accessibilityRole="button"
-      accessibilityState={{ disabled: props.disabled }}
+      accessibilityState={{ disabled: props.disabled || props.busy, busy: props.busy }}
       className="size-[44px] shrink-0 items-center justify-center active:opacity-70"
-      disabled={props.disabled}
+      disabled={props.disabled || props.busy}
       onPress={props.onPress}
       onLongPress={props.onLongPress}
       onTouchStart={props.onTouchStart}
@@ -256,20 +258,29 @@ export function ComposerActionButton(props: {
           "items-center justify-center rounded-full",
           props.variant === "danger"
             ? "bg-danger"
-            : props.disabled
+            : props.disabled && !props.busy
               ? "bg-primary/15"
               : "bg-primary",
         )}
       >
-        <SymbolView
-          name={props.icon}
-          size={smallIconSize}
-          weight="semibold"
-          tintColorClassName={
-            props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
-          }
-          type="monochrome"
-        />
+        {props.busy ? (
+          <ActivityIndicator
+            size="small"
+            colorClassName={
+              props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
+            }
+          />
+        ) : (
+          <SymbolView
+            name={props.icon}
+            size={smallIconSize}
+            weight="semibold"
+            tintColorClassName={
+              props.variant === "danger" ? "accent-danger-foreground" : "accent-primary-foreground"
+            }
+            type="monochrome"
+          />
+        )}
       </View>
     </Pressable>
   );

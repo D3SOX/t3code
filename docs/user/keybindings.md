@@ -9,6 +9,11 @@ In **Settings → General → Send shortcut**, choose whether Enter sends, requi
 `mod+Enter` for multiline prompts, or always requires `mod+Enter`. `Shift+Enter`
 inserts a new line. This applies to the web and desktop composer at desktop widths.
 
+New threads start in the background by default, leaving a fresh composer ready
+for the next task. Turn off **Settings → General → Start threads in background**
+to open a new thread after submitting it. Existing threads keep their normal
+send behavior.
+
 **Follow-up behavior** chooses Queue or Steer while the agent runs. Use
 `mod+Enter` to do the opposite for one message, even when the send shortcut
 requires a modifier. `mod+Alt+Enter` sends, keeps that thread running in the

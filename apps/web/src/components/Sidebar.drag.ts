@@ -110,8 +110,8 @@ export function createSidebarSortingStrategy(input: {
   snoozedThreadCount?: number;
   cardHeight?: number;
   slimHeight?: number;
-  /** Space each pinned boundary opens for its label while dragging. The
-   * markers stay zero height at rest, so nothing is reserved until pickup. */
+  /** Minimum space each boundary opens while dragging. Visible section
+   * headers retain their measured height. */
   boundaryLabelHeight?: number;
 }): SortingStrategy {
   if (input.enabled === false) return () => stationary;
@@ -214,7 +214,7 @@ export function createSidebarSortingStrategy(input: {
       const moved = item.kind === "thread" && item.key === active.key;
       return item.kind === "marker" &&
         (item.marker === "pinned-header" || item.marker === "pinned-divider")
-        ? labelHeight
+        ? Math.max(labelHeight, rect?.height ?? 0)
         : item.kind === "marker" && item.marker.endsWith("placeholder")
           ? slimHeight
           : moved

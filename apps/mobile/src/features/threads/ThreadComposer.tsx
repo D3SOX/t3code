@@ -188,7 +188,7 @@ export interface ThreadComposerProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
-  readonly onStopThread: () => void;
+  readonly onStopThread: () => void | Promise<unknown>;
   readonly onSendMessage: (followUp?: ActiveTurnComposerAction) => Promise<MessageId | null>;
   /** `/usage-limits` resolves locally; the host decides where the report shows. Null clears it. */
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
@@ -274,6 +274,7 @@ function SendActionButton(props: {
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
   readonly disabled: boolean;
+  readonly busy: boolean;
   readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
 }) {
   const { presentation } = props;
@@ -283,6 +284,7 @@ function SendActionButton(props: {
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
+      busy={props.busy}
       onPress={() => props.onSend()}
     />
   );
@@ -374,6 +376,23 @@ export function ComposerSurface(props: {
 }
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
+  const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const [sendingThreadKey, setSendingThreadKey] = useState<string | null>(null);
+  const [stoppingThreadKey, setStoppingThreadKey] = useState<string | null>(null);
+  const stoppingThreads = useRef(new Set<string>());
+  const sending = sendingThreadKey === threadKey;
+  const stopping = stoppingThreadKey === threadKey;
+  const handleStopThread = async () => {
+    if (stoppingThreads.current.has(threadKey)) return;
+    stoppingThreads.current.add(threadKey);
+    setStoppingThreadKey(threadKey);
+    try {
+      await props.onStopThread();
+    } finally {
+      stoppingThreads.current.delete(threadKey);
+      setStoppingThreadKey((key) => (key === threadKey ? null : key));
+    }
+  };
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
@@ -408,7 +427,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     [props.draftAttachments],
   );
   // Stopping the agent is not what the send button means in edit mode.
-  const showStopAction = !hasContent && props.canStopThread && queuedEdit === null;
+  const showStopAction =
+    stopping || (!sending && !hasContent && props.canStopThread && queuedEdit === null);
 
   const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
   const attachmentsUploading =
@@ -535,6 +555,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   });
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
+    (sending ? (queuedEdit ? "Saving…" : "Sending…") : null) ??
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
     (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
@@ -609,6 +630,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
       if (inFlightThreadIdsRef.current.has(threadKey)) return;
       inFlightThreadIdsRef.current.add(threadKey);
+      setSendingThreadKey(threadKey);
       try {
         const messageId = await onSendMessage(followUp);
         if (messageId === null) {
@@ -625,6 +647,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       } finally {
         inFlightThreadIdsRef.current.delete(threadKey);
+        setSendingThreadKey((key) => (key === threadKey ? null : key));
       }
     },
     [
@@ -772,7 +795,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         <ModelCapacityRetryNotice
           environmentId={props.environmentId}
           thread={props.selectedThread}
-          onCancel={props.onStopThread}
+          onCancel={handleStopThread}
         />
         {!voiceInput.isBusy &&
         composerMenu.trigger &&
@@ -1059,15 +1082,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 />
                 {showStopAction ? (
                   <ComposerActionButton
-                    accessibilityLabel="Stop agent"
+                    accessibilityLabel={stopping ? "Interrupting" : "Stop agent"}
+                    busy={stopping}
                     icon="stop.fill"
                     variant="danger"
-                    onPress={props.onStopThread}
+                    onPress={handleStopThread}
                   />
                 ) : (
                   <SendActionButton
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
                     presentation={sendPresentation}
+                    busy={sending || queuedEdit?.saving === true}
                     disabled={!canSend}
                     onSend={handleSend}
                   />
@@ -1153,15 +1178,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   />
                   {showStopAction ? (
                     <ComposerActionButton
-                      accessibilityLabel="Stop agent"
+                      accessibilityLabel={stopping ? "Interrupting" : "Stop agent"}
+                      busy={stopping}
                       icon="stop.fill"
                       variant="danger"
-                      onPress={props.onStopThread}
+                      onPress={handleStopThread}
                     />
-                  ) : voicePresentation.showsSend ? (
+                  ) : voicePresentation.showsSend || sending || queuedEdit?.saving === true ? (
                     <SendActionButton
                       accessibilityLabel={sendBlockedReason ?? sendLabel}
                       presentation={sendPresentation}
+                      busy={sending || queuedEdit?.saving === true}
                       disabled={!canSend}
                       onSend={handleSend}
                     />

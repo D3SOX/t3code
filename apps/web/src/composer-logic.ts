@@ -53,6 +53,7 @@ export function composerSubmissionIntentForKey(input: {
   isDraftThread: boolean;
   isRunning?: boolean;
   sendShortcut?: ClientSettings["sendShortcut"];
+  startThreadsInBackground?: boolean;
   prompt?: string;
 }): ComposerSubmissionIntent | null {
   const { event } = input;
@@ -76,7 +77,9 @@ export function composerSubmissionIntentForKey(input: {
     !event.ctrlKey
   )
     return null;
-  return "foreground";
+  return input.isDraftThread && input.startThreadsInBackground !== false
+    ? "background"
+    : "foreground";
 }
 
 const isInlineTokenSegment = (segment: ComposerPromptSegment): boolean => segment.type !== "text";

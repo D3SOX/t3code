@@ -118,7 +118,8 @@
         <li>
           Follow-up messages wait until the agent finishes its current turn. In Settings, you can
           steer after the next tool call or immediately. Queued messages are saved on the server and
-          can be edited, reordered, or sent immediately.
+          can be edited, reordered, or sent immediately. Completion notifications wait until the
+          queued turns have finished too.
         </li>
         <li>
           Images an agent opens appear in their own timeline rows, even when the rest of the turn is
@@ -139,7 +140,11 @@
           averaging accounts into one bar, without putting account emails on the home screen.
         </li>
         <li>The Android composer keeps the cursor visible as long messages wrap onto new lines.</li>
-        <li>Pinned and Active sidebar labels stay visible without dragging a thread.</li>
+        <li>
+          Pinned and Active thread-list sections can be collapsed or expanded. Both start expanded
+          and remember your choice on each client; the thread you're viewing stays visible even when
+          its section is collapsed.
+        </li>
         <li>
           Mobile gains the yellow pen and subtle thread highlight for unsent drafts already
           available upstream on web and desktop. The indicator clears when you send or remove the
@@ -157,6 +162,16 @@
           icon beside its name on web, desktop, and mobile.
         </li>
         <li>Switching Codex accounts in an existing thread preserves its agent-session context.</li>
+        <li>
+          On web and desktop, Enter or the send button starts a new thread in the background and
+          opens another draft by default. Turn off
+          <strong>Settings → General → Start threads in background</strong> to open the submitted
+          thread instead. The background-submit keybinding remains configurable.
+        </li>
+        <li>
+          Send and interrupt buttons show a loading indicator while the request is pending and
+          prevent duplicate clicks.
+        </li>
         <li>
           If Codex has archived an idle session, sending a follow-up automatically unarchives it and
           retries once, keeping the same conversation and context. No manual
@@ -176,6 +191,10 @@
           Code.
         </li>
         <li>
+          In-app completion notifications clear when you view their thread and stay hidden while
+          you're viewing it.
+        </li>
+        <li>
           Automatic thread titles and worktree branch names can be turned off for an environment or
           project in Settings → Source Control.
         </li>
@@ -186,7 +205,8 @@
           <strong>Copy path</strong>.
         </li>
         <li>
-          Closing a terminal does not ask for confirmation. Ctrl+W and Ctrl+D still go to the
+          Terminal close confirmation is optional and off by default under
+          <strong>Settings → General → Confirmations</strong>. Ctrl+W and Ctrl+D still go to the
           terminal.
         </li>
         <li>

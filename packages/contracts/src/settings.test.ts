@@ -655,6 +655,13 @@ describe("ClientSettings sidebar", () => {
     expect(decodeClientSettingsPatch({ confirmThreadUnpin: true }).confirmThreadUnpin).toBe(true);
     expect(() => decodeClientSettingsPatch({ confirmThreadUnpin: "yes" })).toThrow();
   });
+  it("defaults terminal confirmation off and background thread creation on", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(false);
+    expect(decodeClientSettings({}).startThreadsInBackground).toBe(true);
+    const settings = { confirmTerminalClose: true, startThreadsInBackground: false };
+    expect(decodeClientSettingsPatch(settings)).toEqual(settings);
+    expect(decodeClientSettings(settings)).toMatchObject(settings);
+  });
 });
 
 describe("ClientSettings context window meter", () => {

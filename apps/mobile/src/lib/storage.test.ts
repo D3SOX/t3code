@@ -261,6 +261,15 @@ describe("mobile connection storage", () => {
     });
   });
 
+  it("persists collapsed Pinned and Active sections", async () => {
+    const preferences = {
+      threadListPinnedShelfExpanded: false,
+      threadListActiveShelfExpanded: false,
+    };
+    await expect(savePreferencesPatch(preferences)).resolves.toEqual(preferences);
+    await expect(loadPreferences()).resolves.toEqual(preferences);
+  });
+
   it("drops legacy and invalid thread list shelf expansion preferences", async () => {
     mocks.setPreferencesJson(
       JSON.stringify({

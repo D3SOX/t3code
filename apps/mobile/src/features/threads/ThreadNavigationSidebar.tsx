@@ -300,6 +300,10 @@ function ThreadNavigationSidebarPane(
   );
   const {
     loaded: shelfPreferencesLoaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
+    togglePinnedShelf,
+    toggleActiveShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
@@ -463,6 +467,9 @@ function ThreadNavigationSidebarPane(
       queuedThreadKeys,
       moveAvailability: threadMoveAvailability,
       shelfPreferencesLoading: !shelfPreferencesLoaded,
+      pinnedShelfExpanded,
+      activeShelfExpanded,
+      selectedThreadKey: props.selectedThreadKey,
     });
     if (settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0) {
       items.push({
@@ -482,7 +489,10 @@ function ThreadNavigationSidebarPane(
     selectedProjectRefs,
     settledShelfExpanded,
     shelfPreferencesLoaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
     snoozedShelfExpanded,
+    props.selectedThreadKey,
     snoozeEnvironmentIds,
     threadListV2Layout,
     workingShelfExpanded,
@@ -762,7 +772,16 @@ function ThreadNavigationSidebarPane(
           );
         }
         case "v2-section":
-          return <ThreadListV2SectionDivider label={item.label} pane="sidebar" />;
+          return (
+            <ThreadListV2SectionDivider
+              label={item.label}
+              count={item.count}
+              expanded={item.expanded}
+              disabled={item.disabled}
+              onToggle={item.label === "Pinned" ? togglePinnedShelf : toggleActiveShelf}
+              pane="sidebar"
+            />
+          );
         case "v2-working-shelf":
           return (
             <ThreadListV2WorkingShelfHeader
@@ -842,6 +861,8 @@ function ThreadNavigationSidebarPane(
       toggleSettledShelf,
       toggleSnoozedShelf,
       toggleWorkingShelf,
+      togglePinnedShelf,
+      toggleActiveShelf,
       unpinThread,
       unsettleThread,
       unsnoozeThread,

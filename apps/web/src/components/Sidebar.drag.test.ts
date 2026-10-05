@@ -26,6 +26,26 @@ const divider = marker("pinned-divider");
 const settledHeader = marker("settled-header");
 const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 
+it("keeps expanded section headers at their measured height during a drag", () => {
+  const items = [
+    pinnedHeader,
+    thread("pin", "pinned"),
+    divider,
+    thread("active", "active"),
+    settledHeader,
+  ];
+  const transforms = preview(
+    { items, settledOrder: [], settledExpanded: true, boundaryLabelHeight: 24 },
+    "active",
+    "active",
+    1,
+    32,
+  );
+  expect(transforms.get("pin")).toEqual(stationary);
+  expect(transforms.get(sidebarMarkerId("pinned-divider"))).toEqual(stationary);
+  expect(transforms.get(sidebarMarkerId("settled-header"))).toEqual(stationary);
+});
+
 function layout(
   items: readonly SidebarListItem[],
   active: string,
