@@ -8,7 +8,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
-  toast: vi.fn(),
+  toast: vi.fn(() => "toast-1"),
+  closeToast: vi.fn(),
   shells: new Map(),
   navigate: vi.fn(),
   sound: vi.fn(),
@@ -21,7 +22,9 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => state.navigate,
   useParams: () => state.route,
 }));
-vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
+vi.mock("./ui/toast", () => ({
+  toastManager: { add: state.toast, close: state.closeToast },
+}));
 vi.mock("../state/shell", () => ({ environmentShell: { stateValueAtom: (id: string) => id } }));
 vi.mock("../state/environments", () => ({
   useEnvironmentIds: () => state.environmentIds,

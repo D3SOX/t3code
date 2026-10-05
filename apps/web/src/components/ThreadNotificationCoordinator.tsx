@@ -141,6 +141,43 @@ function EnvironmentNotifications({
   const previous = useRef(
     new Map<ThreadId, { attention: string | null; completion: number | null }>(),
   );
+  const pendingToasts = useRef(new Map<ThreadId, ReturnType<typeof toastManager.add>>());
+  const dismissViewedToast = useEffectEvent(() => {
+    if (
+      activeEnvironmentId !== environmentId ||
+      !activeThreadId ||
+      !document.hasFocus() ||
+      document.visibilityState !== "visible"
+    )
+      return;
+    const threadId = activeThreadId as ThreadId;
+    const toastId = pendingToasts.current.get(threadId);
+    if (!toastId) return;
+    pendingToasts.current.delete(threadId);
+    toastManager.close(toastId);
+  });
+
+  useEffect(() => {
+    if (inAppNotificationsEnabled) {
+      if (activeEnvironmentId && activeThreadId) dismissViewedToast();
+    } else {
+      for (const toastId of pendingToasts.current.values()) toastManager.close(toastId);
+      pendingToasts.current.clear();
+    }
+  }, [activeEnvironmentId, activeThreadId, inAppNotificationsEnabled]);
+
+  useEffect(() => {
+    const dismiss = () => dismissViewedToast();
+    const toasts = pendingToasts.current;
+    window.addEventListener("focus", dismiss);
+    document.addEventListener("visibilitychange", dismiss);
+    return () => {
+      window.removeEventListener("focus", dismiss);
+      document.removeEventListener("visibilitychange", dismiss);
+      for (const toastId of toasts.values()) toastManager.close(toastId);
+      toasts.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (shell.status !== "live" || Option.isNone(shell.snapshot)) {
@@ -196,11 +233,18 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
+        const previousToastId = pendingToasts.current.get(thread.id);
+        if (previousToastId) toastManager.close(previousToastId);
         const toastId = toastManager.add({
           timeout: 0,
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
           description: thread.title,
+          onClose: () => {
+            if (pendingToasts.current.get(thread.id) === toastId) {
+              pendingToasts.current.delete(thread.id);
+            }
+          },
           data: {
             hideCopyButton: true,
             leadingIcon:
@@ -225,6 +269,7 @@ function EnvironmentNotifications({
             },
           },
         });
+        pendingToasts.current.set(thread.id, toastId);
         continue;
       }
       if (

@@ -27,6 +27,7 @@ const state = vi.hoisted(() => ({
       title: string;
       description: string;
       timeout: number;
+      onClose?: () => void;
       actionProps: { onClick: () => void };
     }) => "toast-1",
   ),
@@ -165,14 +166,9 @@ beforeEach(() => {
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", new EventTarget());
-  vi.stubGlobal("document", {
-    get visibilityState() {
-      return state.visible;
-    },
-    hasFocus: () => state.focused,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  });
+  const document = Object.assign(new EventTarget(), { hasFocus: () => state.focused });
+  Object.defineProperty(document, "visibilityState", { get: () => state.visible });
+  vi.stubGlobal("document", document);
   vi.stubGlobal("Notification", Object.assign(state.notification, { permission: "granted" }));
 });
 
@@ -183,6 +179,74 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  it("dismisses the toast when its thread is opened through normal navigation", async () => {
+    await render();
+    await complete();
+    expect(state.add).toHaveBeenCalledTimes(1);
+    state.active = { environmentId: "env-2", threadId: "thread-1" };
+    await render();
+    expect(state.close).not.toHaveBeenCalled();
+    state.active = { environmentId: "env-1", threadId: "thread-1" };
+    await render();
+    expect(state.close).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("dismisses the viewed thread's toast on focus with system notifications off", async () => {
+    await render();
+    await complete();
+    state.focused = false;
+    state.active.threadId = "thread-1";
+    await render();
+    expect(state.close).not.toHaveBeenCalled();
+    state.focused = true;
+    await act(() => window.dispatchEvent(new Event("focus")));
+    expect(state.close).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("dismisses the viewed thread's toast when the document becomes visible", async () => {
+    await render();
+    await complete();
+    state.visible = "hidden";
+    state.active.threadId = "thread-1";
+    await render();
+    expect(state.close).not.toHaveBeenCalled();
+    state.visible = "visible";
+    await act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(state.close).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("replaces an earlier toast for the same thread and clears the replacement on entry", async () => {
+    state.add.mockReturnValueOnce("first").mockReturnValueOnce("second");
+    await render();
+    await complete();
+    state.completedAt = null;
+    await render();
+    state.completedAt = "2026-09-13T11:00:00.000Z";
+    await render();
+    expect(state.close).toHaveBeenCalledWith("first");
+    state.add.mock.calls[0]?.[0].onClose?.();
+    state.active.threadId = "thread-1";
+    await render();
+    expect(state.close).toHaveBeenCalledWith("second");
+  });
+
+  it("clears retained toasts when in-app notifications are disabled", async () => {
+    state.mode = "notifications";
+    await render();
+    await complete();
+    state.inApp = false;
+    await render();
+    expect(state.close).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("clears retained toasts when the environment coordinator unmounts", async () => {
+    await render();
+    await complete();
+    await act(() => renderer?.unmount());
+    renderer = undefined;
+    expect(state.close).toHaveBeenCalledWith("toast-1");
+  });
+
   it("waits for queued follow-up turns before notifying completion", async () => {
     state.mode = "notifications-and-sound";
     state.focused = false;
