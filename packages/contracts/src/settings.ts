@@ -458,7 +458,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   startThreadsInBackground: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   followUpBehavior: Schema.Literals(["queue", "next-tool", "steer"]).pipe(
-    Schema.withDecodingDefault(Effect.succeed("queue" as const)),
+    Schema.withDecodingDefault(Effect.succeed("next-tool" as const)),
   ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   showSkillsInSlashMenu: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

@@ -77,14 +77,14 @@ import {
   updateComposerDraftSettings,
   useComposerDraft,
 } from "./use-composer-drafts";
-import {
-  resolveComposerDispatchMode,
-  type ActiveTurnComposerAction,
-} from "@t3tools/client-runtime/state/composer-dispatch";
+import type { ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
 import { Atom } from "effect/unstable/reactivity";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { prepareTurnAttachments } from "../lib/attachmentUpload";
-import { DEFAULT_FOLLOW_UP_BEHAVIOR } from "../lib/followUpBehavior";
+import {
+  DEFAULT_FOLLOW_UP_BEHAVIOR,
+  resolveMobileFollowUpDispatchMode,
+} from "../lib/followUpBehavior";
 import { mobilePreferencesAtom } from "./preferences";
 import { environmentThreadDetails } from "./threads";
 import {
@@ -662,13 +662,12 @@ export function useThreadComposerState() {
       // Steering travels as "auto" so a turn that ends in the meantime degrades
       // to a queued run on the server instead of failing the delivery and
       // bouncing the message back into the draft.
-      const followUpAction = resolveComposerDispatchMode({
-        running: activeThreadBusy && canSteerActiveTurn,
-        alternateModifier: followUpOverride !== undefined && followUpOverride !== followUpBehavior,
-        activeTurnDefault: followUpBehavior,
+      const followUpDispatchMode = resolveMobileFollowUpDispatchMode({
+        running: activeThreadBusy,
+        canSteer: canSteerActiveTurn,
+        preference: followUpBehavior,
+        ...(followUpOverride === undefined ? {} : { override: followUpOverride }),
       });
-      const followUpDispatchMode =
-        followUpAction === "auto" ? null : followUpAction === "queue" ? "queue" : "auto";
 
       const metadata = makeQueuedMessageMetadata();
       const messageId = MessageId.make(metadata.messageId);
@@ -693,7 +692,7 @@ export function useThreadComposerState() {
           provider,
           draft.interactionMode ?? thread.interactionMode,
         ),
-        ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
+        ...(followUpDispatchMode === undefined ? {} : { dispatchMode: followUpDispatchMode }),
         createdAt: metadata.createdAt,
       });
       clearComposerDraftContent(threadKey, { deferAttachmentCleanup: true });

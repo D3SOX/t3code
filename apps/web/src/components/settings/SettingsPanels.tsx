@@ -2841,7 +2841,11 @@ export function GeneralSettingsPanel() {
             >
               <SelectTrigger size="sm" className="w-auto min-w-0" aria-label="Follow-up behavior">
                 <SelectValue>
-                  {settings.followUpBehavior === "queue" ? "After current turn" : "Immediately"}
+                  {settings.followUpBehavior === "queue"
+                    ? "After current turn"
+                    : settings.followUpBehavior === "next-tool"
+                      ? "At next tool call"
+                      : "Immediately"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>

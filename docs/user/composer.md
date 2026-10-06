@@ -40,7 +40,7 @@ applies to this client; already queued messages keep their place. Queued message
 are saved on the server and can be edited, reordered, or removed above the composer.
 `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses the alternate timing:
 it queues after the next tool call when your default is Queue, and queues after the
-current turn for the other defaults. Queue after the current turn is the default.
+current turn for the other defaults. Queue after the next tool call is the default.
 
 Use `Cmd+Shift+Enter` on macOS or `Ctrl+Shift+Enter` on Windows and Linux to send
 the oldest queued message as a steer. This leaves the current draft intact and
