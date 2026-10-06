@@ -614,6 +614,34 @@ const RawCoreSchema = Schema.Struct({
         baseRef: Schema.NullOr(
           Schema.Struct({
             compare: Schema.NullOr(Schema.Struct({ behindBy: Schema.Int })),
+            branchProtectionRule: Schema.optional(
+              Schema.NullOr(
+                Schema.Struct({
+                  requiredStatusCheckContexts: Schema.NullOr(Schema.Array(Schema.String)),
+                }),
+              ),
+            ),
+            rules: Schema.optional(
+              Schema.NullOr(
+                Schema.Struct({
+                  nodes: Schema.Array(
+                    Schema.NullOr(
+                      Schema.Struct({
+                        parameters: Schema.NullOr(
+                          Schema.Struct({
+                            requiredStatusChecks: Schema.optional(
+                              Schema.Array(Schema.Struct({ context: Schema.String })),
+                            ),
+                          }),
+                        ),
+                      }),
+                    ),
+                  ),
+                  // An incomplete requirements read must never announce readiness.
+                  pageInfo: Schema.Struct({ hasNextPage: Schema.Literal(false) }),
+                }),
+              ),
+            ),
           }),
         ),
         reviewRequests: Schema.Struct({
@@ -716,6 +744,14 @@ export const PULL_REQUEST_DETAIL_JSON_FIELDS = `${PULL_REQUEST_LIST_JSON_FIELDS}
 export const pullRequestCoreGraphQlQuery = (host: string) => {
   const required =
     host.toLowerCase() === "github.com" ? " isRequired(pullRequestNumber: $number)" : "";
+  const rules =
+    host.toLowerCase() === "github.com"
+      ? `
+        rules(first: 100) {
+          nodes { parameters { ... on RequiredStatusChecksParameters { requiredStatusChecks { context } } } }
+          pageInfo { hasNextPage }
+        }`
+      : "";
   return `query($owner: String!, $name: String!, $number: Int!, $headRef: String!) {
   repository(owner: $owner, name: $name) {
     mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerPermission
@@ -727,7 +763,10 @@ export const pullRequestCoreGraphQlQuery = (host: string) => {
       author { login avatarUrl ... on User { id name } }
       autoMergeRequest { mergeMethod }
       viewerCanUpdate viewerDidAuthor viewerCanUpdateBranch
-      baseRef { compare(headRef: $headRef) { behindBy } }
+      baseRef {
+        compare(headRef: $headRef) { behindBy }
+        branchProtectionRule { requiredStatusCheckContexts }${rules}
+      }
       reviewRequests(first: 100) {
         nodes { requestedReviewer { ... on User { login name } ... on Bot { login } ... on Team { slug name } } }
       }
@@ -1991,6 +2030,34 @@ export interface GitHubPullRequestCore extends GitHubPullRequestDetail {
   readonly viewerAccess: GitHubViewerAccess & GitHubRepositoryAccess;
   readonly comparison: GitHubBaseComparison | null;
   readonly checksTruncated: boolean;
+  readonly requiredCheckContexts: ReadonlyArray<string>;
+}
+
+// The commit rollup omits dependent jobs until they start. Branch protection still requires
+// them, so materialize pending checks before deduplication and computing the rollup state.
+function withRequiredCheckContexts(
+  checks: ReadonlyArray<Schema.Schema.Type<typeof RawCheckSchema>> | null | undefined,
+  required: ReadonlyArray<string>,
+): ReadonlyArray<Schema.Schema.Type<typeof RawCheckSchema>> {
+  const requiredNames = new Set(required);
+  const present = new Set<string>();
+  const marked = (checks ?? []).map((check) => {
+    const name = trimmed(check.name) ?? trimmed(check.context);
+    if (name === null || !requiredNames.has(name) || check.isRequired === false) return check;
+    present.add(name);
+    return { ...check, isRequired: true };
+  });
+  return [
+    ...marked,
+    ...required
+      .filter((name) => !present.has(name))
+      .map((name) => ({
+        name,
+        status: "PENDING",
+        isRequired: true,
+        description: "Required check has not reported on this commit.",
+      })),
+  ];
 }
 
 export function decodePullRequestCoreJson(
@@ -2001,6 +2068,14 @@ export function decodePullRequestCoreJson(
   const repository = decoded.success.data.repository;
   const pr = repository.pullRequest;
   const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts;
+  const requiredCheckContexts = [
+    ...new Set([
+      ...(pr.baseRef?.branchProtectionRule?.requiredStatusCheckContexts ?? []),
+      ...(pr.baseRef?.rules?.nodes ?? []).flatMap(
+        (rule) => rule?.parameters?.requiredStatusChecks?.map((check) => check.context) ?? [],
+      ),
+    ]),
+  ];
   return Result.succeed({
     ...toDetail({
       ...pr,
@@ -2008,11 +2083,13 @@ export function decodePullRequestCoreJson(
         requestedReviewer === null ? [] : [requestedReviewer],
       ),
       labels: pr.labels.nodes,
-      statusCheckRollup:
+      statusCheckRollup: withRequiredCheckContexts(
         contexts?.nodes.map((check) => ({
           ...check,
           workflowName: check.checkSuite?.workflowRun?.workflow?.name ?? null,
-        })) ?? [],
+        })),
+        requiredCheckContexts,
+      ),
     }),
     viewerAccess: {
       canWrite: toCanWrite(repository.viewerPermission),
@@ -2032,15 +2109,25 @@ export function decodePullRequestCoreJson(
             viewerCanUpdate: pr.viewerCanUpdateBranch,
           },
     checksTruncated: contexts?.pageInfo.hasNextPage === true,
+    requiredCheckContexts,
   });
 }
 
 export function decodePullRequestDetailJson(
   raw: string,
+  requiredCheckContexts: ReadonlyArray<string> = [],
 ): Result.Result<GitHubPullRequestDetail, DecodeFailure> {
   const decoded = decodeDetail(raw);
   return Result.isSuccess(decoded)
-    ? Result.succeed(toDetail(decoded.success))
+    ? Result.succeed(
+        toDetail({
+          ...decoded.success,
+          statusCheckRollup: withRequiredCheckContexts(
+            decoded.success.statusCheckRollup,
+            requiredCheckContexts,
+          ),
+        }),
+      )
     : Result.fail(decoded.failure);
 }
 

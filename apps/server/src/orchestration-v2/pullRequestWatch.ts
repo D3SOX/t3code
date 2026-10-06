@@ -37,8 +37,9 @@ const isFailedCheck = (check: PullRequestCheck) =>
  * Compares a watched pull request with what its agent was last told. Each check is reported as
  * soon as it fails, so a check that never finishes (an advisory review bot) cannot hold the
  * news back. "Passed" is reported once the checks the base branch requires all passed, or all
- * checks where the host marks none required. Remarks count when someone other than the agent's
- * own account wrote them, so its own replies never wake it. `remarks` is null when the
+ * checks where the host marks none required. A second wake reports the remaining CI finishing.
+ * Remarks count when someone other than the agent's own account wrote them, so its own replies
+ * never wake it. `remarks` is null when the
  * conversation could not be read; remarks then wait for a later pass.
  */
 export function evaluatePullRequestWatch(
@@ -53,6 +54,8 @@ export function evaluatePullRequestWatch(
   // An empty list keeps the last state: a host can answer with one when its check read fails.
   let failedChecks = headMoved ? [] : watch.failedChecks;
   let passed = headMoved ? false : watch.passed;
+  let passedChecks = headMoved ? [] : watch.passedChecks;
+  let allPassedChecks = headMoved ? [] : watch.allPassedChecks;
   if (detail.checks.length > 0) {
     const failed = detail.checks.filter(isFailedCheck);
     const newlyFailed = failed.filter((check) => !failedChecks.includes(check.name));
@@ -63,10 +66,23 @@ export function evaluatePullRequestWatch(
     const required = detail.checks.filter((check) => check.required === true);
     const gate = required.length > 0 ? required : detail.checks;
     const passedNow = gate.every((check) => check.status !== "pending" && !isFailedCheck(check));
-    if (passedNow && !passed) {
+    const gateNames = gate.map((check) => check.name).sort();
+    const gateChanged =
+      passedChecks !== undefined && gateNames.join("\n") !== passedChecks.join("\n");
+    const reportGate = passedNow && (!passed || gateChanged);
+    if (reportGate) {
       changes.push({ kind: "checks-passed", count: gate.length, required: required.length > 0 });
     }
     passed = passedNow;
+    passedChecks = passedNow ? gateNames : [];
+    const allPassedNow = detail.checks.every(
+      (check) => check.status !== "pending" && !isFailedCheck(check),
+    );
+    const allNames = detail.checks.map((check) => check.name).sort();
+    if (allPassedNow && allNames.join("\n") !== (allPassedChecks ?? []).join("\n") && !reportGate) {
+      changes.push({ kind: "checks-passed", count: allNames.length, required: false });
+    }
+    allPassedChecks = allPassedNow ? allNames : [];
   }
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
@@ -105,6 +121,8 @@ export function evaluatePullRequestWatch(
       headSha,
       failedChecks,
       passed,
+      ...(passedChecks === undefined ? {} : { passedChecks }),
+      ...(allPassedChecks === undefined ? {} : { allPassedChecks }),
       remarksThrough,
       remarkIds,
       conflicting,

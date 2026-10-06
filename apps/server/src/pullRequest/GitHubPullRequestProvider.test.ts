@@ -13,6 +13,7 @@ import type { GitHubReviewThreadComments } from "./gitHubPullRequestJson.ts";
 
 const coreFields = {
   checksTruncated: false,
+  requiredCheckContexts: [],
   comparison: { behindBy: 0, viewerCanUpdate: true },
   viewerAccess: {
     canWrite: true,

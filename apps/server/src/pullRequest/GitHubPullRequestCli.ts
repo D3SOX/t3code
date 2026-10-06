@@ -1551,6 +1551,7 @@ export const make = Effect.gen(function* () {
 
   const readLegacyDetail = (
     input: Parameters<GitHubPullRequestCli["Service"]["getPullRequestDetail"]>[0],
+    requiredCheckContexts: ReadonlyArray<string>,
   ) =>
     github
       .execute({
@@ -1566,7 +1567,7 @@ export const make = Effect.gen(function* () {
       })
       .pipe(
         Effect.flatMap((result) => {
-          const decoded = decodePullRequestDetailJson(result.stdout.trim());
+          const decoded = decodePullRequestDetailJson(result.stdout.trim(), requiredCheckContexts);
           return Result.isSuccess(decoded)
             ? Effect.succeed(decoded.success)
             : Effect.fail(
@@ -1604,7 +1605,7 @@ export const make = Effect.gen(function* () {
       Effect.filterOrElse(
         (core) => !core.checksTruncated,
         (core) =>
-          readLegacyDetail(input).pipe(
+          readLegacyDetail(input, core.requiredCheckContexts).pipe(
             Effect.filterOrFail(
               (detail) => detail.headSha === core.headSha,
               () =>

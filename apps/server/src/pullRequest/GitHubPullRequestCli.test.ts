@@ -3454,6 +3454,150 @@ layer("GitHubPullRequestCli.layer", (it) => {
     }),
   );
 
+  it.effect.each(["protection", "ruleset", "paginated", "wrong app", "no runs"])(
+    "keeps unstarted required checks pending: %s",
+    (mode) =>
+      Effect.gen(function* () {
+        const paginated = mode === "paginated";
+        const required = [
+          "e2e",
+          "lint",
+          "Release Note",
+          "Analyze (javascript-typescript)",
+          "Analyze (actions)",
+        ];
+        const checks = (mode === "no runs" ? [] : required)
+          .slice(1)
+          .map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS", isRequired: true }));
+        if (mode === "wrong app")
+          checks.push({
+            name: "e2e",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            isRequired: false,
+          });
+        const response = coreResponse({
+          baseRef: {
+            compare: { behindBy: 0 },
+            branchProtectionRule:
+              mode === "ruleset" ? null : { requiredStatusCheckContexts: required },
+            rules: {
+              nodes:
+                mode === "ruleset"
+                  ? [
+                      {
+                        parameters: {
+                          requiredStatusChecks: required.map((context) => ({ context })),
+                        },
+                      },
+                    ]
+                  : [],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+          commits: {
+            nodes: [
+              {
+                commit: {
+                  statusCheckRollup: {
+                    contexts: { nodes: checks, pageInfo: { hasNextPage: paginated } },
+                  },
+                },
+              },
+            ],
+          },
+        });
+        mockedExecute.mockReturnValueOnce(Effect.succeed(output(encodeJson(response))));
+        if (paginated)
+          mockedExecute.mockReturnValueOnce(
+            Effect.succeed(
+              output(
+                encodeJson({
+                  ...response.data.repository.pullRequest,
+                  reviewRequests: [],
+                  labels: [],
+                  statusCheckRollup: checks,
+                }),
+              ),
+            ),
+          );
+        const cli = yield* GitHubPullRequestCli.GitHubPullRequestCli;
+        const detail = yield* cli.getPullRequestDetail({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+        });
+        expect(detail.checks.find((check) => check.name === "e2e")).toMatchObject({
+          status: "pending",
+          required: true,
+        });
+        expect(detail.checks.filter((check) => check.required)).toHaveLength(5);
+        expect(detail.checksState).toBe("pending");
+        expect(callAt(0).args.at(-1)).toContain("requiredStatusCheckContexts");
+        // Once the dependent job exists, its real result replaces the pending placeholder.
+        mockedExecute.mockReturnValueOnce(
+          Effect.succeed(
+            output(
+              encodeJson(
+                coreResponse({
+                  ...response.data.repository.pullRequest,
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          statusCheckRollup: {
+                            contexts: {
+                              nodes: required.map((name) => ({
+                                name,
+                                status: "COMPLETED",
+                                conclusion: "SUCCESS",
+                                isRequired: true,
+                              })),
+                              pageInfo: { hasNextPage: false },
+                            },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                }),
+              ),
+            ),
+          ),
+        );
+        const finished = yield* cli.getPullRequestDetail({
+          cwd: "/w",
+          repository: "acme/web",
+          host: "github.com",
+          number: 7,
+        });
+        expect(finished.checks).toHaveLength(5);
+        expect(finished.checks.every((check) => check.required && check.status === "success")).toBe(
+          true,
+        );
+        expect(finished.checksState).toBe("passing");
+      }),
+  );
+
+  it.effect("refuses a truncated requirements read instead of reporting readiness", () =>
+    Effect.gen(function* () {
+      const response = coreResponse({
+        baseRef: {
+          compare: null,
+          branchProtectionRule: null,
+          rules: { nodes: [], pageInfo: { hasNextPage: true } },
+        },
+      });
+      mockedExecute.mockReturnValueOnce(Effect.succeed(output(encodeJson(response))));
+      const cli = yield* GitHubPullRequestCli.GitHubPullRequestCli;
+      const error = yield* cli
+        .getPullRequestDetail({ cwd: "/w", repository: "acme/web", host: "github.com", number: 7 })
+        .pipe(Effect.flip);
+      expect(error._tag).toBe("GitHubPullRequestReadError");
+    }),
+  );
+
   it.effect("refuses to combine checks from different head revisions", () =>
     Effect.gen(function* () {
       const response = coreResponse({

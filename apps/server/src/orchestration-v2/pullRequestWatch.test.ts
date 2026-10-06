@@ -1,7 +1,6 @@
 import type {
   PullRequestCheck,
   PullRequestComment,
-  PullRequestDetail,
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
@@ -62,6 +61,125 @@ const remark = (
 const noRemarks: ReadonlyArray<PullRequestComment> = [];
 
 describe("evaluatePullRequestWatch", () => {
+  it("wakes when remaining CI finishes after required checks passed", () => {
+    const green = detail({
+      checks: [{ ...check("lint", "success"), required: true }, check("iOS", "pending")],
+    });
+    const early = evaluatePullRequestWatch(watch(), green, noRemarks);
+    const finished = evaluatePullRequestWatch(
+      early.next,
+      {
+        ...green,
+        checks: green.checks.map((check) => ({ ...check, status: "success" })),
+      },
+      noRemarks,
+    );
+    assert.deepEqual(finished.changes, [{ kind: "checks-passed", count: 2, required: false }]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        finished.next,
+        {
+          ...green,
+          checks: green.checks.map((check) => ({ ...check, status: "success" })),
+        },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const pushed = evaluatePullRequestWatch(
+      finished.next,
+      { ...green, headSha: "bbbbbbbbbb" },
+      noRemarks,
+    );
+    assert.equal(pushed.changes.length, 1);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        pushed.next,
+        {
+          ...green,
+          headSha: "bbbbbbbbbb",
+          checks: green.checks.map((check) => ({ ...check, status: "success" })),
+        },
+        noRemarks,
+      ).changes,
+      [{ kind: "checks-passed", count: 2, required: false }],
+    );
+  });
+
+  it("reports a fifth required aggregate even when it starts and finishes between sweeps", () => {
+    const checks = [
+      "Analyze (actions)",
+      "Analyze (javascript-typescript)",
+      "Release Note",
+      "lint",
+    ].map((name) => ({ ...check(name, "success"), required: true }));
+    const early = evaluatePullRequestWatch(
+      watch(),
+      detail({ checks: [...checks, check("iOS", "pending")] }),
+      noRemarks,
+    );
+    const late = detail({
+      checks: [...checks, { ...check("e2e", "success"), required: true }, check("iOS", "pending")],
+    });
+    const aggregate = evaluatePullRequestWatch(early.next, late, noRemarks);
+    assert.deepEqual(aggregate.changes, [{ kind: "checks-passed", count: 5, required: true }]);
+    assert.deepEqual(evaluatePullRequestWatch(aggregate.next, late, noRemarks).changes, []);
+  });
+
+  it("keeps a missing required aggregate pending and wakes once it finishes", () => {
+    const checks = [
+      "Analyze (actions)",
+      "Analyze (javascript-typescript)",
+      "Release Note",
+      "lint",
+    ].map((name) => ({ ...check(name, "success"), required: true }));
+    const pending = detail({ checks: [...checks, { ...check("e2e", "pending"), required: true }] });
+    const waiting = evaluatePullRequestWatch(watch(), pending, noRemarks);
+    assert.deepEqual(waiting.changes, []);
+    const finished = evaluatePullRequestWatch(
+      waiting.next,
+      {
+        ...pending,
+        checks: pending.checks.map((check) => ({ ...check, status: "success" })),
+      },
+      noRemarks,
+    );
+    assert.deepEqual(finished.changes, [{ kind: "checks-passed", count: 5, required: true }]);
+  });
+
+  it("deduplicates reordered checks and reports a rerun or later completed check", () => {
+    const green = detail({
+      checks: [{ ...check("lint", "success"), required: true }, check("iOS", "success")],
+    });
+    const first = evaluatePullRequestWatch(watch(), green, noRemarks);
+    assert.equal(first.changes.length, 1);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        first.next,
+        { ...green, checks: green.checks.toReversed() },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const unreadable = evaluatePullRequestWatch(first.next, detail({ checks: [] }), noRemarks);
+    assert.deepEqual(evaluatePullRequestWatch(unreadable.next, green, noRemarks).changes, []);
+    const rerun = evaluatePullRequestWatch(
+      first.next,
+      { ...green, checks: [green.checks[0]!, check("iOS", "pending")] },
+      noRemarks,
+    );
+    assert.deepEqual(rerun.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(rerun.next, green, noRemarks).changes, [
+      { kind: "checks-passed", count: 2, required: false },
+    ]);
+    const late = evaluatePullRequestWatch(
+      first.next,
+      { ...green, checks: [...green.checks, check("performance", "success")] },
+      noRemarks,
+    );
+    assert.deepEqual(late.changes, [{ kind: "checks-passed", count: 3, required: false }]);
+  });
+
   it("reports each failure at once, even while another check never finishes", () => {
     const bot = check("CodeRabbit", "pending");
     const first = detail({ checks: [check("lint", "failure"), check("test", "pending"), bot] });

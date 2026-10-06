@@ -2593,7 +2593,8 @@ it.layer(TestLayer)("OrchestrationV2LayerLive lifecycle", (it) => {
     "repeated cursor",
     "missing comments",
     "thread list truncated",
-  ])("wakes a watched thread once: %s", (mode) =>
+    "CI completion",
+  ])("wakes a watched thread for host changes: %s", (mode) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const threadId = ThreadId.make(`runtime-pull-request-watch-wake-${mode}`);
@@ -2686,6 +2687,101 @@ it.layer(TestLayer)("OrchestrationV2LayerLive lifecycle", (it) => {
       };
       const initialWatch = (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch;
       assert.isDefined(initialWatch);
+      if (mode === "CI completion") {
+        const required = [
+          "Analyze (actions)",
+          "Analyze (javascript-typescript)",
+          "Release Note",
+          "lint",
+        ].map((name) => ({
+          name,
+          status: "success" as const,
+          required: true,
+          description: null,
+          url: null,
+        }));
+        let current: PullRequestDetail = {
+          ...detail,
+          checks: [...required, { name: "iOS", status: "pending", description: null, url: null }],
+        };
+        const makeReactor = PullRequestWatchReactor.make.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              NodeServices.layer,
+              Layer.mock(PullRequestService.PullRequestService)({
+                detail: () => Effect.succeed(current),
+                activity: () =>
+                  Effect.succeed({
+                    comments: [],
+                    commentCount: 0,
+                    commentsTruncated: false,
+                    reviewThreads: [],
+                    commits: [],
+                  }),
+              }),
+            ),
+          ),
+        );
+        let reactor = yield* makeReactor;
+        yield* reactor.sweep;
+        yield* reactor.sweep;
+        const records = () => orchestrator.getThreadRecords(threadId, ["messages"]);
+        assert.equal((yield* records()).messages.length, 1);
+
+        // The four-second aggregate can appear and finish between minute-long sweeps.
+        current = {
+          ...current,
+          checks: [
+            ...current.checks,
+            {
+              name: "e2e",
+              status: "success",
+              required: true,
+              description: null,
+              url: null,
+            },
+          ],
+        };
+        // A recreated reactor must deduplicate using persisted watch state.
+        reactor = yield* makeReactor;
+        yield* reactor.sweep;
+        yield* reactor.sweep;
+        const afterAggregate = (yield* records()).messages;
+        assert.equal(afterAggregate.length, 2);
+        assert.isTrue(
+          afterAggregate.some((message) => message.text.includes("All 5 required checks passed")),
+        );
+
+        current = {
+          ...current,
+          checks: current.checks.map((check) => ({ ...check, status: "success" })),
+        };
+        reactor = yield* makeReactor;
+        yield* reactor.sweep;
+        yield* reactor.sweep;
+        const completed = (yield* records()).messages;
+        assert.equal(completed.length, 3);
+        assert.isTrue(completed.some((message) => message.text.includes("All 6 checks passed")));
+        const saved = (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch;
+        assert.equal(saved?.passedChecks?.length, 5);
+        assert.equal(saved?.allPassedChecks?.length, 6);
+
+        current = {
+          ...current,
+          headSha: "new-head",
+          checks: current.checks.map((check) => ({ ...check, status: "pending" })),
+        };
+        yield* reactor.sweep;
+        assert.equal((yield* records()).messages.length, 3);
+        current = {
+          ...current,
+          checks: current.checks.map((check) => ({ ...check, status: "success" })),
+        };
+        yield* reactor.sweep;
+        yield* reactor.sweep;
+        assert.equal((yield* records()).messages.length, 4);
+        return;
+      }
       const remark: PullRequestComment = {
         id: "review-1",
         kind: "review-comment",

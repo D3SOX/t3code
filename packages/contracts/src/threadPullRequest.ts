@@ -106,6 +106,10 @@ export const ThreadPullRequestWatch = Schema.Struct({
   failedChecks: Schema.Array(TrimmedNonEmptyString),
   /** The agent was told the required checks on that commit passed. */
   passed: Schema.Boolean,
+  /** Check names covered by the last passing gate, so a later required check is news. */
+  passedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** All checks that passed, independently of the required gate. Empty while CI is pending. */
+  allPassedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Remarks from others created up to this host time were reported. */
   remarksThrough: IsoDateTime,
   /** Remarks created exactly at `remarksThrough` that were reported, so a late one still counts. */
