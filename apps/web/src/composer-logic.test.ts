@@ -17,6 +17,7 @@ import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
+  composerSubmissionHints,
   composerStateAtPromptEnd,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
@@ -48,6 +49,79 @@ const citation: AssistantCitation = {
   suffix: " 後",
 };
 const citationSource = serializeAssistantCitation(citation).replaceAll("+", "%20");
+
+describe("composer submission hints", () => {
+  const input = {
+    keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    platform: "Linux",
+    isMobileViewport: false,
+    isDraftThread: false,
+    followUpBehavior: "next-tool" as const,
+  };
+
+  it.each(["queue", "next-tool", "steer"] as const)(
+    "labels both timings for %s",
+    (followUpBehavior) => {
+      const hints = composerSubmissionHints({ ...input, isRunning: true, followUpBehavior });
+      const regular =
+        followUpBehavior === "queue"
+          ? "Queue after current turn"
+          : followUpBehavior === "next-tool"
+            ? "Queue after next tool call"
+            : "Steer immediately";
+      const alternate =
+        followUpBehavior === "queue" ? "Queue after next tool call" : "Queue after current turn";
+      expect(hints).toContain(`Click or Enter: ${regular}`);
+      expect(hints).toContain(`Ctrl-click or Ctrl+Enter: ${alternate}`);
+    },
+  );
+
+  it.each([true, false])("reflects background thread preference %s", (startThreadsInBackground) => {
+    const hints = composerSubmissionHints({
+      ...input,
+      isDraftThread: true,
+      startThreadsInBackground,
+    });
+    expect(hints).toContain(
+      `${startThreadsInBackground ? "Click or Enter or Ctrl+Alt+Enter: Start thread in background" : "Click or Enter: Send message"}`,
+    );
+    expect(hints).toContain(
+      `Ctrl+Enter${startThreadsInBackground ? ": Send message" : " or Ctrl+Alt+Enter: Start thread in background"}`,
+    );
+  });
+
+  it("omits Enter when multiline text requires a modifier", () => {
+    const hints = composerSubmissionHints({
+      ...input,
+      sendShortcut: "mod-enter-multiline",
+      prompt: "two\nlines",
+    });
+    expect(hints).not.toMatch(/(?:or |^)Enter(?::| or )/);
+    expect(
+      composerSubmissionHints({
+        ...input,
+        sendShortcut: "mod-enter-multiline",
+        prompt: "one line",
+      }),
+    ).toContain("Click or Enter or Ctrl+Enter:");
+  });
+
+  it("uses macOS modifier labels", () => {
+    const hints = composerSubmissionHints({ ...input, platform: "MacIntel", isRunning: true });
+    expect(hints).toContain("⌘-click or ⌘Enter: Queue after current turn");
+  });
+
+  it("respects remapped shortcuts without claiming the old binding still queues", () => {
+    const keybindings = mergeWithDefaultKeybindings(
+      compileResolvedKeybindingsConfig([
+        { key: "alt+q", command: "composer.sendAlternate", when: "composerFocus && turnRunning" },
+      ]),
+    );
+    const hints = composerSubmissionHints({ ...input, keybindings, isRunning: true });
+    expect(hints).toContain("Ctrl-click or Alt+Q: Queue after current turn");
+    expect(hints).toContain("Click or Enter or Ctrl+Enter: Queue after next tool call");
+  });
+});
 
 describe("formatAssistantCitationForComposer", () => {
   it.each([undefined, "", " \n\t "])(

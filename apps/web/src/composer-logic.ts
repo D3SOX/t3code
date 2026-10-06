@@ -10,7 +10,8 @@ import {
   type ComposerPromptSegment,
 } from "./composer-editor-mentions";
 
-import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+import { formatShortcutLabel, resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+import { isMacPlatform } from "./lib/utils";
 
 export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default";
@@ -94,6 +95,80 @@ export function composerSubmissionIntentForKey(input: {
 }
 
 const isInlineTokenSegment = (segment: ComposerPromptSegment): boolean => segment.type !== "text";
+
+/** Resolve hints through the same shortcut rules as the editor, including custom bindings. */
+export function composerSubmissionHints(
+  input: Omit<Parameters<typeof composerSubmissionIntentForKey>[0], "event"> & {
+    followUpBehavior: ClientSettings["followUpBehavior"];
+    isEditingQueuedMessage?: boolean;
+  },
+): string {
+  const platform = input.platform ?? navigator.platform;
+  const mac = isMacPlatform(platform);
+  const actionFor = (intent: ComposerSubmissionIntent) => {
+    if (input.isEditingQueuedMessage) return "Update queued message";
+    if (intent === "background" && !input.isDraftThread) return "Send and start a new thread";
+    if (input.isRunning) {
+      const timing = followUpBehaviorForSubmission(input.followUpBehavior, intent);
+      return timing === "queue"
+        ? "Queue after current turn"
+        : timing === "next-tool"
+          ? "Queue after next tool call"
+          : "Steer immediately";
+    }
+    return intent === "background"
+      ? input.isDraftThread
+        ? "Start thread in background"
+        : "Send and start a new thread"
+      : "Send message";
+  };
+  const hints = new Map<string, Set<string>>();
+  const add = (intent: ComposerSubmissionIntent, label: string) => {
+    const action = actionFor(intent);
+    const labels = hints.get(action) ?? new Set<string>();
+    labels.add(label);
+    hints.set(action, labels);
+  };
+  add(
+    input.isDraftThread && input.startThreadsInBackground !== false ? "background" : "foreground",
+    "Click",
+  );
+  if (input.isRunning) add("alternate", mac ? "⌘-click" : "Ctrl-click");
+  if (!input.isMobileViewport) {
+    const enter = {
+      key: "enter",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      modKey: false,
+    };
+    const shortcuts = [
+      enter,
+      { ...enter, modKey: true },
+      ...input.keybindings
+        .filter((binding) =>
+          [
+            "composer.sendAlternate",
+            "composer.sendBackground",
+            "composer.sendAndNewThread",
+          ].includes(binding.command),
+        )
+        .map((binding) => binding.shortcut),
+    ];
+    for (const shortcut of shortcuts) {
+      const event = {
+        ...shortcut,
+        key: shortcut.key === "enter" ? "Enter" : shortcut.key,
+        metaKey: shortcut.metaKey || (shortcut.modKey && mac),
+        ctrlKey: shortcut.ctrlKey || (shortcut.modKey && !mac),
+      };
+      const intent = composerSubmissionIntentForKey({ ...input, platform, event });
+      if (intent) add(intent, formatShortcutLabel(shortcut, platform));
+    }
+  }
+  return [...hints].map(([action, labels]) => `${[...labels].join(" or ")}: ${action}`).join("\n");
+}
 
 function clampCursor(text: string, cursor: number): number {
   if (!Number.isFinite(cursor)) return text.length;

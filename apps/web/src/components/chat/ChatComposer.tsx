@@ -76,6 +76,7 @@ import {
   type ComposerSubmissionIntent,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
+  composerSubmissionHints,
   composerStateAtPromptEnd,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
@@ -1365,7 +1366,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isRunning: boolean;
   canInterrupt: boolean;
   followUpBehavior: "queue" | "next-tool" | "steer";
-  alternateShortcutLabel: string | null;
+  submissionHints: string;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
@@ -1405,7 +1406,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isRunning={props.isRunning}
         canInterrupt={props.canInterrupt}
         followUpBehavior={props.followUpBehavior}
-        alternateShortcutLabel={props.alternateShortcutLabel}
+        submissionHints={props.submissionHints}
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
@@ -7541,17 +7542,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isRunning={phase === "running"}
                     canInterrupt={canInterrupt}
                     followUpBehavior={settings.followUpBehavior}
-                    alternateShortcutLabel={shortcutLabelForCommand(
+                    submissionHints={composerSubmissionHints({
+                      isEditingQueuedMessage,
                       keybindings,
-                      "composer.sendAlternate",
-                      {
-                        context: {
-                          composerFocus: true,
-                          draftThreadRoute: routeKind === "draft",
-                          turnRunning: true,
-                        },
-                      },
-                    )}
+                      isMobileViewport,
+                      isDraftThread: routeKind === "draft",
+                      isRunning: phase === "running",
+                      sendShortcut: settings.sendShortcut,
+                      startThreadsInBackground: settings.startThreadsInBackground,
+                      followUpBehavior: settings.followUpBehavior,
+                      prompt,
+                    })}
                     showPlanFollowUpPrompt={
                       pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                     }

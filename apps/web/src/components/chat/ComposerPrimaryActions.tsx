@@ -11,10 +11,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import {
-  alternateComposerDispatchAction,
-  resolveComposerDispatchMode,
-} from "@t3tools/client-runtime/state/composer-dispatch";
+import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 
 interface PendingActionState {
   questionIndex: number;
@@ -32,7 +29,7 @@ interface ComposerPrimaryActionsProps {
   /** Stop can reach a run, including one still preparing or starting. */
   canInterrupt: boolean;
   followUpBehavior?: "queue" | "next-tool" | "steer";
-  alternateShortcutLabel?: string | null;
+  submissionHints?: string;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
@@ -85,7 +82,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isRunning,
   canInterrupt,
   followUpBehavior = "steer",
-  alternateShortcutLabel = null,
+  submissionHints,
   showPlanFollowUpPrompt,
   promptHasText,
   isSendBusy,
@@ -118,7 +115,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     !isEditingQueuedMessage &&
     isRunning &&
     (dispatchAction === "queue" || dispatchAction === "next-tool");
-  const alternateAction = alternateComposerDispatchAction(followUpBehavior);
   const isSendDisabled = sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(
     environmentIdentificationMode === "artwork",
@@ -289,10 +285,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               : "Submitting message"
             : null));
   const submitTooltip =
-    submitStatus ??
-    (isRunning && !isEditingQueuedMessage
-      ? `${submitLabel}. Ctrl/⌘-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction === "queue" ? "queue after current turn" : "queue after next tool call"}`
-      : submitLabel);
+    submitStatus ?? (showResume ? submitLabel : (submissionHints ?? submitLabel));
 
   const sendButton = (
     <button
@@ -345,7 +338,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   return (
     <Tooltip key="submit">
       <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
-      <TooltipPopup>{submitTooltip}</TooltipPopup>
+      <TooltipPopup>
+        <div className="whitespace-pre-line">{submitTooltip}</div>
+      </TooltipPopup>
     </Tooltip>
   );
 });
