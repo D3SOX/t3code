@@ -53,6 +53,20 @@ function run(id: string, ordinal: number, status: OrchestrationV2RunStatus) {
 }
 
 describe("thread execution presentation", () => {
+  it("keeps PR-watch completions quiet without silencing the next user run", () => {
+    const watch = {
+      ...run("pr-watch", 1, "completed"),
+      userMessageId: MessageId.make("message:pr-watch:wake"),
+      completedAt: now,
+    };
+    expect(deriveLatestThreadRun({ ...v2Projection, runs: [watch] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(
+      deriveLatestThreadRun({ ...v2Projection, runs: [watch, run("user", 2, "completed")] })
+        ?.completionSilent,
+    ).toBeUndefined();
+  });
   it("derives the current root failure without inheriting errors from children or previous runs", () => {
     const failed = { ...run("limited", 1, "failed"), rootNodeId: NodeId.make("root") };
     const item = {

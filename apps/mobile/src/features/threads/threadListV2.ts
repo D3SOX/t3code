@@ -173,6 +173,7 @@ export function threadHasUnseenCompletion(
   thread: Pick<EnvironmentThreadShell, "latestRun" | "lastVisitedAt">,
 ): boolean {
   const completedAt = thread.latestRun?.completedAt;
+  if (thread.latestRun?.completionSilent) return false;
   if (!completedAt) return false;
   const completedAtMs = Date.parse(completedAt);
   if (Number.isNaN(completedAtMs)) return false;

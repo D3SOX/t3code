@@ -504,6 +504,19 @@ function makeLatestRun(overrides?: {
 }
 
 describe("hasUnseenCompletion", () => {
+  it("does not mark a PR-watch update Done", () => {
+    expect(
+      hasUnseenCompletion({
+        hasActionableProposedPlan: false,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        interactionMode: "default",
+        latestRun: { ...makeLatestRun(), completionSilent: true },
+        lastVisitedAt: "2026-03-09T10:04:00.000Z",
+        runtime: null,
+      }),
+    ).toBe(false);
+  });
   it("keeps Done and Input visible in collapsed sections, while other unselected rows collapse", () => {
     expect(
       shouldShowCollapsedSidebarThread({ status: "ready", isUnread: true, isActive: false }),

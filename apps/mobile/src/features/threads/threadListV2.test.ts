@@ -1023,6 +1023,18 @@ function makePendingTask(id: string): PendingNewTask {
 }
 
 describe("buildThreadListV2ListItems", () => {
+  it("does not mark a completed PR-watch shell as unread", () => {
+    const shell = makeRawThreadShell({
+      latestRunId: RunId.make("pr-watch-run"),
+      latestRunUserMessageId: MessageId.make("message:pr-watch:wake"),
+      latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+      status: "completed",
+      lastVisitedAt: DateTime.makeUnsafe("2026-06-01T00:00:00.000Z"),
+    });
+    const thread = presentThreadShell(environmentId, shell);
+    expect(thread.latestRun?.completionSilent).toBe(true);
+    expect(threadHasUnseenCompletion(thread)).toBe(false);
+  });
   it.each(["pinned", "active"] as const)(
     "keeps Done and Input threads visible in collapsed %s sections",
     (section) => {
@@ -1041,6 +1053,11 @@ describe("buildThreadListV2ListItems", () => {
       });
       const threads = [
         done,
+        {
+          ...done,
+          id: ThreadId.make("pr-watch"),
+          latestRun: { ...done.latestRun!, completionSilent: true },
+        },
         { ...done, id: ThreadId.make("read"), lastVisitedAt: NOW },
         makeThread({ id: ThreadId.make("input"), title: "Input", hasPendingUserInput: true }),
         makeThread({ id: ThreadId.make("ready"), title: "Ready" }),
