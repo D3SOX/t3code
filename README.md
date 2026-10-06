@@ -24,6 +24,8 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Terminal close confirmation is optional and off by default under Settings → General → Confirmations. Ctrl+W and Ctrl+D still go to the terminal.
 - Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
 
+Interested in this fork but need releases for another platform? [Open an issue](https://github.com/D3SOX/t3code/issues/new) and let me know which platform you'd like supported.
+
 ## Android nightly
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522com.t3tools.t3code.preview%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FD3SOX%252Ft3code%2522%252C%2522author%2522%253A%2522D3SOX%2522%252C%2522name%2522%253A%2522T3%2520Code%2520D3SOX%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includePrereleases%255C%2522%253Atrue%252C%255C%2522filterReleaseTitlesByRegEx%255C%2522%253A%255C%2522%255ED3SOX%2520nightly%2520r%255B0-9%255D%252B%2524%255C%2522%257D%2522%257D"><img src="./assets/fork/badge-obtainium.png" alt="Get it on Obtainium" width="160" height="62" /></a>
