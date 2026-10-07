@@ -10,3 +10,5 @@ Events do not include prompts, responses, file contents, authentication tokens, 
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
 
 Unset the variable or set it to `false` to stop product events from being recorded or sent.
+The desktop app reads the variable from your shell profile (for example `~/.zshrc`) on macOS and
+Linux, so export it there and restart the app. On Windows, set it as a user environment variable.

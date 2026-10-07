@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -106,8 +107,13 @@ export const ThreadPullRequestWatch = Schema.Struct({
   failedChecks: Schema.Array(TrimmedNonEmptyString),
   /** The agent was told the required checks on that commit passed. */
   passed: Schema.Boolean,
-  /** Check names covered by the last passing gate, so a later required check is news. */
-  passedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /**
+   * Names in the passing gate on that commit, so a required check that first shows up already
+   * passed is news. Empty on watches saved before this field existed.
+   */
+  passedChecks: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   /** All checks that passed, independently of the required gate. Empty while CI is pending. */
   allPassedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Remarks from others created up to this host time were reported. */

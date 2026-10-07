@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE } from "@t3tools/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import Constants from "expo-constants";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "./preferences";

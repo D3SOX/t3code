@@ -551,6 +551,7 @@ export interface GhosttyTerminalSurfaceOptions {
   readonly onSelectionChange: () => void;
   readonly beforeKey: (event: KeyboardEvent) => boolean;
   readonly onLinkActivate: (text: string, event: MouseEvent) => void;
+  readonly canActivateLink?: (text: string) => boolean;
   /**
    * A right-click the running application did not claim through mouse
    * reporting. The host owns the menu, so it also owns preventing the browser
@@ -797,6 +798,12 @@ export class GhosttyTerminalSurface {
     this.requestRender();
   }
 
+  /** Re-evaluate link feedback after the host's available actions change. */
+  refreshLinkActivation(): void {
+    if (this.disposed) return;
+    this.refreshHoveredLink();
+  }
+
   async setFont(font: GhosttyTerminalFont): Promise<void> {
     if (this.disposed) return;
     const fontSize = terminalFontSize(font.size);
@@ -858,6 +865,12 @@ export class GhosttyTerminalSurface {
     }
     this.applyFontMetrics();
   };
+
+  /** Replay the measured grid after the host becomes ready to resize its PTY. */
+  resendSize(): void {
+    this.resizeNotified = false;
+    this.fit();
+  }
 
   fit(): boolean {
     if (this.disposed || !this.visible) return false;
@@ -1308,12 +1321,7 @@ export class GhosttyTerminalSurface {
     if (event.button !== 0) return;
     const clickCount = this.recordSelectionClick(event);
     const link = this.linkAt(event.clientX, event.clientY);
-    if (
-      link &&
-      !event.shiftKey &&
-      (isTerminalUrl(link.text) || !event.ctrlKey) &&
-      clickCount === 1
-    ) {
+    if (link && !event.shiftKey && clickCount === 1) {
       event.preventDefault();
       event.stopPropagation();
       this.linkActivationPointerId = event.pointerId;
@@ -1529,7 +1537,7 @@ export class GhosttyTerminalSurface {
       if (event.type !== "pointercancel") {
         if (
           link &&
-          (isTerminalUrl(link.text) || (!event.ctrlKey && !event.shiftKey)) &&
+          (isTerminalUrl(link.text) || !event.shiftKey) &&
           isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY))
         ) {
           this.options.onLinkActivate(link.text, event);
@@ -1939,6 +1947,11 @@ export class GhosttyTerminalSurface {
   }
 
   private linkAt(clientX: number, clientY: number): TerminalLinkWithRange | null {
+    const link = this.findLinkAt(clientX, clientY);
+    return link && this.options.canActivateLink?.(link.text) !== false ? link : null;
+  }
+
+  private findLinkAt(clientX: number, clientY: number): TerminalLinkWithRange | null {
     if (!this.snapshot) return null;
     const cell = terminalGridCellAt({
       bounds: this.canvas.getBoundingClientRect(),
