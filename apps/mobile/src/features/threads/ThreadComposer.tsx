@@ -556,7 +556,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   });
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
-    (sending ? (queuedEdit ? "Saving…" : "Sending…") : null) ??
+    (sending && queuedEdit ? "Saving…" : null) ??
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
     (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
@@ -630,7 +630,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         return;
       }
       const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
-      if (inFlightThreadIdsRef.current.has(threadKey)) return;
+      if (queuedEdit !== null && inFlightThreadIdsRef.current.has(threadKey)) return;
       inFlightThreadIdsRef.current.add(threadKey);
       setSendingThreadKey(threadKey);
       try {
@@ -659,6 +659,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       openUsageLimits,
       usageLimitsOffered,
       onSendMessage,
+      queuedEdit,
       props.environmentId,
       props.environmentLabel,
       props.selectedThread.id,
@@ -1095,7 +1096,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   <SendActionButton
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
                     presentation={sendPresentation}
-                    busy={sending || queuedEdit?.saving === true}
+                    busy={(sending && !hasContent) || queuedEdit?.saving === true}
                     disabled={!canSend}
                     onSend={handleSend}
                   />
@@ -1192,7 +1193,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     <SendActionButton
                       accessibilityLabel={sendBlockedReason ?? sendLabel}
                       presentation={sendPresentation}
-                      busy={sending || queuedEdit?.saving === true}
+                      busy={(sending && !hasContent) || queuedEdit?.saving === true}
                       disabled={!canSend}
                       onSend={handleSend}
                     />

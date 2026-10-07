@@ -49,6 +49,25 @@ describe("attachmentUploadBlockReason", () => {
     ).toBe("Retry or remove the failed attachment");
   });
 
+  it("allows local submissions to wait for uploads without accepting failed uploads", () => {
+    expect(
+      attachmentUploadBlockReason({
+        imageIds: ["uploading", "missing"],
+        environmentId,
+        allowPending: true,
+        uploadsByImageId: { uploading: { status: "uploading", environmentId, progress: 0.5 } },
+      }),
+    ).toBeNull();
+    expect(
+      attachmentUploadBlockReason({
+        imageIds: ["failed"],
+        environmentId,
+        allowPending: true,
+        uploadsByImageId: { failed: { status: "failed", environmentId, reason: "Upload failed" } },
+      }),
+    ).toBe("Retry or remove the failed attachment");
+  });
+
   it("does not accept an upload from another environment", () => {
     expect(
       attachmentUploadBlockReason({

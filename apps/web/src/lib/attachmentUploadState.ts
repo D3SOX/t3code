@@ -31,6 +31,7 @@ export function attachmentUploadBlockReason(input: {
   readonly imageIds: ReadonlyArray<string>;
   readonly uploadsByImageId: Readonly<Record<string, AttachmentUploadState>>;
   readonly environmentId: EnvironmentId;
+  readonly allowPending?: boolean;
 }): string | null {
   let pending = 0;
   let failed = 0;
@@ -49,7 +50,7 @@ export function attachmentUploadBlockReason(input: {
       ? "Retry or remove the failed attachment"
       : "Retry or remove the failed attachments";
   }
-  if (pending > 0) {
+  if (pending > 0 && !input.allowPending) {
     return pending === 1 ? "Attachment still uploading" : "Attachments still uploading";
   }
   return null;

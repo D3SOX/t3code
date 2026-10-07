@@ -664,7 +664,7 @@ describe("thread outbox", () => {
     registry.dispose();
   });
 
-  it("publishes an enqueued message before the durable write resolves", async () => {
+  it("accepts another message while an earlier durable write is pending", async () => {
     const registry = AtomRegistry.make();
     let releaseWrite!: () => void;
     const writeBlocked = new Promise<void>((resolve) => {
@@ -688,10 +688,19 @@ describe("thread outbox", () => {
       "environment-1:thread-1": [message],
     });
 
-    releaseWrite();
-    await enqueueing;
+    const nextMessage = queuedMessage({
+      messageId: "message-2",
+      createdAt: "2026-06-08T10:00:02.000Z",
+    });
+    const enqueueingNext = manager.enqueue(nextMessage);
     expect(registry.get(manager.queuedMessagesByThreadKeyAtom)).toEqual({
-      "environment-1:thread-1": [message],
+      "environment-1:thread-1": [message, nextMessage],
+    });
+
+    releaseWrite();
+    await Promise.all([enqueueing, enqueueingNext]);
+    expect(registry.get(manager.queuedMessagesByThreadKeyAtom)).toEqual({
+      "environment-1:thread-1": [message, nextMessage],
     });
     registry.dispose();
   });

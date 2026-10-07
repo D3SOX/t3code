@@ -625,6 +625,31 @@ describe("composerDraftStore file attachments", () => {
     expect(draft?.files.map((file) => file.id)).toEqual(["file-accepted"]);
   });
 
+  it("retains failed-send attachments alongside a newer draft even over the send limit", () => {
+    const store = useComposerDraftStore.getState();
+    store.addImages(
+      threadRef,
+      Array.from({ length: PROVIDER_SEND_TURN_MAX_ATTACHMENTS }, (_, index) =>
+        makeImage({
+          id: `image-${index}`,
+          name: `image-${index}.png`,
+          previewUrl: `blob:image-${index}`,
+        }),
+      ),
+    );
+    store.addImages(
+      threadRef,
+      [makeImage({ id: "restored-image", name: "restored.png", previewUrl: "blob:restored" })],
+      {
+        allowOverflow: true,
+      },
+    );
+    store.addFiles(threadRef, [makeFile("restored-file")], { allowOverflow: true });
+    const draft = store.getComposerDraft(threadRef);
+    expect(draft?.images).toHaveLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS + 1);
+    expect(draft?.files.map((file) => file.id)).toEqual(["restored-file"]);
+  });
+
   it("replaces a needs-reattach marker when the same file is picked again", () => {
     const store = useComposerDraftStore.getState();
     // A hydrated marker: same metadata as the original pick, no bytes and no

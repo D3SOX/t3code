@@ -1969,6 +1969,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             imageIds: [...composerImages, ...composerFiles].map((attachment) => attachment.id),
             uploadsByImageId,
             environmentId,
+            allowPending: !questionAttachmentTarget,
           })
       : null);
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);

@@ -633,18 +633,18 @@ interface ComposerDraftStoreState {
     interactionMode: ProviderInteractionMode | null | undefined,
   ) => void;
   addImage: (threadRef: ComposerThreadTarget, image: ComposerImageAttachment) => boolean;
-  /** Returns the ids the draft accepted; duplicates and over-cap attachments are left out. */
+  /** Returns accepted ids; failure recovery may retain overflow beside a newer draft. */
   addImages: (
     threadRef: ComposerThreadTarget,
     images: ComposerImageAttachment[],
-    options?: { allowDuplicates?: boolean },
+    options?: { allowDuplicates?: boolean; allowOverflow?: boolean },
   ) => string[];
   removeImage: (threadRef: ComposerThreadTarget, imageId: string) => void;
   /** Returns the ids of files appended; a re-pick that replaces a marker is not listed. */
   addFiles: (
     threadRef: ComposerThreadTarget,
     files: ComposerFileAttachment[],
-    options?: { allowDuplicates?: boolean; appendReference?: boolean },
+    options?: { allowDuplicates?: boolean; appendReference?: boolean; allowOverflow?: boolean },
   ) => string[];
   removeFile: (threadRef: ComposerThreadTarget, fileId: string) => void;
   setFileUpload: (
@@ -3447,8 +3447,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 continue;
               }
               if (
+                !options?.allowOverflow &&
                 existing.images.length + existing.files.length + dedupedIncoming.length >=
-                PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+                  PROVIDER_SEND_TURN_MAX_ATTACHMENTS
               ) {
                 if (!acceptedPreviewUrls.has(image.previewUrl)) {
                   revokeObjectPreviewUrl(image.previewUrl);
@@ -3556,8 +3557,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 continue;
               }
               if (
+                !options?.allowOverflow &&
                 existing.images.length + existing.files.length + accepted.length >=
-                PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+                  PROVIDER_SEND_TURN_MAX_ATTACHMENTS
               ) {
                 break;
               }

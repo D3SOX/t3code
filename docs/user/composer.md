@@ -21,8 +21,10 @@ receives them on the environment's machine. Provider and model limits still
 apply, including images already in the conversation. A video attachment gives
 the agent a file path; it does not enable native video input.
 
-Uploads begin when you add an attachment. All uploads must finish before the
-message can send. Retry or remove a failed upload. On web and desktop, reloading
+Uploads begin when you add an attachment. You can submit while uploads or an earlier
+send are still in progress; messages wait locally and send in submission order once ready.
+You can keep composing the next message while they wait. Retry or remove a failed upload.
+On web and desktop, keep the client open while messages wait locally; reloading
 before an upload finishes requires you to attach that file again.
 
 You can drag or paste images into the web or desktop composer. HEIC and HEIF
