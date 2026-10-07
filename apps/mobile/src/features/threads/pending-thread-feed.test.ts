@@ -20,6 +20,27 @@ const pending = (id: string): QueuedThreadMessage => ({
 });
 
 describe("pending timeline messages", () => {
+  it.each(["queue", "next-tool"] as const)(
+    "keeps %s sends out of the chat while awaiting the server queue",
+    (dispatchMode) => {
+      const queued = { ...pending("follow-up"), dispatchMode };
+      expect(appendPendingThreadMessages([], [], [queued])).toEqual([]);
+    },
+  );
+
+  it.each([undefined, "auto", "steer", "restart"] as const)(
+    "previews immediate %s sends while awaiting delivery",
+    (dispatchMode) => {
+      const message = {
+        ...pending("immediate"),
+        ...(dispatchMode === undefined ? {} : { dispatchMode }),
+      };
+      expect(appendPendingThreadMessages([], [], [message]).map((entry) => entry.id)).toEqual([
+        message.messageId,
+      ]);
+    },
+  );
+
   it("retains context records while a message is waiting for delivery", () => {
     const record = {
       version: 1 as const,
@@ -54,12 +75,16 @@ describe("pending timeline messages", () => {
     expect(entries[1]?.pendingMessage?.text).toBe("first");
   });
 
-  it("reuses the message id and suppresses the pending copy when delivery appears", () => {
-    const queued = pending("sent");
-    const optimistic = appendPendingThreadMessages([], [], [queued])[0]!;
-    const delivered = { ...optimistic, pendingMessage: undefined };
-    expect(appendPendingThreadMessages([delivered], [delivered], [queued])).toEqual([delivered]);
-    // Folded messages still count as delivered even when absent from the presented rows.
-    expect(appendPendingThreadMessages([], [delivered], [queued])).toEqual([]);
-  });
+  it.each([undefined, "queue", "next-tool"] as const)(
+    "shows delivered %s messages without a pending copy",
+    (dispatchMode) => {
+      const message = pending("sent");
+      const optimistic = appendPendingThreadMessages([], [], [message])[0]!;
+      const delivered = { ...optimistic, pendingMessage: undefined };
+      const queued = { ...message, ...(dispatchMode === undefined ? {} : { dispatchMode }) };
+      expect(appendPendingThreadMessages([delivered], [delivered], [queued])).toEqual([delivered]);
+      // Folded messages still count as delivered even when absent from the presented rows.
+      expect(appendPendingThreadMessages([], [delivered], [queued])).toEqual([]);
+    },
+  );
 });
