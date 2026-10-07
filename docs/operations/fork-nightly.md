@@ -4,7 +4,7 @@
 
 `.github/workflows/fork-pages.yml` deploys that artifact to GitHub Pages after a successful nightly build. Landing-page or Pages-workflow changes on `main` deploy separately: the workflow reuses the latest signed repository artifact and overlays the current `packaging/pages/index.html`. It can also be started manually with `gh workflow run fork-pages.yml --ref main`. A skipped nightly run has no new artifact and does not redeploy Pages.
 
-The Arch `PKGBUILD` normally follows `main`. CI sets `T3CODE_SOURCE_COMMIT` so its package uses the exact workflow commit. The Pages repository at `https://d3sox.me/t3code/arch/x86_64` contains only the newest package and a signed pacman database. GitHub Releases keep older package files and the Android APKs.
+The Arch `PKGBUILD` normally follows `main`. CI sets `T3CODE_SOURCE_COMMIT` so its package uses the exact workflow commit. The Pages repository at `https://t3code.d3sox.me/arch/x86_64` contains only the newest package and a signed pacman database. GitHub Releases keep older package files and the Android APKs.
 
 The workflow needs three repository secrets:
 

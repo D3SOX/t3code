@@ -64,7 +64,7 @@ Add this repository to `/etc/pacman.conf`:
 ```ini
 [t3code-d3sox]
 SigLevel = Required
-Server = https://d3sox.me/t3code/arch/$arch
+Server = https://t3code.d3sox.me/arch/$arch
 ```
 
 Then run `sudo pacman -Syu t3code-d3sox-git`. The repository keeps the newest x86_64 package; older builds remain in [GitHub Releases](https://github.com/D3SOX/t3code/releases). The package conflicts with `t3code-bin`, so pacman will ask to replace it.

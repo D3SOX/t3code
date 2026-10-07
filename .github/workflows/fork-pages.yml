@@ -68,6 +68,7 @@ jobs:
           ref: main
           sparse-checkout: |
             /packaging/pages/index.html
+            /packaging/pages/CNAME
             /assets/fork/badge-obtainium.png
             /assets/nightly/nightly-web-favicon.ico
           sparse-checkout-cone-mode: false
@@ -81,6 +82,7 @@ jobs:
             --name d3sox-pacman-site --dir site
           test -s site/arch/x86_64/t3code-d3sox.db
           install -m 644 packaging/pages/index.html site/index.html
+          install -m 644 packaging/pages/CNAME site/CNAME
           install -Dm 644 assets/fork/badge-obtainium.png site/assets/badge-obtainium.png
           install -m 644 assets/nightly/nightly-web-favicon.ico site/favicon.ico
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
