@@ -23,8 +23,8 @@ const dependencies = [
   ProjectService.ProjectService,
 ];
 
-const REGISTER_EVERY_PR =
-  "Register every pull request you open for this thread, including each layer of a stack, right after creating it.";
+const PR_LINKING_GUIDANCE =
+  "Register PRs created for this thread, PRs implementing this thread's requested changes, and PRs explicitly assigned to this thread for review or monitoring. Link them when creating them or starting that work, including every layer of a stack implementing this task. Do not link PRs touched only for incidental maintenance, such as release-note metadata, labels, cross-references, or coordination updates. Mentioning or modifying a PR alone does not make it relevant to this thread.";
 
 /**
  * Either the pull request's URL or its repository and number. Both forms
@@ -248,7 +248,7 @@ export const ListThreadPullRequestsResult = Schema.Struct({
 export type ListThreadPullRequestsResult = typeof ListThreadPullRequestsResult.Type;
 
 const LinkPullRequestTool = Tool.make("link_pull_request", {
-  description: `${REGISTER_EVERY_PR} Links a pull request to this thread so T3 Code tracks it, shows its status beside the thread, and settles the thread when it merges. Pass the URL, or repository plus number. Linking an already-linked pull request succeeds with alreadyLinked=true.`,
+  description: `${PR_LINKING_GUIDANCE} Links a pull request to this thread so T3 Code tracks it, shows its status beside the thread, and settles the thread when it merges. Pass the URL, or repository plus number. Linking an already-linked pull request succeeds with alreadyLinked=true.`,
   parameters: PullRequestTargetInput,
   success: LinkPullRequestResult,
   failure: PullRequestToolError,
@@ -275,7 +275,7 @@ const UnlinkPullRequestTool = Tool.make("unlink_pull_request", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
-  description: `List the pull requests linked to a thread (omit threadId for this thread) with their last known host state, and how they chain into stacks (bottom to top). ${REGISTER_EVERY_PR}`,
+  description: `List the pull requests linked to a thread (omit threadId for this thread) with their last known host state, and how they chain into stacks (bottom to top). ${PR_LINKING_GUIDANCE}`,
   parameters: Schema.Struct({
     threadId: Schema.optional(
       ThreadId.annotate({ description: "Thread to list. Omit for this thread." }),

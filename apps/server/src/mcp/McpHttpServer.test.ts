@@ -485,7 +485,16 @@ it.effect(
       const linkTool = server.tools.find(({ tool }) => tool.name === "link_pull_request");
       expect(linkTool?.tool.annotations?.idempotentHint).toBe(true);
       expect(linkTool?.tool.annotations?.openWorldHint).toBe(false);
-      expect(linkTool?.tool.description).toContain("Register every pull request you open");
+      expect(linkTool?.tool.description).toContain(
+        "PRs implementing this thread's requested changes",
+      );
+      expect(linkTool?.tool.description).toContain(
+        "Do not link PRs touched only for incidental maintenance, such as release-note metadata",
+      );
+      const listTool = server.tools.find(({ tool }) => tool.name === "list_thread_pull_requests");
+      expect(listTool?.tool.description).toContain(
+        "Do not link PRs touched only for incidental maintenance",
+      );
 
       const denied = yield* server
         .callTool({ name: "list_thread_pull_requests", arguments: {} })
