@@ -622,6 +622,17 @@ describe("ClientSettings environment identification", () => {
 });
 
 describe("ClientSettings sidebar", () => {
+  it("shows thread branches by default and persists a compact opt-out", () => {
+    expect(decodeClientSettings({}).sidebarShowThreadBranches).toBe(true);
+    const settings = decodeClientSettings({ sidebarShowThreadBranches: false });
+    expect(decodeClientSettings(encodeClientSettings(settings)).sidebarShowThreadBranches).toBe(
+      false,
+    );
+    expect(decodeClientSettingsPatch({ sidebarShowThreadBranches: false })).toEqual({
+      sidebarShowThreadBranches: false,
+    });
+  });
+
   it("defaults to the current sidebar", () => {
     expect(decodeClientSettings({}).legacySidebarEnabled).toBe(false);
   });

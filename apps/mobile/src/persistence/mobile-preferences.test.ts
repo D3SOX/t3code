@@ -5,6 +5,12 @@ vi.mock("expo-secure-store", () => ({}));
 import { sanitizePreferences } from "./mobile-preferences";
 
 describe("environment identification preferences", () => {
+  it.each([true, false])("retains thread branch visibility %s", (sidebarShowThreadBranches) => {
+    expect(sanitizePreferences({ sidebarShowThreadBranches })).toEqual({
+      sidebarShowThreadBranches,
+    });
+  });
+
   it.each(["queue", "next-tool", "steer"] as const)(
     "retains the saved %s follow-up timing",
     (followUpBehavior) => {

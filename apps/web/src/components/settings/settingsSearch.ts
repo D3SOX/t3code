@@ -297,6 +297,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sort projects sidebar manual created recent"],
   },
   {
+    id: "sidebar-thread-branches",
+    title: "Show thread branches",
+    to: "/settings/general",
+    searchTerms: ["sidebar compact density hide branch names rows"],
+  },
+  {
     id: "snooze-limited-threads",
     title: "Snooze limited threads",
     to: "/settings/general",

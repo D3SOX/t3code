@@ -45,6 +45,13 @@ const ITEMS: ReadonlyArray<SettingsSearchItem> = [
 ];
 
 describe("searchSettings", () => {
+  it.each(["compact sidebar", "hide branch names", "thread branches"])(
+    "finds thread branch visibility for %s",
+    (query) => {
+      expect(searchSettings(query)[0]?.id).toBe("sidebar-thread-branches");
+    },
+  );
+
   it.each(["send shortcut", "multiline", "new line"])("finds Send shortcut for %s", (query) => {
     expect(searchSettings(query).map((item) => item.id)).toContain("send-shortcut");
   });

@@ -1217,6 +1217,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   );
   const threadKey = scopedThreadKey(threadRef);
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
+  const showThreadBranches = useClientSettings((settings) => settings.sidebarShowThreadBranches);
   useEffect(() => {
     if (!canOperateThread && isRenaming) onCancelRename();
   }, [canOperateThread, isRenaming, onCancelRename]);
@@ -1978,8 +1979,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        // Keep offscreen sizing in sync with the content box below.
+        "list-none py-0.5 [content-visibility:auto]",
+        showThreadBranches
+          ? "[contain-intrinsic-size:auto_78px]"
+          : "[contain-intrinsic-size:auto_60px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -2003,8 +2007,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
-            <div className="flex h-5 min-w-0 items-center gap-1.5">
+          <div
+            className={cn(
+              "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+              showThreadBranches
+                ? "h-[4.875rem]"
+                : "grid h-15 grid-cols-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1",
+            )}
+          >
+            <div className="col-span-2 flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
@@ -2166,7 +2177,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className="mt-1 flex min-w-0">
+            <div className={cn("flex min-w-0", showThreadBranches && "mt-1")}>
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -2174,20 +2185,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               ) : null}
             </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-              {/* Always the branch. The plan step used to take this slot while
-                  working, but it truncated to a half-sentence and dropped the
-                  branch, so the row lost its most stable identifier. */}
-              {thread.branch ? (
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
+                showThreadBranches && "mt-0.5",
+              )}
+            >
+              {showThreadBranches && thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
                   <span className="flex min-w-0 flex-1 text-muted-foreground/40">
                     <MiddleTruncate value={thread.branch} showTitle={false} />
                   </span>
                 </>
-              ) : (
+              ) : showThreadBranches ? (
                 <span className="flex-1" />
-              )}
+              ) : null}
+              {!showThreadBranches && thread.branch ? (
+                <ThreadWorktreeIndicator thread={thread} />
+              ) : null}
               {terminalStatusIcon}
               {prBadge}
               {diff ? (
