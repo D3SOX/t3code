@@ -565,6 +565,7 @@ export const layer: Layer.Layer<
       readonly openRunOwnedSubagents?: OpenRunOwnedSubagentProjection;
       readonly terminal: ProviderTerminalEvent;
       readonly failureItemPersisted: boolean;
+      readonly completionSilent?: boolean;
       readonly refreshAfterTurn: Effect.Effect<void>;
       readonly writeIfRunCurrent?: {
         readonly activeAttemptId: RunAttemptId;
@@ -643,6 +644,8 @@ export const layer: Layer.Layer<
         const finalizedRun: OrchestrationV2Run = {
           ...runWithoutDelegatedCompletion,
           status: persistedStatus,
+          completionSilent:
+            input.terminal.status === "completed" && input.completionSilent === true,
           completedAt: input.terminal.status === "completed" ? null : completedAt,
         };
         const finalizedRootNode: OrchestrationV2ExecutionNode = {
@@ -909,6 +912,7 @@ export const layer: Layer.Layer<
           const terminalEvent = yield* Ref.make<ProviderTerminalEvent | null>(null);
           const latestTurnItemOrdinal = yield* Ref.make(input.providerTurnOrdinal * 100);
           const latestProviderThread = yield* Ref.make(input.providerThread);
+          const latestRootResponseEmpty = yield* Ref.make(false);
           const routeIdentity: ProviderEventRouteIdentity = {
             threadId: input.run.threadId,
             runId: input.run.id,
@@ -988,6 +992,7 @@ export const layer: Layer.Layer<
                     }),
                 openRunOwnedSubagents: openSubagents,
                 terminal,
+                completionSilent: yield* Ref.get(latestRootResponseEmpty),
                 failureItemPersisted: terminal.status === "failed",
                 refreshAfterTurn,
               }).pipe(
@@ -1186,6 +1191,20 @@ export const layer: Layer.Layer<
             Stream.tap((event) =>
               Effect.gen(function* () {
                 let storedEventCount = 0;
+                if (
+                  event.type === "message.updated" &&
+                  event.message.threadId === input.run.threadId &&
+                  event.message.runId === input.run.id &&
+                  (event.message.nodeId === input.rootNode.id || event.message.nodeId === null) &&
+                  event.message.role === "assistant"
+                ) {
+                  // Earlier commentary and tool output do not make an empty final answer Done.
+                  yield* Ref.set(
+                    latestRootResponseEmpty,
+                    event.message.text.trim().length === 0 &&
+                      event.message.attachments.length === 0,
+                  );
+                }
                 const deliveredEvent = filterAssistantEvent(
                   event,
                   DateTime.toEpochMillis(yield* DateTime.now),

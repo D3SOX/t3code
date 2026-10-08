@@ -22,6 +22,7 @@ const state = vi.hoisted(() => ({
   limited: false,
   subagent: false,
   prWatch: false,
+  completionSilent: false,
   background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
   add: vi.fn(
     (_toast: {
@@ -64,6 +65,7 @@ function mockThreadShell() {
     creationSource: "web",
     latestRunId: "run-1",
     latestRunUserMessageId: state.prWatch ? "message:pr-watch:wake-1" : "message:user-1",
+    latestRunCompletionSilent: state.completionSilent,
     activeRunId: null,
     status: state.queued
       ? "queued"
@@ -165,6 +167,7 @@ beforeEach(() => {
     limited: false,
     subagent: false,
     prWatch: false,
+    completionSilent: false,
     background: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -264,6 +267,26 @@ describe("thread notifications", () => {
     await complete();
     expect(state.sound).toHaveBeenCalledOnce();
     expect(state.notification).toHaveBeenCalledOnce();
+  });
+
+  it.each([true, false])("keeps empty responses silent with focus=%s", async (focused) => {
+    state.mode = "notifications-and-sound";
+    state.focused = focused;
+    await render();
+    state.completionSilent = true;
+    await complete();
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+
+    state.completedAt = null;
+    state.completionSilent = false;
+    await render();
+    state.completedAt = "2026-09-13T11:00:00.000Z";
+    await render();
+    expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
+    expect(focused ? state.add : state.notification).toHaveBeenCalledOnce();
   });
 
   it("keeps PR-watch completions silent and still notifies the next user turn", async () => {

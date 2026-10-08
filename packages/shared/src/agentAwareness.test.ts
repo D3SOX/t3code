@@ -25,6 +25,7 @@ describe("projectThreadAwarenessV2", () => {
         OrchestrationV2ThreadShell,
         | "activityRunStatus"
         | "latestRunUserMessageId"
+        | "latestRunCompletionSilent"
         | "status"
         | "pendingBackgroundTasks"
         | "pendingRuntimeRequest"
@@ -68,6 +69,19 @@ describe("projectThreadAwarenessV2", () => {
         status,
         latestRunUserMessageId: MessageId.make("message:pr-watch:wake-1"),
       }),
+    });
+    expect(state?.phase ?? null).toBe(phase);
+  });
+
+  it.each([
+    ["completed", null],
+    ["running", "running"],
+    ["failed", "failed"],
+  ] as const)("projects an empty-response %s as %s", (status, phase) => {
+    const state = projectThreadAwarenessV2({
+      environmentId: "env-1" as EnvironmentId,
+      project,
+      thread: v2Thread({ status, latestRunCompletionSilent: true }),
     });
     expect(state?.phase ?? null).toBe(phase);
   });

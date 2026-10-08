@@ -156,6 +156,10 @@
       <h3>PRs and notifications</h3>
       <ul>
         <li>
+          Empty or whitespace-only final replies do not mark the thread Done or trigger completion
+          notifications or sounds. Image-only replies and errors still alert normally.
+        </li>
+        <li>
           Short PR-monitoring updates do not send completion alerts, play sounds, or mark the thread
           Done while monitoring continues.
         </li>

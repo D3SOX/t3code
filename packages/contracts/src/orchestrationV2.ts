@@ -558,6 +558,8 @@ export const OrchestrationV2Run = Schema.Struct({
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   checkpointId: Schema.NullOr(CheckpointId),
+  /** An empty final response settles the run without Done or completion alerts. */
+  completionSilent: Schema.optional(Schema.Boolean),
   contextHandoffId: Schema.NullOr(ContextHandoffId),
   /** Links server-generated restart continuations to the interrupted run. */
   restartContinuationOfRunId: Schema.optional(RunId),
@@ -1855,6 +1857,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunId: Schema.NullOr(RunId),
   /** Origin message of the latest run, including server-generated PR-watch wakes. */
   latestRunUserMessageId: Schema.optional(Schema.NullOr(MessageId)),
+  latestRunCompletionSilent: Schema.optional(Schema.Boolean),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),

@@ -54,6 +54,20 @@ function run(id: string, ordinal: number, status: OrchestrationV2RunStatus) {
 }
 
 describe("thread execution presentation", () => {
+  it("keeps an empty response quiet without silencing the next run", () => {
+    const empty = { ...run("empty", 1, "completed"), completionSilent: true, completedAt: now };
+    expect(deriveLatestThreadRun({ ...v2Projection, runs: [empty] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(deriveThreadActivityRun({ ...v2Projection, runs: [empty] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(
+      deriveLatestThreadRun({ ...v2Projection, runs: [empty, run("next", 2, "completed")] })
+        ?.completionSilent,
+    ).toBeUndefined();
+  });
+
   it("keeps PR-watch completions quiet without silencing the next user run", () => {
     const watch = {
       ...run("pr-watch", 1, "completed"),

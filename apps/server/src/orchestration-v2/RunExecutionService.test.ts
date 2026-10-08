@@ -3279,6 +3279,70 @@ it.effect("emits run_interrupt_result when hard-stop finalizes the active attemp
   }),
 );
 
+it.effect.each([
+  { text: "", withImage: false, silent: true },
+  { text: " \n\t", withImage: false, silent: true },
+  { text: "The task is finished.", withImage: false, silent: false },
+  { text: "", withImage: true, silent: false },
+])(
+  "marks a final response $text withImage=$withImage silent=$silent",
+  ({ text, withImage, silent }) =>
+    Effect.gen(function* () {
+      const { finalizedRuns, committedEffects } = yield* captureRootRunTermination({
+        key: "empty-final-response",
+        shouldFinalizeRun: () => Effect.succeed(true),
+        events: (ids) => {
+          const now = DateTime.makeUnsafe("2026-10-08T10:00:00.000Z");
+          const message = (
+            id: string,
+            body: string,
+            nodeId = ids.rootNodeId,
+          ): ProviderAdapterV2Event => ({
+            type: "message.updated",
+            driver,
+            message: {
+              id: MessageId.make(id),
+              threadId: ids.threadId,
+              runId: ids.runId,
+              nodeId,
+              role: "assistant",
+              text: body,
+              attachments:
+                id === "final" && withImage
+                  ? [
+                      {
+                        type: "image",
+                        id: ChatAttachmentId.make("image-1"),
+                        name: "image.png",
+                        mimeType: "image/png",
+                        sizeBytes: 100,
+                      },
+                    ]
+                  : [],
+              streaming: false,
+              createdBy: "agent",
+              creationSource: "provider",
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+          return Stream.make(
+            message("progress", "I’ll check the worker."),
+            backgroundTurnItemEvent(ids, "command_execution", "completed", 1),
+            message("final", text),
+            message("child", text.trim() ? "" : "Child finished.", ids.subagentNodeId),
+            rootTerminalEvent(ids, "completed"),
+          );
+        },
+      });
+      assert.equal(finalizedRuns.at(-1)?.completionSilent, silent);
+      assert.deepEqual(
+        committedEffects.map((effect) => effect.request.type),
+        ["checkpoint.capture"],
+      );
+    }),
+);
+
 it.effect.each(["completed", "interrupted", "cancelled", "failed"] as const)(
   "refreshes pull requests after the current root run %s",
   (status) =>
@@ -3424,6 +3488,7 @@ function captureRootRunTermination(input: {
       status: "running",
     });
     const writtenItems = yield* Ref.make<ReadonlyArray<OrchestrationV2TurnItem>>([]);
+    const finalizedRuns = yield* Ref.make<ReadonlyArray<OrchestrationV2Run>>([]);
     const observed = yield* Ref.make<ReadonlyArray<string>>([]);
     const submittedEffects = yield* Ref.make<ReadonlyArray<PendingOrchestrationEffectV2>>([]);
     const committedEffects = yield* Ref.make<ReadonlyArray<PendingOrchestrationEffectV2>>([]);
@@ -3437,6 +3502,7 @@ function captureRootRunTermination(input: {
             yield* captureTurnItem(event.payload);
           }
           if (event.type === "run.updated") {
+            yield* Ref.update(finalizedRuns, (current) => [...current, event.payload]);
             yield* Ref.update(observed, (current) => [...current, `run:${event.payload.status}`]);
           }
         }
@@ -3583,6 +3649,7 @@ function captureRootRunTermination(input: {
     yield* Deferred.await(ingestionDone);
     return {
       written: yield* Ref.get(writtenItems),
+      finalizedRuns: yield* Ref.get(finalizedRuns),
       observed: yield* Ref.get(observed),
       submittedEffects: yield* Ref.get(submittedEffects),
       committedEffects: yield* Ref.get(committedEffects),

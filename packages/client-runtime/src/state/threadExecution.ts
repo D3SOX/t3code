@@ -23,7 +23,7 @@ import {
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { getProviderOptionCurrentLabel, getProviderOptionDescriptors } from "@t3tools/shared/model";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
-import { isPullRequestWatchRun } from "@t3tools/shared/agentAwareness";
+import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
 import * as DateTime from "effect/DateTime";
 
 import {
@@ -59,7 +59,10 @@ function summarizeThreadRun(
     requestedAt: DateTime.formatIso(run.requestedAt),
     startedAt: run.startedAt === null ? null : DateTime.formatIso(run.startedAt),
     completedAt: run.completedAt === null ? null : DateTime.formatIso(run.completedAt),
-    ...(isPullRequestWatchRun({ latestRunUserMessageId: run.userMessageId })
+    ...(isThreadCompletionSilent({
+      latestRunUserMessageId: run.userMessageId,
+      latestRunCompletionSilent: run.completionSilent,
+    })
       ? { completionSilent: true }
       : {}),
     assistantMessageId:

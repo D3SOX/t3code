@@ -14,6 +14,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 ## PRs and notifications
 
+- Empty or whitespace-only final replies do not mark the thread Done or trigger completion notifications or sounds. Image-only replies and errors still alert normally.
 - Short PR-monitoring updates do not send completion alerts, play sounds, or mark the thread Done while monitoring continues.
 - Missing required checks stay pending, including checks that appear later. When the remaining CI checks finish, PR monitoring wakes the agent even if it already reported that the required checks passed.
 - Agent instructions limit PR links to the task's pull requests. Incidental release-note edits, labels, and coordination updates do not qualify.

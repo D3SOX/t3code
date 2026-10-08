@@ -2014,6 +2014,29 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         prWatchMessageId,
       );
       assert.isNull(shell?.activeRunId);
+      for (const completionSilent of [true, false]) {
+        yield* projectionStore.apply({
+          id: EventId.make(`event:shell:completion-silent:${completionSilent}`),
+          type: "run.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: { ...run, status: "completed", completedAt: now, completionSilent },
+        });
+        const projection = yield* projectionStore.getThreadProjection(threadId);
+        const sqlShell = (yield* projectionStore.getThreadShell(threadId))!;
+        const memoryShell = ProjectionStore.threadShellFromProjection(projection);
+        assert.equal(sqlShell.latestRunCompletionSilent, completionSilent);
+        assert.equal(memoryShell.latestRunCompletionSilent, completionSilent);
+        assert.equal(
+          projectThreadAwarenessV2({
+            environmentId: EnvironmentId.make("test"),
+            project: { title: "test" },
+            thread: sqlShell,
+          })?.phase ?? null,
+          completionSilent ? null : "completed",
+        );
+      }
       const later = DateTime.add(now, { hours: 1 });
       for (const status of ["queued", "cancelled"] as const) {
         yield* projectionStore.apply({

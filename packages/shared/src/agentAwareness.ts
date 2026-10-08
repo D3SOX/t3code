@@ -44,6 +44,7 @@ export interface ProjectThreadAwarenessV2Input {
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
     | "latestRunUserMessageId"
+    | "latestRunCompletionSilent"
     | "id"
     | "lineage"
     | "modelSelection"
@@ -86,10 +87,17 @@ export function projectThreadAwarenessV2(
 }
 
 /** PR-watch wakes use this reserved message ID prefix rather than a user prompt. */
-export function isPullRequestWatchRun(
+function isPullRequestWatchRun(
   thread: Pick<OrchestrationV2ThreadShell, "latestRunUserMessageId">,
 ): boolean {
   return thread.latestRunUserMessageId?.startsWith("message:pr-watch:") === true;
+}
+
+/** Background watch updates and empty final responses have no completion to announce. */
+export function isThreadCompletionSilent(
+  thread: Pick<OrchestrationV2ThreadShell, "latestRunUserMessageId" | "latestRunCompletionSilent">,
+): boolean {
+  return thread.latestRunCompletionSilent === true || isPullRequestWatchRun(thread);
 }
 
 function resolveThreadAwarenessPhaseV2(
@@ -115,7 +123,7 @@ function resolveThreadAwarenessPhaseV2(
       // Work that will wake the agent keeps the run going; a dev server does not.
       return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
         ? "running"
-        : isPullRequestWatchRun(thread)
+        : isThreadCompletionSilent(thread)
           ? null
           : "completed";
     case "failed":
