@@ -552,6 +552,8 @@ export const OrchestrationV2Run = Schema.Struct({
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   /** Restart recovery holds the queue until the user explicitly resumes it. */
   queueHeld: Schema.optional(Schema.Boolean),
+  /** An open composer edit pauses all queued work until it is saved or cancelled. */
+  queueEditing: Schema.optional(Schema.Boolean),
   /** The queue head steers the active run after its next completed tool. */
   queueAfterNextTool: Schema.optional(Schema.Boolean),
   requestedAt: Schema.DateTimeUtc,
@@ -2955,6 +2957,8 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
+    /** Present = begin/cancel editing without replacing the message; absent = save. */
+    editing: Schema.optional(Schema.Boolean),
     context: Schema.optional(OrchestrationMessageContext),
     commandId: CommandId,
     threadId: ThreadId,

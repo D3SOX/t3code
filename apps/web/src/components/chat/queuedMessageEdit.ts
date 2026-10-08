@@ -1,4 +1,5 @@
-import type { ChatAttachment } from "@t3tools/contracts";
+import type { ChatAttachment, OrchestrationMessageContext } from "@t3tools/contracts";
+import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
 import {
   composerDraftHasUserContent,
   useComposerDraftStore,
@@ -6,6 +7,26 @@ import {
   type ComposerImageAttachment,
   type ComposerThreadTarget,
 } from "../../composerDraftStore";
+
+/** Return a removed queue entry without overwriting the user's current draft. */
+export function restoreQueuedMessage(input: {
+  readonly target: ComposerThreadTarget;
+  readonly text: string;
+  readonly context?: OrchestrationMessageContext | undefined;
+  readonly images: ComposerImageAttachment[];
+  readonly files: ComposerFileAttachment[];
+}): string {
+  const store = useComposerDraftStore.getState();
+  const current = store.getComposerDraft(input.target)?.prompt ?? "";
+  const restored = input.context
+    ? serializeLegacyContextMessage({ text: input.text, records: input.context.records })
+    : input.text;
+  const prompt = [current, restored].filter((text) => text.length > 0).join("\n\n");
+  store.setPrompt(input.target, prompt);
+  store.addImages(input.target, input.images, { allowDuplicates: true });
+  store.addFiles(input.target, input.files, { allowDuplicates: true });
+  return store.getComposerDraft(input.target)?.prompt ?? prompt;
+}
 
 /** Keep an unsaved edit when its queued run starts or is removed remotely. */
 export function recoverQueuedMessageEdit(input: {

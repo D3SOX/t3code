@@ -4572,7 +4572,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             AND NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs
               WHERE thread_id = ${threadId}
                 AND (status IN ('preparing', 'starting', 'running', 'waiting')
-                  OR (status = 'queued' AND json_extract(payload_json, '$.queueHeld') = 1)))`;
+                  OR (status = 'queued' AND (json_extract(payload_json, '$.queueHeld') = 1
+                    OR json_extract(payload_json, '$.queueEditing') = 1))))`;
             return rows.length > 0;
           }),
         )
@@ -6198,7 +6199,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 run.status === "starting" ||
                 run.status === "running" ||
                 run.status === "waiting" ||
-                (run.status === "queued" && run.queueHeld === true),
+                (run.status === "queued" && (run.queueHeld === true || run.queueEditing === true)),
             )
           );
         }),

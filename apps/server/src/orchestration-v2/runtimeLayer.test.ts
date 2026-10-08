@@ -4530,6 +4530,25 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         // Editing and reordering are allowed without releasing the hold.
         const first = queued[0]!;
         const second = queued[1]!;
+        for (const editing of [true, false, true]) {
+          yield* orchestrator.dispatch({
+            type: "queued-run.edit",
+            commandId: CommandId.make(
+              `${threadId}:edit-state:${editing}:${yield* orchestrator.getThreadEventSequence(threadId)}`,
+            ),
+            threadId,
+            runId: second.id,
+            text: "Ignored during editing",
+            editing,
+          });
+          const state = yield* orchestrator.getThreadProjection(threadId);
+          assert.isTrue(state.runs.find((run) => run.id === second.id)?.queueHeld);
+          assert.equal(state.runs.find((run) => run.id === second.id)?.queueEditing, editing);
+          assert.deepEqual(
+            state.messages.find((message) => message.id === second.userMessageId),
+            before.messages.find((message) => message.id === second.userMessageId),
+          );
+        }
         yield* orchestrator.dispatch({
           type: "queued-run.edit",
           commandId: CommandId.make(`${threadId}:edit`),
@@ -4564,158 +4583,207 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       }),
   );
 
-  it.effect("edits and removes queued runs", () =>
-    Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const threadId = ThreadId.make("runtime-layer-queued-edit-thread");
+  it.effect.each([false, true])(
+    "edits queued runs while the active turn finishes: %s",
+    (finishes) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const threadId = ThreadId.make("runtime-layer-queued-edit-thread");
 
-      yield* orchestrator.dispatch({
-        type: "thread.create",
-        createdBy: "user",
-        creationSource: "web",
-        commandId: CommandId.make("runtime-layer-queued-edit-create"),
-        threadId,
-        projectId: ProjectId.make("runtime-layer-queued-edit-project"),
-        title: "Edit queued work",
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        branch: null,
-        worktreePath: "/tmp/runtime-layer-queued-edit",
-      });
-      yield* orchestrator.dispatch({
-        type: "message.dispatch",
-        createdBy: "user",
-        creationSource: "web",
-        commandId: CommandId.make("runtime-layer-queued-edit-active-message"),
-        threadId,
-        messageId: MessageId.make("runtime-layer-queued-edit-active-message"),
-        text: "Keep the provider occupied.",
-        attachments: [],
-        modelSelection,
-        dispatchMode: { type: "start_immediately" },
-      });
-      yield* orchestrator.dispatch({
-        type: "message.dispatch",
-        createdBy: "user",
-        creationSource: "web",
-        commandId: CommandId.make("runtime-layer-queued-edit-queued-message"),
-        threadId,
-        messageId: MessageId.make("runtime-layer-queued-edit-queued-message"),
-        text: "Original queued text.",
-        attachments: [],
-        modelSelection,
-        dispatchMode: { type: "queue_after_active" },
-      });
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("runtime-layer-queued-edit-create"),
+          threadId,
+          projectId: ProjectId.make("runtime-layer-queued-edit-project"),
+          title: "Edit queued work",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: "/tmp/runtime-layer-queued-edit",
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("runtime-layer-queued-edit-active-message"),
+          threadId,
+          messageId: MessageId.make("runtime-layer-queued-edit-active-message"),
+          text: "Keep the provider occupied.",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "start_immediately" },
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("runtime-layer-queued-edit-queued-message"),
+          threadId,
+          messageId: MessageId.make("runtime-layer-queued-edit-queued-message"),
+          text: "Original queued text.",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "queue_after_active" },
+        });
 
-      const before = yield* orchestrator.getThreadProjection(threadId);
-      const queuedRun = before.runs.find((run) => run.status === "queued");
-      assert.isDefined(queuedRun);
+        const before = yield* orchestrator.getThreadProjection(threadId);
+        const queuedRun = before.runs.find((run) => run.status === "queued");
+        assert.isDefined(queuedRun);
 
-      yield* orchestrator.dispatch({
-        type: "queued-run.edit",
-        commandId: CommandId.make("runtime-layer-queued-edit-edit"),
-        threadId,
-        runId: queuedRun.id,
-        text: "Updated queued text.",
-      });
-
-      const afterEdit = yield* orchestrator.getThreadProjection(threadId);
-      assert.equal(
-        afterEdit.messages.find((message) => message.id === queuedRun.userMessageId)?.text,
-        "Updated queued text.",
-      );
-      const editedItem = afterEdit.turnItems.find(
-        (item) => item.type === "user_message" && item.messageId === queuedRun.userMessageId,
-      );
-      assert.isUndefined(editedItem, "editing queue state must not create a timeline turn item");
-
-      yield* orchestrator.dispatch({
-        type: "queued-run.edit",
-        commandId: CommandId.make("runtime-layer-queued-edit-attachments"),
-        threadId,
-        runId: queuedRun.id,
-        text: "Updated queued text with an attachment.",
-        attachments: [
-          {
-            type: "image",
-            id: "runtime-layer-queued-edit-attachment",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: 128,
-          },
-        ],
-      });
-      const afterAttachmentEdit = yield* orchestrator.getThreadProjection(threadId);
-      assert.deepEqual(
-        afterAttachmentEdit.messages
-          .find((message) => message.id === queuedRun.userMessageId)
-          ?.attachments.map((attachment) => attachment.id),
-        ["runtime-layer-queued-edit-attachment"],
-      );
-
-      yield* orchestrator.dispatch({
-        type: "queued-run.edit",
-        commandId: CommandId.make("runtime-layer-queued-edit-text-only"),
-        threadId,
-        runId: queuedRun.id,
-        text: "Text-only edit keeps attachments.",
-      });
-      const afterTextOnlyEdit = yield* orchestrator.getThreadProjection(threadId);
-      assert.deepEqual(
-        afterTextOnlyEdit.messages
-          .find((message) => message.id === queuedRun.userMessageId)
-          ?.attachments.map((attachment) => attachment.id),
-        ["runtime-layer-queued-edit-attachment"],
-        "an edit without attachments must leave the stored attachments untouched",
-      );
-
-      const emptyEditError = yield* orchestrator
-        .dispatch({
+        yield* orchestrator.dispatch({
           type: "queued-run.edit",
-          commandId: CommandId.make("runtime-layer-queued-edit-empty"),
+          commandId: CommandId.make("runtime-layer-queued-edit-begin"),
           threadId,
           runId: queuedRun.id,
-          text: "   ",
-        })
-        .pipe(Effect.flip);
-      assert.equal(emptyEditError._tag, "OrchestratorCommandRejectedError");
+          text: "Must not replace the saved text while editing.",
+          editing: true,
+        });
+        const paused = yield* orchestrator.getThreadProjection(threadId);
+        assert.isTrue(paused.runs.find((run) => run.id === queuedRun.id)?.queueEditing);
+        assert.equal(
+          paused.messages.find((message) => message.id === queuedRun.userMessageId)?.text,
+          "Original queued text.",
+        );
+        // Finish the current turn while the editor is open. Even an explicit
+        // recovery scan must leave the queued message untouched.
+        const eventSink = yield* EventSink.EventSinkV2;
+        const now = yield* DateTime.now;
+        const active = paused.runs.find((run) => run.status === "starting")!;
+        if (finishes)
+          yield* eventSink.write({
+            commandId: CommandId.make("command:runtime-reconcile:queued-edit-finished"),
+            events: [
+              {
+                id: EventId.make("runtime-layer-queued-edit-finished"),
+                type: "run.updated",
+                threadId,
+                runId: active.id,
+                occurredAt: now,
+                payload: { ...active, status: "completed", completedAt: now },
+              },
+            ],
+          });
+        assert.equal(yield* orchestrator.resumeQueuedRuns, 0);
+        assert.equal(
+          (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+            (run) => run.id === queuedRun.id,
+          )?.status,
+          "queued",
+        );
 
-      yield* orchestrator.dispatch({
-        type: "queued-run.cancel",
-        commandId: CommandId.make("runtime-layer-queued-edit-cancel"),
-        threadId,
-        runId: queuedRun.id,
-      });
+        yield* orchestrator.dispatch({
+          type: "queued-run.edit",
+          commandId: CommandId.make("runtime-layer-queued-edit-edit"),
+          threadId,
+          runId: queuedRun.id,
+          text: "Updated queued text.",
+        });
 
-      const afterCancel = yield* orchestrator.getThreadProjection(threadId);
-      assert.equal(afterCancel.runs.find((run) => run.id === queuedRun.id)?.status, "cancelled");
-      assert.equal(
-        afterCancel.attempts.find((attempt) => attempt.runId === queuedRun.id)?.status,
-        "cancelled",
-      );
-      assert.equal(
-        afterCancel.nodes.find((node) => node.runId === queuedRun.id)?.status,
-        "cancelled",
-      );
-      assert.isFalse(
-        afterCancel.visibleTurnItems.some(
-          (row) => row.item.type === "user_message" && row.item.runId === queuedRun.id,
-        ),
-        "removed queued message must not surface as a transcript row",
-      );
-      assert.equal(yield* orchestrator.resumeQueuedRuns, 0);
+        const afterEdit = yield* orchestrator.getThreadProjection(threadId);
+        assert.isFalse(afterEdit.runs.find((run) => run.id === queuedRun.id)?.queueEditing);
+        assert.equal(
+          afterEdit.runs.find((run) => run.id === queuedRun.id)?.status,
+          finishes ? "starting" : "queued",
+        );
+        assert.equal(
+          afterEdit.messages.find((message) => message.id === queuedRun.userMessageId)?.text,
+          "Updated queued text.",
+        );
+        if (finishes) return;
+        const editedItem = afterEdit.turnItems.find(
+          (item) => item.type === "user_message" && item.messageId === queuedRun.userMessageId,
+        );
+        assert.isUndefined(editedItem, "editing queue state must not create a timeline turn item");
 
-      const cancelAgainError = yield* orchestrator
-        .dispatch({
+        yield* orchestrator.dispatch({
+          type: "queued-run.edit",
+          commandId: CommandId.make("runtime-layer-queued-edit-attachments"),
+          threadId,
+          runId: queuedRun.id,
+          text: "Updated queued text with an attachment.",
+          attachments: [
+            {
+              type: "image",
+              id: "runtime-layer-queued-edit-attachment",
+              name: "screenshot.png",
+              mimeType: "image/png",
+              sizeBytes: 128,
+            },
+          ],
+        });
+        const afterAttachmentEdit = yield* orchestrator.getThreadProjection(threadId);
+        assert.deepEqual(
+          afterAttachmentEdit.messages
+            .find((message) => message.id === queuedRun.userMessageId)
+            ?.attachments.map((attachment) => attachment.id),
+          ["runtime-layer-queued-edit-attachment"],
+        );
+
+        yield* orchestrator.dispatch({
+          type: "queued-run.edit",
+          commandId: CommandId.make("runtime-layer-queued-edit-text-only"),
+          threadId,
+          runId: queuedRun.id,
+          text: "Text-only edit keeps attachments.",
+        });
+        const afterTextOnlyEdit = yield* orchestrator.getThreadProjection(threadId);
+        assert.deepEqual(
+          afterTextOnlyEdit.messages
+            .find((message) => message.id === queuedRun.userMessageId)
+            ?.attachments.map((attachment) => attachment.id),
+          ["runtime-layer-queued-edit-attachment"],
+          "an edit without attachments must leave the stored attachments untouched",
+        );
+
+        const emptyEditError = yield* orchestrator
+          .dispatch({
+            type: "queued-run.edit",
+            commandId: CommandId.make("runtime-layer-queued-edit-empty"),
+            threadId,
+            runId: queuedRun.id,
+            text: "   ",
+          })
+          .pipe(Effect.flip);
+        assert.equal(emptyEditError._tag, "OrchestratorCommandRejectedError");
+
+        yield* orchestrator.dispatch({
           type: "queued-run.cancel",
-          commandId: CommandId.make("runtime-layer-queued-edit-cancel-again"),
+          commandId: CommandId.make("runtime-layer-queued-edit-cancel"),
           threadId,
           runId: queuedRun.id,
-        })
-        .pipe(Effect.flip);
-      assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
-    }),
+        });
+
+        const afterCancel = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(afterCancel.runs.find((run) => run.id === queuedRun.id)?.status, "cancelled");
+        assert.equal(
+          afterCancel.attempts.find((attempt) => attempt.runId === queuedRun.id)?.status,
+          "cancelled",
+        );
+        assert.equal(
+          afterCancel.nodes.find((node) => node.runId === queuedRun.id)?.status,
+          "cancelled",
+        );
+        assert.isFalse(
+          afterCancel.visibleTurnItems.some(
+            (row) => row.item.type === "user_message" && row.item.runId === queuedRun.id,
+          ),
+          "removed queued message must not surface as a transcript row",
+        );
+        assert.equal(yield* orchestrator.resumeQueuedRuns, 0);
+
+        const cancelAgainError = yield* orchestrator
+          .dispatch({
+            type: "queued-run.cancel",
+            commandId: CommandId.make("runtime-layer-queued-edit-cancel-again"),
+            threadId,
+            runId: queuedRun.id,
+          })
+          .pipe(Effect.flip);
+        assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
+      }).pipe(Effect.provide(Layer.fresh(layerTest))),
   );
 });
 

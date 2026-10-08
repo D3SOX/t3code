@@ -28,9 +28,34 @@ import { appAtomRegistry } from "./atom-registry";
 import { queuedEditDraftKey } from "./queued-edit-draft-key";
 import {
   clearComposerDraft,
+  appendComposerDraftAttachments,
+  getComposerDraftSnapshot,
   setComposerDraftContext,
   setComposerDraftText,
 } from "./use-composer-drafts";
+import type { DraftComposerAttachment } from "../lib/composerImages";
+
+/** Put a removed queue entry back beside any draft already in the composer. */
+export function restoreRemovedQueuedMessage(
+  threadKey: string,
+  input: {
+    readonly text: string;
+    readonly context?: OrchestrationMessageContext | undefined;
+    readonly attachments: ReadonlyArray<DraftComposerAttachment>;
+  },
+): void {
+  const draft = getComposerDraftSnapshot(threadKey);
+  setComposerDraftText(
+    threadKey,
+    [draft.text, input.text].filter((text) => text.length > 0).join("\n\n"),
+  );
+  const records = [...(draft.context?.records ?? []), ...(input.context?.records ?? [])];
+  if (records.length > 0) setComposerDraftContext(threadKey, { version: 1, records });
+  appendComposerDraftAttachments(threadKey, input.attachments, {
+    allowOverflow: true,
+    appendReference: false,
+  });
+}
 
 export interface QueuedRunEdit {
   readonly runId: RunId;

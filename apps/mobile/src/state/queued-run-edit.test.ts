@@ -10,10 +10,19 @@ import {
 
 import { composerDraftEnvironmentId } from "../lib/composerAttachmentUploadQueue";
 import { isQueuedEditDraftKey, queuedEditDraftKey } from "./queued-edit-draft-key";
-import { resolveQueuedEditPayload, type QueuedRunEdit } from "./queued-run-edit";
+import {
+  resolveQueuedEditPayload,
+  restoreRemovedQueuedMessage,
+  type QueuedRunEdit,
+} from "./queued-run-edit";
+import {
+  clearComposerDraft,
+  getComposerDraftSnapshot,
+  setComposerDraftText,
+} from "./use-composer-drafts";
 
-const image = (id: string): ChatAttachment => ({
-  type: "image",
+const image = (id: string) => ({
+  type: "image" as const,
   id: ChatAttachmentId.make(id),
   name: `${id}.png`,
   mimeType: "image/png",
@@ -56,6 +65,27 @@ describe("queued edit draft key", () => {
 });
 
 describe("resolveQueuedEditPayload", () => {
+  it("returns a removed queued message, context and image to an existing composer draft", () => {
+    const key = "env:restored-queue";
+    clearComposerDraft(key);
+    setComposerDraftText(key, "Existing draft");
+    const attachment = {
+      ...image("queued-image"),
+      type: "image" as const,
+      previewUri: "file:///restored.png",
+      fileUri: "file:///restored.png",
+    };
+    restoreRemovedQueuedMessage(key, {
+      text: "Queued message",
+      context: context([attachment.id]),
+      attachments: [attachment],
+    });
+    const draft = getComposerDraftSnapshot(key);
+    expect(draft.text).toBe("Existing draft\n\nQueued message");
+    expect(draft.attachments).toEqual([attachment]);
+    expect(draft.context).toEqual(context([attachment.id]));
+    clearComposerDraft(key);
+  });
   it("resends the kept server attachments ahead of the newly uploaded ones", () => {
     const payload = resolveQueuedEditPayload({
       edit: edit([image("kept")]),

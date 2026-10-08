@@ -153,9 +153,12 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
   return {
     activeRun,
     queuedRuns,
-    isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
+    isHeld: projection.runs.some(
+      (run) => run.status === "queued" && (run.queueHeld === true || run.queueEditing === true),
+    ),
     canReorder: capabilities?.supportsQueuedMessages === true,
     canPromoteToSteer:
+      !projection.runs.some((run) => run.status === "queued" && run.queueEditing === true) &&
       hasSteerableProviderTurn &&
       (capabilities?.supportsActiveSteering === true ||
         capabilities?.supportsSteeringByInterruptRestart === true),

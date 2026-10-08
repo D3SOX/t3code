@@ -246,6 +246,7 @@ export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
 export interface EditQueuedRunInput extends ThreadCommandInput {
   readonly runId: RunId;
   readonly text: string;
+  readonly editing?: boolean;
   /**
    * Full replacement attachment list for the queued message. Omitted =
    * text-only edit that leaves attachments untouched. `dataUrl` entries are
@@ -1053,6 +1054,7 @@ export const editQueuedRun = Effect.fn("EnvironmentCommands.editQueuedRun")(func
       : yield* persistAttachments(input.threadId, input.edit.messageId, input.edit.attachments);
   return yield* dispatch({
     type: "queued-run.edit",
+    ...(input.editing === undefined ? {} : { editing: input.editing }),
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     runId: input.runId,

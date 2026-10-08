@@ -186,6 +186,7 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
+  archiveSettledThreadEntries,
   filterSidebarProjectScopeItems,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
@@ -808,6 +809,7 @@ function SidebarSectionHeader(props: {
   dragging?: boolean;
   isDropTarget?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
+  onContextMenu?: (position: { x: number; y: number }) => void;
 }) {
   const shelf =
     props.marker === "working-header"
@@ -824,6 +826,25 @@ function SidebarSectionHeader(props: {
     >
       <CollapsibleSectionHeader
         onClick={props.toggle.onToggle}
+        onContextMenu={
+          props.onContextMenu
+            ? (event) => {
+                event.preventDefault();
+                props.onContextMenu?.({ x: event.clientX, y: event.clientY });
+              }
+            : undefined
+        }
+        onKeyDown={
+          props.onContextMenu
+            ? (event) => {
+                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  props.onContextMenu?.({ x: rect.left, y: rect.bottom });
+                }
+              }
+            : undefined
+        }
         expanded={props.toggle.expanded}
         tone={
           props.isDropTarget ? "accent" : props.dragging ? "emphasized" : snoozed ? "info" : "muted"
@@ -4243,6 +4264,66 @@ export default function Sidebar() {
   );
 
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
+  const handleSettledContextMenu = useCallback(
+    async (position: { x: number; y: number }) => {
+      const api = readLocalApi();
+      if (!api) return;
+      const targets = settledThreads.map((thread) =>
+        scopeThreadRef(thread.environmentId, thread.id),
+      );
+      const clicked = await settlePromise(() =>
+        api.contextMenu.show(
+          [
+            {
+              id: "archive-all",
+              label: `Archive all (${targets.length})`,
+              disabled:
+                targets.length === 0 ||
+                !canOperateThreads(settledThreads) ||
+                settledThreads.some((thread) => !threadRuntimeCanArchive(thread.runtime)),
+            },
+          ],
+          position,
+        ),
+      );
+      if (
+        clicked._tag === "Failure" ||
+        clicked.value !== "archive-all" ||
+        !checkThreadOperations(settledThreads)
+      )
+        return;
+      const failure = await archiveSettledThreadEntries({
+        entries: targets,
+        confirm: async (count) => {
+          const result = await settlePromise(() =>
+            api.dialogs.confirm(`Archive all ${count} settled thread${count === 1 ? "" : "s"}?`),
+          );
+          return result._tag === "Success" && result.value;
+        },
+        archive: async (threadRef) => {
+          // The set is captured before confirmation; newly settled threads are
+          // excluded, and threads that wake while the dialog is open are kept.
+          if (!settledThreadKeysRef.current.has(scopedThreadKey(threadRef))) return null;
+          const current = readThreadShell(threadRef);
+          if (!current || !checkThreadOperations([current])) return null;
+          return archiveThread(threadRef, {
+            onArchived: () => removeFromSelection([scopedThreadKey(threadRef)]),
+          });
+        },
+      });
+      if (failure !== null && !isAtomCommandInterrupted(failure)) {
+        const error = squashAtomCommandFailure(failure);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not archive all settled threads",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    },
+    [settledThreads, archiveThread, removeFromSelection],
+  );
   const handleMultiSelectContextMenu = useCallback(
     async (position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -5505,6 +5586,9 @@ export default function Sidebar() {
                               <SidebarSectionHeader
                                 key="settled-shelf-header"
                                 marker="settled-header"
+                                onContextMenu={(position) =>
+                                  void handleSettledContextMenu(position)
+                                }
                                 className={cn(
                                   workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
                                 )}

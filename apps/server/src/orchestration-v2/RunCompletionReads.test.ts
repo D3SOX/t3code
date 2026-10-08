@@ -126,6 +126,10 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.isFalse(yield* store.canStartQueuedRun(threadId));
       yield* putRun(run);
       const blocker = { ...run, id: RunId.make("blocker"), ordinal: 2 };
+      yield* putRun({ ...blocker, queueEditing: true });
+      assert.isFalse(yield* store.canStartQueuedRun(threadId));
+      yield* putRun({ ...blocker, queueEditing: false });
+      assert.isTrue(yield* store.canStartQueuedRun(threadId));
       for (const status of ["preparing", "starting", "running", "waiting"] as const) {
         yield* putRun({ ...blocker, status });
         assert.isFalse(yield* store.canStartQueuedRun(threadId));

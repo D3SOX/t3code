@@ -14,6 +14,7 @@ import {
   GripVerticalIcon,
   ListOrderedIcon,
   PencilIcon,
+  HammerIcon,
 } from "lucide-react";
 import { useId, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 
@@ -62,6 +63,7 @@ export function QueuedRunsControl({
   /** The saved queue entry stays visible while its draft is edited in the composer. */
   readonly editingRunId: RunId | null;
   readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
+  readonly onRemoveQueuedRun: (request: EditQueuedRunRequest) => Promise<void>;
   readonly onCancelEdit: () => void;
 }) {
   const projection = useThreadProjection(
@@ -71,7 +73,6 @@ export function QueuedRunsControl({
     useServerConfigs().get(props.environmentId)?.environment.capabilities.nextToolQueue === true;
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
-  const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
   const [expanded, setExpanded] = useState(true);
   const queueListId = useId();
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
@@ -241,11 +242,15 @@ export function QueuedRunsControl({
   if (items.length === 0) return null;
 
   const remove = async (runId: RunId) => {
+    const entry = queued.find(({ run }) => run.id === runId);
+    if (!entry) return;
     setBusyRunId(runId);
     try {
-      await cancel({
-        environmentId: props.environmentId,
-        input: { threadId: props.threadId, runId },
+      await props.onRemoveQueuedRun({
+        runId,
+        messageId: entry.messageId,
+        text: entry.text,
+        attachments: entry.attachments,
       });
     } finally {
       setBusyRunId(null);
@@ -272,7 +277,9 @@ export function QueuedRunsControl({
           <ComposerBanner.Icon>
             <ListOrderedIcon />
           </ComposerBanner.Icon>
-          <ComposerBanner.Content className="text-muted-foreground">Queued</ComposerBanner.Content>
+          <ComposerBanner.Content className="text-muted-foreground">
+            {queued.some(({ run }) => run.queueEditing) ? "Queue paused while editing" : "Queued"}
+          </ComposerBanner.Content>
           <ComposerBanner.Actions>
             <ComposerBanner.Count>{items.length}</ComposerBanner.Count>
             <ComposerBanner.ToggleIcon expanded={expanded} />
@@ -428,6 +435,7 @@ export function QueuedRunsControl({
                         }
                         onClick={() => void steer(item.runId!, !item.afterNextTool)}
                       >
+                        {item.afterNextTool ? <HammerIcon /> : <Clock3Icon />}
                         {item.afterNextTool ? "After tool" : "After turn"}
                       </Button>
                     ) : null}
@@ -449,7 +457,11 @@ export function QueuedRunsControl({
                                 size="icon-xs"
                                 variant="ghost-muted"
                                 aria-label="Edit queued message"
-                                disabled={item.runId === null || busyRunId !== null}
+                                disabled={
+                                  item.runId === null ||
+                                  busyRunId !== null ||
+                                  props.editingRunId !== null
+                                }
                                 onClick={() => {
                                   if (item.runId !== null && item.messageId !== null) {
                                     props.onEditQueuedRun({
@@ -500,7 +512,11 @@ export function QueuedRunsControl({
                             render={
                               <ComposerBanner.Dismiss
                                 aria-label="Remove queued message"
-                                disabled={item.runId === null || busyRunId !== null}
+                                disabled={
+                                  item.runId === null ||
+                                  busyRunId !== null ||
+                                  props.editingRunId !== null
+                                }
                                 onClick={() => {
                                   if (item.runId !== null) void remove(item.runId);
                                 }}

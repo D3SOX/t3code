@@ -468,6 +468,20 @@ type LogicalSidebarProject = SidebarProject & {
 
 export type ThreadTraversalDirection = "previous" | "next";
 
+/** Bulk archival always asks, independently of single-thread confirmation settings. */
+export async function archiveSettledThreadEntries<TEntry>(input: {
+  readonly entries: readonly TEntry[];
+  readonly confirm: (count: number) => Promise<boolean>;
+  readonly archive: (entry: TEntry) => Promise<AtomCommandResult<unknown, unknown> | null>;
+}) {
+  if (input.entries.length === 0 || !(await input.confirm(input.entries.length))) return null;
+  for (const entry of input.entries) {
+    const result = await input.archive(entry);
+    if (result?._tag === "Failure") return result;
+  }
+  return null;
+}
+
 /**
  * Shared-worktree checks must exclude only successful deletions, never the
  * whole batch. A null result skips an entry that the caller can no longer find.

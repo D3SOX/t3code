@@ -674,7 +674,7 @@ describe("V2 environment commands", () => {
           expect(commands).toEqual([]);
         }
       }
-    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
+    }).pipe(Effect.provide(layerTestCrypto)),
   );
 
   it.effect(
@@ -762,6 +762,19 @@ describe("V2 environment commands", () => {
         ]);
         // A text-only edit must not send an attachments replacement list.
         expect(commands[5]).not.toHaveProperty("attachments");
+        for (const editing of [true, false]) {
+          yield* editQueuedRun({
+            commandId: CommandId.make(`edit-state-${editing}`),
+            threadId: v2ThreadId,
+            runId: RunId.make("run-3"),
+            text: "saved text",
+            editing,
+          }).pipe(provide);
+        }
+        expect(commands.slice(-2)).toMatchObject([
+          { type: "queued-run.edit", runId: "run-3", editing: true },
+          { type: "queued-run.edit", runId: "run-3", editing: false },
+        ]);
       }).pipe(Effect.provide(layerTestCrypto)),
   );
 

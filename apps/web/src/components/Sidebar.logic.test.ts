@@ -8,6 +8,7 @@ import { AsyncResult } from "effect/reactivity";
 import {
   animateSidebarLayoutChanges,
   archiveSelectedThreadEntries,
+  archiveSettledThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
@@ -144,6 +145,44 @@ describe("resolveSidebarThreadSection", () => {
     expect(resolveSidebarThreadSection({ snoozed: false, settled: true, pinned: true })).toBe(
       "settled",
     );
+  });
+});
+
+describe("archiveSettledThreadEntries", () => {
+  it.each([false, true])(
+    "requires confirmation before archiving the entire section: %s",
+    async (confirmed) => {
+      const archived: string[] = [];
+      const counts: number[] = [];
+      await archiveSettledThreadEntries({
+        entries: ["first", "second", "beyond the visible page"],
+        confirm: async (count) => {
+          counts.push(count);
+          return confirmed;
+        },
+        archive: async (entry) => {
+          archived.push(entry);
+          return AsyncResult.success(undefined);
+        },
+      });
+      expect(counts).toEqual([3]);
+      expect(archived).toEqual(confirmed ? ["first", "second", "beyond the visible page"] : []);
+    },
+  );
+  it("leaves remaining threads intact after a failed archive", async () => {
+    const archived: string[] = [];
+    const failure = AsyncResult.failure(Cause.fail(new Error("Archive failed")));
+    expect(
+      await archiveSettledThreadEntries({
+        entries: ["first", "second"],
+        confirm: async () => true,
+        archive: async (entry) => {
+          archived.push(entry);
+          return failure;
+        },
+      }),
+    ).toBe(failure);
+    expect(archived).toEqual(["first"]);
   });
 });
 

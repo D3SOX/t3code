@@ -468,10 +468,30 @@ export function useThreadComposerState() {
     ? (selectedThreadRuntime?.activeRunId ?? null)
     : null;
 
-  const cancelQueuedRunEdit = useCallback(() => {
-    if (selectedThreadKey === null || savingQueuedEditRef.current) return;
-    endQueuedRunEdit(selectedThreadKey);
-  }, [selectedThreadKey]);
+  const cancelQueuedRunEdit = useCallback(async () => {
+    if (selectedThreadKey === null || !selectedThreadShell || savingQueuedEditRef.current) return;
+    const edit = getQueuedRunEdit(selectedThreadKey);
+    if (!edit) return;
+    savingQueuedEditRef.current = true;
+    try {
+      const result = await editQueuedRun({
+        environmentId: selectedThreadShell.environmentId,
+        input: {
+          threadId: selectedThreadShell.id,
+          runId: edit.runId,
+          text: edit.originalText,
+          editing: false,
+        },
+      });
+      if (result._tag !== "Success") {
+        Alert.alert("Could not cancel the edit", "Try again after reconnecting.");
+        return;
+      }
+      endQueuedRunEdit(selectedThreadKey);
+    } finally {
+      savingQueuedEditRef.current = false;
+    }
+  }, [selectedThreadKey, selectedThreadShell, editQueuedRun]);
 
   const onRemoveQueuedEditAttachment = useCallback(
     (attachmentId: string) => {

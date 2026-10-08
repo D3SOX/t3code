@@ -16,6 +16,7 @@ vi.mock("@t3tools/client-runtime/state/thread-workflows", () => ({
 
 vi.mock("../../state/entities", () => ({
   useThreadProjection: () => state.projection,
+  useServerConfigs: () => new Map(),
 }));
 
 vi.mock("../../state/threads", () => ({
@@ -68,6 +69,7 @@ describe("QueuedRunsControl automatic completion delivery", () => {
         editingRunId={null}
         onEditQueuedRun={() => undefined}
         onCancelEdit={() => undefined}
+        onRemoveQueuedRun={async () => undefined}
       />,
     );
 
@@ -109,6 +111,7 @@ describe("QueuedRunsControl attachments and edit mode", () => {
         editingRunId={null}
         onEditQueuedRun={() => undefined}
         onCancelEdit={() => undefined}
+        onRemoveQueuedRun={async () => undefined}
       />,
     );
 
@@ -145,6 +148,7 @@ describe("QueuedRunsControl attachments and edit mode", () => {
         editingRunId={null}
         onEditQueuedRun={() => undefined}
         onCancelEdit={() => undefined}
+        onRemoveQueuedRun={async () => undefined}
       />,
     );
 
@@ -163,6 +167,7 @@ describe("QueuedRunsControl attachments and edit mode", () => {
         editingRunId={"run:queued" as never}
         onEditQueuedRun={() => undefined}
         onCancelEdit={() => undefined}
+        onRemoveQueuedRun={async () => undefined}
       />,
     );
 

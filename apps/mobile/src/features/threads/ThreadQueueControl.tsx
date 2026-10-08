@@ -4,7 +4,7 @@ import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/co
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, Platform, Pressable, ScrollView, View } from "react-native";
+import { Alert, Animated, Platform, Pressable, ScrollView, View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -22,7 +22,21 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useAssetUrl } from "../../state/assets";
-import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";
+import {
+  beginQueuedRunEdit,
+  restoreRemovedQueuedMessage,
+  useQueuedRunEdit,
+} from "../../state/queued-run-edit";
+import { assetEnvironment } from "../../state/assets";
+import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
+import { usePreparedConnection } from "../../state/session";
+import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
+import { downloadAttachmentForPreview } from "../../lib/attachmentDownload";
+import {
+  persistComposerAttachmentFile,
+  type DraftComposerAttachment,
+} from "../../lib/composerImages";
+import { scheduleUnusedComposerAttachmentCleanup } from "../../state/use-composer-drafts";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useServerConfigs } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -64,6 +78,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun, "reorder queued message");
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun, "promote queued message");
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun, "remove queued message");
+  const edit = useAtomCommand(threadEnvironment.editQueuedRun, "pause queue for editing");
+  const connection = usePreparedConnection(target.environmentId);
+  const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, { refresh: true });
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue, "resume queue");
   const [resuming, setResuming] = useState(false);
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
@@ -129,16 +146,29 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       return;
     }
     if (action === "edit") {
+      if (editing !== null) return;
       const entry = queuedRuns[index]!;
-      void Haptics.selectionAsync();
-      beginQueuedRunEdit(threadKey, {
-        runId,
-        messageId: entry.messageId,
-        originalText: entry.text,
-        existingAttachments: entry.attachments,
-        ...(entry.context ? { context: entry.context } : {}),
-      });
-      navigation.goBack();
+      busyRef.current = true;
+      setBusyRunId(runId);
+      try {
+        const result = await edit({
+          ...target,
+          input: { threadId: target.threadId, runId, text: entry.text, editing: true },
+        });
+        if (result._tag !== "Success") return;
+        void Haptics.selectionAsync();
+        beginQueuedRunEdit(threadKey, {
+          runId,
+          messageId: entry.messageId,
+          originalText: entry.text,
+          existingAttachments: entry.attachments,
+          ...(entry.context ? { context: entry.context } : {}),
+        });
+        navigation.goBack();
+      } finally {
+        busyRef.current = false;
+        setBusyRunId(null);
+      }
       return;
     }
     if (!["steer", "remove", "next-tool", "after-turn"].includes(action)) return;
@@ -147,7 +177,74 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     void Haptics.selectionAsync();
     try {
       if (action === "remove") {
-        await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
+        if (editing !== null) return;
+        const entry = queuedRuns[index]!;
+        const input = { threadId: target.threadId, runId, text: entry.text };
+        const paused = await edit({ ...target, input: { ...input, editing: true } });
+        if (paused._tag !== "Success") return;
+        const attachments: DraftComposerAttachment[] = [];
+        try {
+          for (const attachment of entry.attachments) {
+            if (attachment.type !== "image" && attachment.type !== "file")
+              throw new Error("This attachment cannot be restored.");
+            if (connection._tag !== "Some")
+              throw new Error("Reconnect the environment to restore attachments.");
+            const url = assetUrlStateFromResult(
+              await createAssetUrl({
+                environmentId: target.environmentId,
+                input: { resource: { _tag: "attachment", attachmentId: attachment.id } },
+              }),
+              connection.value.httpBaseUrl,
+            );
+            if (url._tag !== "Success") throw new Error("Could not restore an attachment.");
+            const downloaded = await downloadAttachmentForPreview({
+              url: url.url,
+              attachment,
+              signal: AbortSignal.timeout(30_000),
+            });
+            if (!downloaded) throw new Error("Could not restore an attachment.");
+            try {
+              const fileUri = await persistComposerAttachmentFile(downloaded.uri, attachment.name);
+              const common = {
+                id: attachment.id,
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                sizeBytes: attachment.sizeBytes,
+                fileUri,
+              };
+              if (attachment.type === "image")
+                attachments.push({
+                  ...common,
+                  type: "image",
+                  previewUri: fileUri,
+                  ...("source" in attachment ? { source: attachment.source } : {}),
+                });
+              else if (attachment.type === "file")
+                attachments.push({
+                  ...common,
+                  type: "file",
+                  ...("source" in attachment ? { source: attachment.source } : {}),
+                });
+            } finally {
+              downloaded.dispose();
+            }
+          }
+          const result = await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
+          if (result._tag !== "Success") throw new Error("Could not remove the queued message.");
+          restoreRemovedQueuedMessage(threadKey, {
+            text: entry.text,
+            context: entry.context,
+            attachments,
+          });
+          if (queuedRuns.length > 1) navigation.goBack();
+        } catch (error) {
+          scheduleUnusedComposerAttachmentCleanup(attachments);
+          await edit({ ...target, input: { ...input, editing: false } });
+          Alert.alert(
+            "Could not return the queued message",
+            error instanceof Error ? error.message : "Try again after reconnecting.",
+          );
+        }
       } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
         await promote({
           ...target,
@@ -192,10 +289,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     >
       {workflow?.isHeld && queuedRuns.length > 0 ? (
         <View className="gap-2 py-3">
-          <Text className="text-sm text-foreground-muted">Queue held after restart</Text>
+          <Text className="text-sm text-foreground-muted">
+            {editing ? "Queue paused while editing" : "Queue paused"}
+          </Text>
           <MaterialButton
             label="Resume queue"
-            disabled={resuming || busyRunId !== null}
+            disabled={resuming || busyRunId !== null || editing !== null}
             onPress={async () => {
               if (busyRef.current) return;
               busyRef.current = true;
@@ -225,7 +324,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             ? threadDragGapOffset(layout.y, sourceLayout.y, sourceLayout.height, insertionOffset)
             : 0;
         const controls = resolveThreadQueueRowControls({
-          busy: busyRunId !== null || draggedRunId !== null,
+          busy: busyRunId !== null || draggedRunId !== null || editing !== null,
           canPromoteToSteer: workflow?.canPromoteToSteer ?? false,
           canReorder: workflow?.canReorder ?? false,
           index,
@@ -398,9 +497,16 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                     >
                       {title}
                     </Text>
-                    {run.queueAfterNextTool ? (
-                      <Text className="shrink-0 text-2xs text-foreground-muted">After tool</Text>
-                    ) : null}
+                    <View className="shrink-0 flex-row items-center gap-1">
+                      <SymbolView
+                        name={run.queueAfterNextTool ? "hammer" : "clock"}
+                        size={12}
+                        tintColorClassName="accent-foreground-muted"
+                      />
+                      <Text className="text-2xs text-foreground-muted">
+                        {run.queueAfterNextTool ? "After tool" : "After turn"}
+                      </Text>
+                    </View>
                     {controls.isEditing ? (
                       <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
                         Editing
