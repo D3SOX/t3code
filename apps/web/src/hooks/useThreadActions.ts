@@ -1,7 +1,6 @@
 import {
   parseScopedThreadKey,
   scopeProjectRef,
-  scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -23,7 +22,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef } from "react";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { terminalEnvironment } from "../state/terminal";
@@ -315,7 +314,6 @@ export function useThreadActions() {
   const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, {
     reportFailure: false,
   });
-  const sidebarThreadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
   const confirmThreadUnpin = useClientSettings((settings) => settings.confirmThreadUnpin);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
@@ -326,8 +324,8 @@ export function useThreadActions() {
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
   const router = useRouter();
   const handleNewThread = useNewThreadHandler();
-  // Keep a ref so archiveThread can call handleNewThread without appearing in
-  // its dependency array — handleNewThread is inherently unstable (depends on
+  // Keep a ref so thread actions can call handleNewThread without appearing in
+  // their dependency arrays — handleNewThread is inherently unstable (depends on
   // the projects list) and would otherwise cascade new references into every
   // sidebar row via archiveThread → attemptArchiveThread.
   const handleNewThreadRef = useRef(handleNewThread);
@@ -529,17 +527,6 @@ export function useThreadActions() {
         });
       }
 
-      const deletedThreadIds = deletedIds ?? new Set<ThreadId>();
-      const currentRouteThreadRef = getCurrentRouteThreadRef();
-      const shouldNavigateToFallback =
-        currentRouteThreadRef?.threadId === threadRef.threadId &&
-        currentRouteThreadRef.environmentId === threadRef.environmentId;
-      const fallbackThreadId = getFallbackThreadIdAfterDelete({
-        threads,
-        deletedThreadId: threadRef.threadId,
-        deletedThreadIds,
-        sortOrder: sidebarThreadSortOrder,
-      });
       const deleteResult = await deleteThreadMutation({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId },
@@ -556,21 +543,19 @@ export function useThreadActions() {
       );
       clearTerminalUiState(threadRef);
 
-      if (shouldNavigateToFallback) {
-        const fallbackThread = fallbackThreadId
-          ? readThreadShell(scopeThreadRef(threadRef.environmentId, fallbackThreadId))
-          : null;
-        await navigateAfterThreadDeletion(() =>
-          fallbackThread
-            ? router.navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(
-                  scopeThreadRef(fallbackThread.environmentId, fallbackThread.id),
-                ),
-                replace: true,
-              })
-            : router.navigate({ to: "/", replace: true }),
-        );
+      const currentRouteThreadRef = getCurrentRouteThreadRef();
+      if (
+        currentRouteThreadRef?.threadId === threadRef.threadId &&
+        currentRouteThreadRef.environmentId === threadRef.environmentId
+      ) {
+        await navigateAfterThreadDeletion(async () => {
+          await handleNewThreadRef.current(
+            scopeProjectRef(threadRef.environmentId, thread.projectId),
+            {
+              replace: true,
+            },
+          );
+        });
       }
 
       if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
@@ -645,9 +630,7 @@ export function useThreadActions() {
       loadSessionState,
       refreshVcsStatus,
       removeWorktree,
-      router,
       resolveThreadTarget,
-      sidebarThreadSortOrder,
       stopThreadSession,
     ],
   );

@@ -2015,7 +2015,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 : "grid h-15 grid-cols-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1",
             )}
           >
-            <div className="col-span-2 flex h-5 min-w-0 items-center gap-1.5">
+            <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
@@ -2177,7 +2177,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className={cn("flex min-w-0", showThreadBranches && "mt-1")}>
+            <div className={cn("flex min-w-0", showThreadBranches ? "mt-1" : "col-span-2")}>
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -2188,7 +2188,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             <div
               className={cn(
                 "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
-                showThreadBranches && "mt-0.5",
+                showThreadBranches ? "mt-0.5" : "col-start-2 row-start-1",
               )}
             >
               {showThreadBranches && thread.branch ? (
@@ -3361,44 +3361,28 @@ export default function Sidebar() {
   // A settle per thread at a time: double clicks and repeated menu picks
   // must not dispatch a second settle that fails and toasts a false error.
   const settlingThreadKeysRef = useRef(new Set<string>());
-  // Parking the thread you're looking at (settle or snooze) moves you
-  // forward: the next remaining card (never a settled or snoozed row, never
-  // one leaving in the same batch), or a fresh draft in this project when it
-  // was the last active one. Callers snapshot the plan BEFORE the command
-  // mutates the partition; background parks never navigate (null plan).
+  // Capture the open thread's project before parking mutates the partition.
+  // Background parks never navigate (null plan).
   const planForwardNavigation = useCallback(
-    (threadKey: string, coParkingKeys?: ReadonlySet<string>): (() => void) | null => {
+    (threadKey: string): (() => void) | null => {
       if (routeThreadKeyRef.current !== threadKey) return null;
       const shell = threadByKeyRef.current.get(threadKey);
-      const orderedKeys = orderedThreadKeysRef.current;
-      const settledKeys = settledThreadKeysRef.current;
-      const snoozedKeys = snoozedThreadKeysRef.current;
-      const currentIndex = orderedKeys.indexOf(threadKey);
-      const nextCardKey =
-        currentIndex === -1
-          ? null
-          : ([...orderedKeys.slice(currentIndex + 1), ...orderedKeys.slice(0, currentIndex)].find(
-              (key) => !settledKeys.has(key) && !snoozedKeys.has(key) && !coParkingKeys?.has(key),
-            ) ?? null);
-      const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
-      return nextThread
-        ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
-        : shell
-          ? () =>
-              void handleNewThreadRef.current(scopeProjectRef(shell.environmentId, shell.projectId))
-          : () => void router.navigate({ to: "/" });
+      return shell
+        ? () =>
+            void handleNewThreadRef.current(scopeProjectRef(shell.environmentId, shell.projectId))
+        : () => void router.navigate({ to: "/" });
     },
-    [navigateToThread, router],
+    [router],
   );
 
   const attemptSettle = useCallback(
-    (threadRef: ScopedThreadRef, opts: { coSettlingKeys?: ReadonlySet<string> } = {}) => {
+    (threadRef: ScopedThreadRef) => {
       void (async () => {
         const threadKey = scopedThreadKey(threadRef);
         if (settlingThreadKeysRef.current.has(threadKey)) return;
         settlingThreadKeysRef.current.add(threadKey);
         try {
-          const navigateAfterSettle = planForwardNavigation(threadKey, opts.coSettlingKeys);
+          const navigateAfterSettle = planForwardNavigation(threadKey);
           const result = await settleThread(threadRef);
           if (result._tag === "Failure") {
             // Never navigate away from a thread that did not settle.
@@ -3434,18 +3418,16 @@ export default function Sidebar() {
     },
     [planForwardNavigation, settleThread],
   );
-  // Post-settle navigation must skip threads settling in this same batch —
-  // they are all leaving the card block together. Rows that are already
-  // explicitly settled are skipped: nothing to do on a valid mixed selection.
+  // Rows that are already explicitly settled are skipped:
+  // nothing to do on a valid mixed selection.
   // Pinned rows ARE included: the decider clears the pin as part of settling,
   // so they park like the rest.
   const settleThreads = useCallback(
     (threadKeys: readonly string[]) => {
-      const coSettlingKeys = new Set(threadKeys);
       for (const threadKey of threadKeys) {
         const thread = threadByKeyRef.current.get(threadKey);
         if (!thread || thread.settledOverride === "settled") continue;
-        attemptSettle(scopeThreadRef(thread.environmentId, thread.id), { coSettlingKeys });
+        attemptSettle(scopeThreadRef(thread.environmentId, thread.id));
       }
     },
     [attemptSettle],
@@ -4224,11 +4206,7 @@ export default function Sidebar() {
   // One snooze per thread at a time — same double-dispatch guard as settle.
   const snoozingThreadKeysRef = useRef(new Set<string>());
   const performSnooze = useCallback(
-    async (
-      threadRef: ScopedThreadRef,
-      preset: Pick<SnoozePreset, "snoozedUntil">,
-      opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
-    ) => {
+    async (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => {
       const threadKey = scopedThreadKey(threadRef);
       if (snoozingThreadKeysRef.current.has(threadKey)) {
         return { status: "skipped" } as const;
@@ -4237,7 +4215,7 @@ export default function Sidebar() {
       try {
         // Snoozing the open thread moves you forward, same as settle —
         // both park the thread you're done with for now.
-        const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
+        const navigateAfterSnooze = planForwardNavigation(threadKey);
         const result = await snoozeThread(threadRef, preset.snoozedUntil);
         if (result._tag === "Failure") {
           // Never navigate away from a thread that did not snooze.
@@ -4266,13 +4244,9 @@ export default function Sidebar() {
     [planForwardNavigation, snoozeThread],
   );
   const attemptSnooze = useCallback(
-    (
-      threadRef: ScopedThreadRef,
-      preset: Pick<SnoozePreset, "snoozedUntil">,
-      opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
-    ) => {
+    (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => {
       void (async () => {
-        const outcome = await performSnooze(threadRef, preset, opts);
+        const outcome = await performSnooze(threadRef, preset);
         if (outcome.status === "failure") {
           toastManager.add(
             stackedThreadToast({
@@ -4419,14 +4393,11 @@ export default function Sidebar() {
             ? await requestCustomSnooze()
             : snoozePresets.find((candidate) => `snooze:${candidate.id}` === clicked.value);
         if (preset) {
-          // Post-snooze navigation must skip threads snoozing in this same
-          // batch — they are all leaving the card block together.
-          const coSnoozingKeys = new Set(threadKeys);
           clearSelection();
           const outcomes = await Promise.all(
             selectedThreads.map(async (thread) => {
               const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-              const outcome = await performSnooze(threadRef, preset, { coSnoozingKeys });
+              const outcome = await performSnooze(threadRef, preset);
               return { outcome, threadRef };
             }),
           );

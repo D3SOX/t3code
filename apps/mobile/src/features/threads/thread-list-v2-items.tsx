@@ -985,6 +985,56 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </View>
   ) : null;
 
+  const cardIndicators = (
+    <>
+      {pr ? (
+        <View className="flex-row items-center gap-1" accessibilityLabel={pr.accessibilityLabel}>
+          <SymbolView
+            name={pr.kind === "stack" ? "square.3.layers.3d" : "arrow.triangle.pull"}
+            size={12}
+            tintColorClassName={
+              pr.state === null || pr.isDraft
+                ? rowAppearance.mutedIconTintClassName
+                : pr.state === "open"
+                  ? "accent-adaptive-emerald-600-400"
+                  : pr.state === "closed"
+                    ? "accent-adaptive-rose-600-400"
+                    : "accent-adaptive-violet-600-400"
+            }
+          />
+          <Text
+            accessibilityLabel={pr.accessibilityLabel}
+            className={cn("text-xs", pr.textClassName)}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {pr.label}
+          </Text>
+        </View>
+      ) : null}
+      {providerInstance ? (
+        // Earlier owners peek out behind the current provider so a
+        // handed-off thread shows where it has been. The current owner
+        // keeps its account badge so same-driver instances stay distinct.
+        <View className="flex-row items-center">
+          {providerDrivers.slice(0, -1).map((driver, index) => (
+            <View key={`${driver}:${index}`} className="-mr-1 opacity-30">
+              <ProviderIcon provider={driver} size={12} />
+            </View>
+          ))}
+          <ProviderInstanceIcon
+            iconUrl={providerIconUrl}
+            provider={providerInstance.driverKind}
+            size={14}
+            displayName={providerInstance.displayName}
+            accentColor={providerInstance.accentColor}
+            showBadge={providerInstance.showBadge}
+            surfaceColor={rowAppearance.providerIconSurfaceColor}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   const cardContent = (
     <>
@@ -1031,12 +1081,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {statusLabel?.label ?? timeLabel}
         </Text>
+        {compact ? (
+          <View className="shrink-0 flex-row items-center gap-2">{cardIndicators}</View>
+        ) : null}
       </View>
-      <View className={cn("mt-1", compact && "flex-row items-center gap-2")}>
+      <View className="mt-1">
         <Text
           className={cn(
             "text-base font-t3-medium",
-            compact && "min-w-0 flex-1",
             selected
               ? selectedThreadRowColors.foregroundClassName
               : rowAppearance.foregroundClassName,
@@ -1055,129 +1107,84 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             />
           </View>
         ) : null}
-        <View className={cn("flex-row items-center gap-2", compact ? "shrink-0" : "mt-1")}>
-          {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
-            <Text
-              className={cn(
-                "flex-1 text-xs",
-                selected
-                  ? selectedThreadRowColors.mutedForegroundClassName
-                  : status === "limited"
-                    ? "text-warning-foreground"
-                    : "text-danger-foreground",
-              )}
-              numberOfLines={1}
-            >
-              {thread.runtime.lastError}
-            </Text>
-          ) : branch || props.environmentLabel ? (
-            /* "branch · machine" share one truncating line. The machine sits
+        {!compact ? (
+          <View className="mt-1 flex-row items-center gap-2">
+            {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+              <Text
+                className={cn(
+                  "flex-1 text-xs",
+                  selected
+                    ? selectedThreadRowColors.mutedForegroundClassName
+                    : status === "limited"
+                      ? "text-warning-foreground"
+                      : "text-danger-foreground",
+                )}
+                numberOfLines={1}
+              >
+                {thread.runtime.lastError}
+              </Text>
+            ) : branch || props.environmentLabel ? (
+              /* "branch · machine" share one truncating line. The machine sits
              last so a tight fit cuts the repetitive label, not the branch —
              and machine-only fills the row for non-git projects. The glyph
              hugs the label (it cannot live inside the Text without breaking
              truncation), and the wrapper takes the slack so the trailers
              stay pinned right. */
-            <View className="min-w-0 flex-1 flex-row items-center gap-1">
-              <Text
-                className={cn(
-                  "shrink text-xs",
-                  selected
-                    ? selectedThreadRowColors.mutedForegroundClassName
-                    : rowAppearance.mutedForegroundClassName,
-                )}
-                numberOfLines={1}
-              >
-                {branch ? (
-                  <Text
-                    className={cn(
-                      "text-xs",
-                      selected
-                        ? selectedThreadRowColors.mutedForegroundClassName
-                        : rowAppearance.mutedForegroundClassName,
-                    )}
-                    style={{ fontFamily: MONO_FONT }}
-                  >
-                    {branch}
-                  </Text>
-                ) : null}
-                {branch && props.environmentLabel ? "  ·  " : null}
-                {props.environmentLabel ? (
-                  <Text
-                    className={cn(
-                      "text-xs",
-                      selected
-                        ? selectedThreadRowColors.mutedForegroundClassName
-                        : rowAppearance.tertiaryForegroundClassName,
-                    )}
-                  >
-                    {props.environmentLabel}
-                  </Text>
-                ) : null}
-              </Text>
-              {props.environmentLabel && props.environmentMachine ? (
-                <EnvironmentMachineSymbol
-                  kind={props.environmentMachine}
-                  size={11}
-                  tintColorClassName={
+              <View className="min-w-0 flex-1 flex-row items-center gap-1">
+                <Text
+                  className={cn(
+                    "shrink text-xs",
                     selected
-                      ? selectedThreadRowColors.mutedIconTintClassName
-                      : rowAppearance.tertiaryIconTintClassName
-                  }
-                />
-              ) : null}
-            </View>
-          ) : !compact ? (
-            <View className="flex-1" />
-          ) : null}
-          {pr ? (
-            <View
-              className="flex-row items-center gap-1"
-              accessibilityLabel={pr.accessibilityLabel}
-            >
-              <SymbolView
-                name={pr.kind === "stack" ? "square.3.layers.3d" : "arrow.triangle.pull"}
-                size={12}
-                tintColorClassName={
-                  pr.state === null || pr.isDraft
-                    ? rowAppearance.mutedIconTintClassName
-                    : pr.state === "open"
-                      ? "accent-adaptive-emerald-600-400"
-                      : pr.state === "closed"
-                        ? "accent-adaptive-rose-600-400"
-                        : "accent-adaptive-violet-600-400"
-                }
-              />
-              <Text
-                accessibilityLabel={pr.accessibilityLabel}
-                className={cn("text-xs", pr.textClassName)}
-                style={{ fontFamily: MONO_FONT }}
-              >
-                {pr.label}
-              </Text>
-            </View>
-          ) : null}
-          {providerInstance ? (
-            // Earlier owners peek out behind the current provider so a
-            // handed-off thread shows where it has been. The current owner
-            // keeps its account badge so same-driver instances stay distinct.
-            <View className="flex-row items-center">
-              {providerDrivers.slice(0, -1).map((driver, index) => (
-                <View key={`${driver}:${index}`} className="-mr-1 opacity-30">
-                  <ProviderIcon provider={driver} size={12} />
-                </View>
-              ))}
-              <ProviderInstanceIcon
-                iconUrl={providerIconUrl}
-                provider={providerInstance.driverKind}
-                size={14}
-                displayName={providerInstance.displayName}
-                accentColor={providerInstance.accentColor}
-                showBadge={providerInstance.showBadge}
-                surfaceColor={rowAppearance.providerIconSurfaceColor}
-              />
-            </View>
-          ) : null}
-        </View>
+                      ? selectedThreadRowColors.mutedForegroundClassName
+                      : rowAppearance.mutedForegroundClassName,
+                  )}
+                  numberOfLines={1}
+                >
+                  {branch ? (
+                    <Text
+                      className={cn(
+                        "text-xs",
+                        selected
+                          ? selectedThreadRowColors.mutedForegroundClassName
+                          : rowAppearance.mutedForegroundClassName,
+                      )}
+                      style={{ fontFamily: MONO_FONT }}
+                    >
+                      {branch}
+                    </Text>
+                  ) : null}
+                  {branch && props.environmentLabel ? "  ·  " : null}
+                  {props.environmentLabel ? (
+                    <Text
+                      className={cn(
+                        "text-xs",
+                        selected
+                          ? selectedThreadRowColors.mutedForegroundClassName
+                          : rowAppearance.tertiaryForegroundClassName,
+                      )}
+                    >
+                      {props.environmentLabel}
+                    </Text>
+                  ) : null}
+                </Text>
+                {props.environmentLabel && props.environmentMachine ? (
+                  <EnvironmentMachineSymbol
+                    kind={props.environmentMachine}
+                    size={11}
+                    tintColorClassName={
+                      selected
+                        ? selectedThreadRowColors.mutedIconTintClassName
+                        : rowAppearance.tertiaryIconTintClassName
+                    }
+                  />
+                ) : null}
+              </View>
+            ) : (
+              <View className="flex-1" />
+            )}
+            {cardIndicators}
+          </View>
+        ) : null}
       </View>
     </>
   );

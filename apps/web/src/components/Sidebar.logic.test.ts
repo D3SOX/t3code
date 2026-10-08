@@ -16,7 +16,6 @@ import {
   filterSidebarProjectScopeItems,
   filterSidebarV2VisibleThreads,
   formatWorkingDurationLabel,
-  getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getSidebarForkParentThreadId,
   getSidebarThreadIdsToPrewarm,
@@ -1553,72 +1552,6 @@ function makeThread(overrides: ThreadFixtureOverrides = {}): Thread {
   });
 }
 
-describe("getFallbackThreadIdAfterDelete", () => {
-  it("returns the top remaining thread in the deleted thread's project sidebar order", () => {
-    const fallbackThreadId = getFallbackThreadIdAfterDelete({
-      threads: [
-        makeThread({
-          id: ThreadId.make("thread-oldest"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:00:00.000Z",
-          messages: [],
-        }),
-        makeThread({
-          id: ThreadId.make("thread-active"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:05:00.000Z",
-          messages: [],
-        }),
-        makeThread({
-          id: ThreadId.make("thread-newest"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:10:00.000Z",
-          messages: [],
-        }),
-        makeThread({
-          id: ThreadId.make("thread-other-project"),
-          projectId: ProjectId.make("project-2"),
-          createdAt: "2026-03-09T10:20:00.000Z",
-          messages: [],
-        }),
-      ],
-      deletedThreadId: ThreadId.make("thread-active"),
-      sortOrder: "created_at",
-    });
-
-    expect(fallbackThreadId).toBe(ThreadId.make("thread-newest"));
-  });
-
-  it("skips other threads being deleted in the same action", () => {
-    const fallbackThreadId = getFallbackThreadIdAfterDelete({
-      threads: [
-        makeThread({
-          id: ThreadId.make("thread-active"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:05:00.000Z",
-          messages: [],
-        }),
-        makeThread({
-          id: ThreadId.make("thread-newest"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:10:00.000Z",
-          messages: [],
-        }),
-        makeThread({
-          id: ThreadId.make("thread-next"),
-          projectId: ProjectId.make("project-1"),
-          createdAt: "2026-03-09T10:07:00.000Z",
-          messages: [],
-        }),
-      ],
-      deletedThreadId: ThreadId.make("thread-active"),
-      deletedThreadIds: new Set([ThreadId.make("thread-active"), ThreadId.make("thread-newest")]),
-      sortOrder: "created_at",
-    });
-
-    expect(fallbackThreadId).toBe(ThreadId.make("thread-next"));
-  });
-});
 describe("sortProjectsForSidebar", () => {
   it("sorts projects by the most recent user message across their threads", () => {
     const projects = [
