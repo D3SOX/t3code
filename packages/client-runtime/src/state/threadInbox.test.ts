@@ -1,7 +1,12 @@
 import { EnvironmentId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createInboxReturnTracker, sortWorkingThreadsBySend } from "./threadInbox.ts";
+import {
+  createInboxReturnTracker,
+  sortInboxThreadsByReturn,
+  sortWorkingThreadsBySend,
+} from "./threadInbox.ts";
+import { planPinnedReorder } from "./threadSort.ts";
 
 const environmentId = EnvironmentId.make("environment-1");
 
@@ -55,6 +60,34 @@ describe("createInboxReturnTracker", () => {
     tracker.observe([thread("b", true)]);
     tracker.observe([thread("b", false)]);
     expect(tracker.returnedAt(thread("b", false))).toBeDefined();
+  });
+});
+
+describe("sortInboxThreadsByReturn", () => {
+  it("keeps a saved manual order while unarranged returns lead the inbox", () => {
+    const older = { ...thread("older", false), activeOrderKey: null as string | null };
+    const newer = {
+      ...thread("newer", false),
+      createdAt: "2026-06-01T01:00:00.000Z",
+      activeOrderKey: null as string | null,
+    };
+    const initial = sortInboxThreadsByReturn([older, newer]);
+    expect(initial.map((entry) => entry.id)).toEqual(["newer", "older"]);
+    const assignments = planPinnedReorder({
+      orderedIds: ["older", "newer"],
+      keysById: new Map(initial.map((entry) => [entry.id, entry.activeOrderKey])),
+      movedId: "older",
+    });
+    const ordered = initial.map((entry) => ({
+      ...entry,
+      activeOrderKey: assignments.find(({ id }) => id === entry.id)?.orderKey ?? null,
+    }));
+    const returned = { ...thread("returned", false), createdAt: "2026-06-01T02:00:00.000Z" };
+    expect(sortInboxThreadsByReturn([...ordered, returned]).map((entry) => entry.id)).toEqual([
+      "returned",
+      "older",
+      "newer",
+    ]);
   });
 });
 

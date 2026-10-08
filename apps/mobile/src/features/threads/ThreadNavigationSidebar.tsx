@@ -344,6 +344,7 @@ function ThreadNavigationSidebarPane(
   // rebuild (see computeThreadMoveAvailability): per-thread planner calls made
   // list construction quadratic, and this list rebuilds on every minute tick.
   const threadMoveAvailability = useMemo(() => {
+    threadListInboxReturns.observe(workingShelfEnabled ? threads : null);
     const sectionAvailability = (section: "pinned" | "active") =>
       computeThreadMoveAvailability({
         allThreads: threads,
@@ -359,13 +360,11 @@ function ThreadNavigationSidebarPane(
           settlementEnvironmentIds,
           snoozeEnvironmentIds,
           queuedThreadKeys,
+          workingShelfEnabled,
+          inboxReturnAt: threadListInboxReturns.returnedAt,
         }),
       });
-    // The Working beta orders the inbox by time, so only pins can move.
-    return new Map([
-      ...sectionAvailability("pinned"),
-      ...(workingShelfEnabled ? [] : sectionAvailability("active")),
-    ]);
+    return new Map([...sectionAvailability("pinned"), ...sectionAvailability("active")]);
   }, [
     workingShelfEnabled,
     pinReorderEnvironmentIds,
@@ -379,7 +378,6 @@ function ThreadNavigationSidebarPane(
     snoozeWakeTick,
   ]);
   const threadListV2Layout = useMemo(() => {
-    threadListInboxReturns.observe(workingShelfEnabled ? threads : null);
     return buildThreadListV2Items({
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
@@ -754,7 +752,7 @@ function ThreadNavigationSidebarPane(
               reorderSupported={
                 item.item.pinned
                   ? pinReorderEnvironmentIds.has(thread.environmentId)
-                  : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+                  : activeReorderEnvironmentIds.has(thread.environmentId)
               }
               canMoveUp={item.canMoveUp}
               canMoveDown={item.canMoveDown}

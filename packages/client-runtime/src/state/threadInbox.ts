@@ -1,5 +1,5 @@
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
-import { toSortableTimestamp } from "./threadSort.ts";
+import { sortActiveThreadsByOrderKey, toSortableTimestamp } from "./threadSort.ts";
 
 // Working section beta, shared so web and mobile fold and order the inbox the
 // same way. Off by default; each client owns its own toggle.
@@ -33,13 +33,13 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
   return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
 }
 
-type InboxThreadInput = Pick<
+type InboxThreadInput = { readonly activeOrderKey?: string | null } & Pick<
   EnvironmentThreadShell,
   "id" | "environmentId" | "createdAt" | "unsettledAt" | "latestRun"
 >;
 
-/** The inbox lists threads newest first by when each last came back to the
-    user, so a thread that leaves the Working section lands on top.
+/** Unarranged inbox threads lead the saved manual order, newest first by when
+    each last came back to the user.
     `observedReturnAt` adds returns the server does not stamp, such as an
     approval request mid-turn or background work ending. */
 export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
@@ -58,7 +58,7 @@ export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
       ),
     ]),
   );
-  return sortNewestFirst(threads, timestamps);
+  return sortActiveThreadsByOrderKey(threads, (thread) => timestamps.get(thread)!);
 }
 
 type WorkingSortInput = Pick<

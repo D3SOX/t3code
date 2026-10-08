@@ -2432,6 +2432,43 @@ describe("Working section beta", () => {
     expect(ids(layout).slice(1)).toEqual(["finished-early", "finished-late", "asks-approval"]);
   });
 
+  it("keeps an Active move in place before and after its keys commit with Working enabled", () => {
+    const rows = [threads[0]!, threads[1]!, threads[2]!];
+    const ordered = getThreadListV2OrderedSection({
+      threads: rows,
+      section: "active",
+      now: NOW,
+      workingShelfEnabled: true,
+    });
+    expect(ordered.map((row) => row.id)).toEqual(["finished-late", "finished-early"]);
+    const movedId = `${environmentId}:finished-early`;
+    const assignments = createThreadMovePlanner({
+      ordered,
+      allThreads: rows,
+      section: "active",
+      reorderableEnvironmentIds: new Set([environmentId]),
+    })(movedId, "up")!;
+    expect(assignments).not.toBeNull();
+    const pendingOrder = createPendingThreadOrder({
+      ordered,
+      section: "active",
+      movedId,
+      direction: "up",
+      assignments,
+    });
+    expect(ids(build({ threads: rows, pendingOrder }))).toEqual([
+      "finished-early",
+      "finished-late",
+    ]);
+    const confirmed = rows.map((row) => ({
+      ...row,
+      activeOrderKey:
+        assignments.find(({ id }) => id === `${row.environmentId}:${row.id}`)?.orderKey ??
+        row.activeOrderKey,
+    }));
+    expect(ids(build({ threads: confirmed }))).toEqual(["finished-early", "finished-late"]);
+  });
+
   it("places the shelf after queued tasks and before snoozed and settled threads", () => {
     const layout = buildThreadListV2Items({
       threads: [

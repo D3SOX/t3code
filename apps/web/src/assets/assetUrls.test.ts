@@ -17,8 +17,13 @@ const state = vi.hoisted(() => ({
   assetQuery: vi.fn(),
 }));
 
-vi.mock("react", () => ({ useCallback: <A>(callback: A) => callback }));
+vi.mock("react", () => ({
+  useCallback: <A>(callback: A) => callback,
+  useContext: () => null,
+  useEffect: () => undefined,
+}));
 vi.mock("@effect/atom-react", () => ({
+  RegistryContext: {},
   useAtomValue: (atom: unknown) =>
     atom === state.assetAtom
       ? AsyncResult.success({ relativeUrl: "/api/assets/image.png", expiresAt: 1 })

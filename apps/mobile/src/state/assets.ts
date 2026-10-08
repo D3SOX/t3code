@@ -1,13 +1,14 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import {
   assetUrlStateFromResult,
   createAssetEnvironmentAtoms,
   createProjectFaviconUrlAtomFamily,
   EMPTY_ASSET_URL_ATOM,
+  isMutableAssetResource,
 } from "@t3tools/client-runtime/state/assets";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
-import { useCallback } from "react";
+import { useCallback, useContext, useEffect } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { projectFaviconDatabaseCache } from "../lib/projectFaviconDatabaseCache";
@@ -33,6 +34,7 @@ export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
 ): AssetUrlState {
+  const registry = useContext(RegistryContext);
   const fileAccessSession = useEnvironmentQuery(
     environmentId === null ? null : environmentSession.sessionStateAtom(environmentId),
   );
@@ -43,18 +45,20 @@ export function useAssetUrlState(
     session: fileAccessSession.data,
     sessionError: fileAccessSession.error,
   });
-  const canReadResource =
-    fileAccess.canReadFiles ||
-    (resource?._tag !== "workspace-file" &&
-      resource?._tag !== "media-file" &&
-      resource?._tag !== "draft-workspace-file");
+  const mutableResource = isMutableAssetResource(resource);
+  const canReadResource = fileAccess.canReadFiles || !mutableResource;
   const preparedConnection = usePreparedConnection(environmentId);
   const connectionPhase = fileEnvironment.presentation?.connection.phase ?? "available";
-  const result = useAtomValue(
+  const query =
     !canReadResource || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
-      : assetEnvironment.createUrl({ environmentId, input: { resource } }),
-  );
+      : assetEnvironment.createUrl({ environmentId, input: { resource } });
+  const result = useAtomValue(query);
+  useEffect(() => {
+    if (!canReadResource || !mutableResource) return;
+    const cached = registry.get(query);
+    if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
+  }, [canReadResource, mutableResource, query, registry]);
   const shared = !canReadResource
     ? fileAccess.isPending
       ? { _tag: "Loading" as const }

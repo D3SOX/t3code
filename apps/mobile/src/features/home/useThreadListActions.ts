@@ -2,6 +2,7 @@ import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { useCallback, useRef } from "react";
@@ -28,7 +29,8 @@ import {
   createThreadMovePlanner,
   threadDropLifecycle,
 } from "../threads/threadOrder";
-import { getThreadListV2OrderedSection } from "../threads/threadListV2";
+import { getThreadListV2OrderedSection, threadListInboxReturns } from "../threads/threadListV2";
+import { mobilePreferencesAtom } from "../../state/preferences";
 import { threadCanArchive } from "./threadArchive";
 import { resolveThreadTitleRename } from "../threads/thread-title-rename";
 
@@ -624,9 +626,13 @@ export function useThreadListActions(): {
         );
         return false;
       }
+      const preferences = appAtomRegistry.get(mobilePreferencesAtom);
       const ordered = getThreadListV2OrderedSection({
         threads: shells,
         section,
+        workingShelfEnabled:
+          AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled === true,
+        inboxReturnAt: threadListInboxReturns.returnedAt,
         now: new Date().toISOString(),
         queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
         settlementEnvironmentIds: new Set(

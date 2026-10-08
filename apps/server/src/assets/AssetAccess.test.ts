@@ -575,6 +575,49 @@ describe("AssetAccess", () => {
       }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("shows updated image bytes when the same signed URL is loaded again", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-cache-" });
+      const filePath = path.join(root, "image.png");
+      const threadId = ThreadId.make("thread-1");
+      for (const resource of [
+        { _tag: "media-file", threadId, path: filePath },
+        { _tag: "workspace-file", threadId, path: "image.png" },
+        { _tag: "draft-workspace-file", cwd: root, path: "image.png" },
+      ] as const) {
+        yield* fs.writeFile(filePath, screenshotPng);
+        const signed = yield* issueAssetUrl({
+          resource,
+          workspaceRoot: root,
+        });
+        const suffix = signed.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const separator = suffix.indexOf("/");
+        let cachedBytes: Uint8Array | null = null;
+        const loadImage = Effect.gen(function* () {
+          if (cachedBytes !== null) return cachedBytes;
+          const asset = yield* resolveAsset(
+            suffix.slice(0, separator),
+            suffix.slice(separator + 1),
+          );
+          if (asset?.kind !== "file") throw new Error("Expected a local image");
+          const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
+          const bytes = new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()));
+          // A fresh HTTP cache entry bypasses the server on subsequent image loads.
+          if (/max-age=[1-9]\d*/.test(response.headers.get("cache-control") ?? ""))
+            cachedBytes = bytes;
+          return bytes;
+        });
+        expect(yield* loadImage).toEqual(screenshotPng);
+        const updated = screenshotPng.slice();
+        new DataView(updated.buffer).setUint32(16, 780);
+        yield* fs.writeFile(filePath, updated);
+        expect(yield* loadImage).toEqual(updated);
+      }
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("keeps in-place edits readable but requires a new URL after atomic replacement", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -655,10 +698,12 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "report.html")).toEqual({
         kind: "file",
         path: canonicalHtmlPath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "report.css")).toEqual({
         kind: "file",
         path: canonicalCssPath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
       expect(yield* resolveAsset(token, ".env")).toBeNull();
@@ -725,10 +770,12 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "report.html")).toEqual({
         kind: "file",
         path: canonicalHtmlPath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "report.css")).toEqual({
         kind: "file",
         path: canonicalCssPath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
     }).pipe(Effect.provide(layerTest)),
@@ -786,6 +833,7 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "report.html")).toEqual({
         kind: "file",
         path: canonicalHtmlPath,
+        mutable: true,
       });
     }).pipe(Effect.provide(layerTest)),
   );
@@ -862,6 +910,7 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "icon.png")).toEqual({
         kind: "file",
         path: canonicalImagePath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "other.png")).toBeNull();
       expect(yield* resolveAsset(token, "../icon.png")).toBeNull();
@@ -891,7 +940,11 @@ describe("AssetAccess", () => {
         const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
         const token = suffix.slice(0, suffix.indexOf("/"));
 
-        expect(yield* resolveAsset(token, name)).toEqual({ kind: "file", path: canonicalFile });
+        expect(yield* resolveAsset(token, name)).toEqual({
+          kind: "file",
+          path: canonicalFile,
+          mutable: true,
+        });
         if (name.endsWith(".png")) {
           expect(yield* resolveAsset(token, "other.png")).toBeNull();
         }

@@ -48,7 +48,10 @@ describe("searchSettings", () => {
   it.each(["compact sidebar", "hide branch names", "thread branches"])(
     "finds thread branch visibility for %s",
     (query) => {
-      expect(searchSettings(query)[0]?.id).toBe("sidebar-thread-branches");
+      expect(searchSettings(query)[0]).toMatchObject({
+        id: "sidebar-thread-branches",
+        to: "/settings/appearance",
+      });
     },
   );
 

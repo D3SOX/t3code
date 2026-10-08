@@ -1166,6 +1166,30 @@ export function AppearanceSettingsPanel() {
 
       <SettingsSection id="appearance-interface" title="Interface">
         <SettingsRow
+          {...searchableSetting("sidebar-thread-branches")}
+          description="Turn off to make sidebar threads more compact. Branch names remain in hover details."
+          resetAction={
+            settings.sidebarShowThreadBranches !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches ? (
+              <SettingResetButton
+                label="thread branches"
+                onClick={() =>
+                  updateSettings({
+                    sidebarShowThreadBranches: DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarShowThreadBranches}
+              onCheckedChange={(checked) => updateSettings({ sidebarShowThreadBranches: checked })}
+              aria-label="Show thread branches"
+            />
+          }
+        />
+        <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}
           description="Adjust the contrast of colors and borders across the interface."
           resetAction={
@@ -2219,30 +2243,6 @@ export function GeneralSettingsPanel() {
     <SettingsPageContainer>
       <ProjectDefaultsSettings category="general" />
       <SettingsSection id="organization" title="Organization">
-        <SettingsRow
-          {...searchableSetting("sidebar-thread-branches")}
-          description="Turn off to make sidebar threads more compact. Branch names remain in hover details."
-          resetAction={
-            settings.sidebarShowThreadBranches !==
-            DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches ? (
-              <SettingResetButton
-                label="thread branches"
-                onClick={() =>
-                  updateSettings({
-                    sidebarShowThreadBranches: DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.sidebarShowThreadBranches}
-              onCheckedChange={(checked) => updateSettings({ sidebarShowThreadBranches: checked })}
-              aria-label="Show thread branches"
-            />
-          }
-        />
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."

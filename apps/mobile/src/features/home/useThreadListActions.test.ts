@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 const state = vi.hoisted(() => ({
   pendingOrder: null as object | null,
   dropBusy: false,
+  workingShelfEnabled: false,
   scopes: new Map<string, Set<string>>(),
   shells: [] as EnvironmentThreadShell[],
   requests: [] as {
@@ -56,34 +57,38 @@ vi.mock("../../state/session", () => ({
 vi.mock("../../state/server", () => ({
   environmentServerConfigsAtom: "server-configs",
 }));
+vi.mock("../../state/preferences", () => ({ mobilePreferencesAtom: "mobile-preferences" }));
 vi.mock("../../state/atom-registry", () => ({
   appAtomRegistry: {
     set: (_atom: string, value: boolean) => {
       state.dropBusy = value;
     },
     get: (atom: string) =>
-      atom === "thread-drop-busy"
-        ? state.dropBusy
-        : atom === "thread-shells"
-          ? state.shells
-          : atom === "queued-thread-keys"
-            ? new Set<string>()
-            : new Map(
-                [...state.scopes.keys()].map((environmentId) => [
-                  environmentId,
-                  {
-                    environment: {
-                      capabilities: {
-                        threadSettlement: true,
-                        threadSnooze: true,
-                        threadPinning: true,
-                        threadPinReorder: true,
-                        threadTitleRegeneration: true,
+      atom === "mobile-preferences"
+        ? AsyncResult.success({ workingShelfEnabled: state.workingShelfEnabled })
+        : atom === "thread-drop-busy"
+          ? state.dropBusy
+          : atom === "thread-shells"
+            ? state.shells
+            : atom === "queued-thread-keys"
+              ? new Set<string>()
+              : new Map(
+                  [...state.scopes.keys()].map((environmentId) => [
+                    environmentId,
+                    {
+                      environment: {
+                        capabilities: {
+                          threadSettlement: true,
+                          threadSnooze: true,
+                          threadPinning: true,
+                          threadPinReorder: true,
+                          threadActiveReorder: true,
+                          threadTitleRegeneration: true,
+                        },
                       },
                     },
-                  },
-                ]),
-              ),
+                  ]),
+                ),
   },
 }));
 vi.mock("../../state/use-atom-command", () => ({
@@ -123,6 +128,7 @@ vi.mock("../../state/threads", () => ({
       "pin",
       "unpin",
       "reorderPin",
+      "reorderActive",
       "updateMetadata",
     ].map((action) => [
       action,
@@ -171,6 +177,7 @@ const mutationCases = [
 beforeEach(() => {
   state.pendingOrder = null;
   state.dropBusy = false;
+  state.workingShelfEnabled = false;
   state.scopes = new Map([
     [primaryEnvironmentId, new Set([AuthOrchestrationOperateScope])],
     [otherEnvironmentId, new Set<string>()],
@@ -274,6 +281,32 @@ describe("thread list operation permissions", () => {
 });
 
 describe("pinned thread operation permissions", () => {
+  it("moves Active threads without writing hidden Working rows", async () => {
+    state.workingShelfEnabled = true;
+    const moved = makeThread({ createdAt: "2026-09-01T00:00:00.000Z" });
+    state.shells = [
+      moved,
+      makeThread({ id: ThreadId.make("neighbor"), createdAt: "2026-09-02T00:00:00.000Z" }),
+      makeThread({
+        id: ThreadId.make("working"),
+        createdAt: "2026-09-03T00:00:00.000Z",
+        runtime: {
+          status: "running",
+          activeRunId: null,
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          providerName: "Codex",
+          lastError: null,
+          updatedAt: "2026-09-03T00:00:00.000Z",
+        },
+      }),
+    ];
+    expect(await useThreadListActions().moveThread(moved, "up")).toBe(true);
+    expect(state.requests.map(({ action, input }) => [action, input.threadId])).toEqual([
+      ["reorderActive", "thread"],
+      ["reorderActive", "neighbor"],
+    ]);
+  });
+
   it("checks every materialization target before writing any keys", async () => {
     const moved = makeThread({ pinnedAt: "2026-09-02T00:00:00.000Z" });
     state.shells = [

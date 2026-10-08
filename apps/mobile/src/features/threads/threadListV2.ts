@@ -237,6 +237,8 @@ export function getThreadListV2OrderedSection(input: {
   readonly settlementEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
+  readonly workingShelfEnabled?: boolean;
+  readonly inboxReturnAt?: (thread: EnvironmentThreadShell) => number | undefined;
 }): EnvironmentThreadShell[] {
   const threads = input.threads.filter((thread) => {
     if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent")
@@ -254,12 +256,16 @@ export function getThreadListV2OrderedSection(input: {
     ) {
       return false;
     }
+    if (input.section === "active" && input.workingShelfEnabled && isThreadWorking(thread))
+      return false;
     return (thread.pinnedAt != null) === (input.section === "pinned");
   });
   const ordered =
     input.section === "pinned"
       ? sortPinnedThreadsByOrderKey(threads)
-      : sortActiveThreadsByOrderKey(threads);
+      : input.workingShelfEnabled
+        ? sortInboxThreadsByReturn(threads, input.inboxReturnAt)
+        : sortActiveThreadsByOrderKey(threads);
   const pending =
     input.pendingOrder?.section === input.section
       ? reconcilePendingThreadOrder(input.pendingOrder, ordered)
@@ -788,11 +794,13 @@ export function buildThreadListV2Items(input: {
     }
   }
 
-  // The beta inbox is time-ordered, so the saved arrangement (and any move in
-  // flight) is kept but not applied until the beta is off again.
-  const orderedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
-    : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
+  const orderedActive = applyPendingThreadOrder(
+    workingShelfEnabled
+      ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
+      : sortThreadsForListV2(active),
+    "active",
+    pending,
+  );
   // Newest send first; finishing and waking again do not move a row.
   const orderedWorking = sortWorkingThreadsBySend(working);
   const orderedSnoozed = [...snoozed].sort(

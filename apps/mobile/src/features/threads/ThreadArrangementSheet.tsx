@@ -2,7 +2,6 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import { sortInboxThreadsByReturn } from "@t3tools/client-runtime/state/thread-inbox";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Modal, Pressable, View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -198,10 +197,12 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     );
     return {
       pinned,
-      // The Working beta orders the inbox by time; show that order here too.
-      active: workingShelfEnabled
-        ? sortInboxThreadsByReturn(active, threadListInboxReturns.returnedAt)
-        : active,
+      active: getThreadListV2OrderedSection({
+        ...shared,
+        section: "active",
+        workingShelfEnabled,
+        inboxReturnAt: threadListInboxReturns.returnedAt,
+      }),
       snoozed: parked.filter((thread) => effectiveSnoozed(thread, { now })),
       settled: parked.filter((thread) => !effectiveSnoozed(thread, { now })),
     };
@@ -212,14 +213,12 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         ordered: sections[section],
         allThreads: threads,
         section,
-        // A time-ordered inbox has no slots, so Active takes no drops while
-        // the Working beta is on. The saved arrangement stays untouched.
         reorderableEnvironmentIds: new Set(
           [...configs].flatMap(([id, config]) =>
             (
               section === "pinned"
                 ? config.environment.capabilities.threadPinReorder
-                : !workingShelfEnabled && config.environment.capabilities.threadActiveReorder
+                : config.environment.capabilities.threadActiveReorder
             )
               ? [id]
               : [],
@@ -227,7 +226,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         ),
       });
     return { pinned: planner("pinned"), active: planner("active") };
-  }, [sections, threads, configs, workingShelfEnabled]);
+  }, [sections, threads, configs]);
   const rows = useMemo(() => {
     const result: Row[] = [];
     let offset = 0;

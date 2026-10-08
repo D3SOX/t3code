@@ -15,6 +15,7 @@ import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import type { ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
+import { isMutableAssetResource } from "@t3tools/client-runtime/state/assets";
 import { OpenMediaLink } from "../media/OpenMediaLink";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -87,21 +88,34 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const index =
     imageCount > 0 ? (((preview.index + imageOffset) % imageCount) + imageCount) % imageCount : 0;
   const item = preview.images[index];
+  const imageAsset =
+    item?.type !== "video" && isMutableAssetResource(item?.actionsSource?.asset?.resource ?? null)
+      ? item?.actionsSource?.asset
+      : undefined;
+  const imageAssetUrl = useAssetUrlState(
+    imageAsset?.environmentId ?? null,
+    imageAsset?.resource ?? null,
+  );
+  const imageSrc =
+    imageAsset && imageAssetUrl._tag === "Success"
+      ? imageAssetUrl.url + (item?.srcFragment ?? item?.src?.match(/#.*$/)?.[0] ?? "")
+      : (item?.src ?? null);
   const source: MediaActionSource = item?.actionsSource ?? {
     kind: item?.type === "video" ? "video" : "image",
     name: item?.name ?? "Media",
     src: item?.src ?? null,
   };
+  const resolvedSource = imageAsset ? { ...source, src: imageSrc } : source;
   const openFile = source.onOpenFile;
   const actionsSource: MediaActionSource = openFile
     ? {
-        ...source,
+        ...resolvedSource,
         onOpenFile: () => {
           openFile();
           onClose();
         },
       }
-    : source;
+    : resolvedSource;
 
   const navigateImage = useCallback((direction: -1 | 1) => {
     setImageOffset((current) => current + direction);
@@ -223,7 +237,9 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                   className="h-[min(var(--media-height),40rem)] w-[min(var(--media-width),42rem)] transition-opacity duration-140 ease-out starting:opacity-0 rounded-lg border border-border/70 bg-background p-4 text-xs leading-5 shadow-2xl motion-reduce:transition-none"
                 />
               ) : null
-            ) : item.src === null || failedImageSrc === item.src ? (
+            ) : imageSrc === null ||
+              failedImageSrc === imageSrc ||
+              (imageAsset && imageAssetUrl._tag === "Failure") ? (
               <ExpandedMediaFailure>
                 <p>
                   {openOriginalLink
@@ -235,10 +251,10 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             ) : (
               <ZoomableImage
                 ref={zoomableImageRef}
-                key={`${index}:${item.src}`}
-                src={item.src}
+                key={`${index}:${imageSrc}`}
+                src={imageSrc}
                 name={item.name}
-                onError={() => setFailedImageSrc(item.src)}
+                onError={() => setFailedImageSrc(imageSrc)}
               />
             )}
             <div className="mt-2 flex max-w-[var(--media-width)] items-center justify-center gap-1.5 text-xs text-white/80">

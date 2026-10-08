@@ -46,7 +46,6 @@ export function SettingsThreadsRouteScreen() {
           contentContainerClassName="gap-6 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
-          <ThreadDisplaySettingsSection />
           <AutoSettleSettingsRows />
           <BetaSettingsSection />
           <LegacySettingsSection />
@@ -57,25 +56,6 @@ export function SettingsThreadsRouteScreen() {
 }
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_SERVER_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
-
-function ThreadDisplaySettingsSection() {
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
-  const preferences = useAtomValue(mobilePreferencesAtom);
-  const showThreadBranches =
-    !AsyncResult.isSuccess(preferences) || preferences.value.sidebarShowThreadBranches !== false;
-
-  return (
-    <SettingsSection title="Thread display">
-      <SettingsSwitchRow
-        icon="arrow.triangle.branch"
-        label="Show thread branches"
-        subtitle="Turn off for more compact thread rows."
-        value={showThreadBranches}
-        onValueChange={(value) => savePreferences({ sidebarShowThreadBranches: value })}
-      />
-    </SettingsSection>
-  );
-}
 
 /**
  * Mobile edits auto-settle defaults across selected capable targets.

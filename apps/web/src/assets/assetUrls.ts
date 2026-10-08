@@ -1,14 +1,15 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   type AssetUrlState,
   assetUrlStateFromResult,
   EMPTY_ASSET_URL_ATOM,
+  isMutableAssetResource,
   resolveAssetUrl,
 } from "@t3tools/client-runtime/state/assets";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { useCallback, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo } from "react";
 
 import { assetEnvironment } from "~/state/assets";
 import { useFilesystemReadAccess } from "~/state/filesystem";
@@ -21,18 +22,23 @@ export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
 ): AssetUrlState {
+  const registry = useContext(RegistryContext);
   const fileAccess = useFilesystemReadAccess(environmentId);
-  const canReadResource =
-    fileAccess.canReadFiles ||
-    (resource?._tag !== "workspace-file" &&
-      resource?._tag !== "media-file" &&
-      resource?._tag !== "draft-workspace-file");
+  const mutableResource = isMutableAssetResource(resource);
+  const canReadResource = fileAccess.canReadFiles || !mutableResource;
   const preparedConnection = usePreparedConnection(environmentId);
-  const result = useAtomValue(
+  const query =
     !canReadResource || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
-      : assetEnvironment.createUrl({ environmentId, input: { resource } }),
-  );
+      : assetEnvironment.createUrl({ environmentId, input: { resource } });
+  const result = useAtomValue(query);
+  useEffect(() => {
+    if (!canReadResource || !mutableResource) return;
+    const cached = registry.get(query);
+    // A new image occurrence must not inherit another message's cached file version.
+    // An in-flight request already supplies a fresh URL, so leave it alone.
+    if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
+  }, [canReadResource, mutableResource, query, registry]);
   if (!canReadResource) return { _tag: fileAccess.isPending ? "Loading" : "Failure" };
   return assetUrlStateFromResult(
     result,
@@ -66,14 +72,7 @@ export function useAssetUrls(
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   const allowedResources = useMemo(
     () =>
-      canReadFiles
-        ? resources
-        : resources.filter(
-            (resource) =>
-              resource._tag !== "workspace-file" &&
-              resource._tag !== "media-file" &&
-              resource._tag !== "draft-workspace-file",
-          ),
+      canReadFiles ? resources : resources.filter((resource) => !isMutableAssetResource(resource)),
     [canReadFiles, resources],
   );
   const results = useAtomValue(
@@ -86,13 +85,7 @@ export function useAssetUrls(
     if (preparedConnection._tag === "None") return resources.map(() => null);
     let resultIndex = 0;
     return resources.map((resource) => {
-      if (
-        !canReadFiles &&
-        (resource._tag === "workspace-file" ||
-          resource._tag === "media-file" ||
-          resource._tag === "draft-workspace-file")
-      )
-        return null;
+      if (!canReadFiles && isMutableAssetResource(resource)) return null;
       const result = results[resultIndex++];
       return result && AsyncResult.isSuccess(result)
         ? resolveAssetUrl(preparedConnection.value.httpBaseUrl, result.value.relativeUrl)

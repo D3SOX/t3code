@@ -299,7 +299,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "sidebar-thread-branches",
     title: "Show thread branches",
-    to: "/settings/general",
+    to: "/settings/appearance",
     searchTerms: ["sidebar compact density hide branch names rows"],
   },
   {

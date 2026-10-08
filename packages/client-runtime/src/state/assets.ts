@@ -63,6 +63,15 @@ export function resolveAssetUrl(httpBaseUrl: string, relativeUrl: string): strin
   }
 }
 
+/** Host files can be overwritten at the same path; uploads and snapshots are immutable. */
+export function isMutableAssetResource(resource: AssetResource | null): boolean {
+  return (
+    resource?._tag === "workspace-file" ||
+    resource?._tag === "media-file" ||
+    resource?._tag === "draft-workspace-file"
+  );
+}
+
 export const EMPTY_ASSET_URL_ATOM = Atom.make(AsyncResult.initial<never, never>(false)).pipe(
   Atom.withLabel("asset-url:empty"),
 );
