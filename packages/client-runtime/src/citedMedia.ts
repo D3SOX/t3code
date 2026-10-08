@@ -2,8 +2,8 @@ import { mediaKindFromPath } from "@t3tools/shared/filePreview";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
-import { renderCodexFileCitationsAsMarkdown } from "./codexMarkdownDirectives.ts";
-import { parseMarkdownFileLink } from "./markdownLinks.ts";
+import { renderCodexFileCitationsAsMarkdown } from "@t3tools/shared/codexMarkdownDirectives";
+import { parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
 
 const markdownParser = unified().use(remarkParse);
 
