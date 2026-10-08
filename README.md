@@ -10,6 +10,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Send and interrupt buttons show a loading indicator while requests are pending. You can submit another message while an earlier send is pending.
 - Images the agent opens have their own timeline rows, even when the turn is collapsed. Open a row to see its preview, then click the preview to see the full image.
 - Images and videos the agent cites have previews below its message on all clients. Videos have playback controls and do not autoplay.
+- Local image previews refresh when an agent updates the file and shows it again, or when you reopen its preview.
 
 ## PRs and notifications
 
@@ -23,10 +24,13 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 ## Navigation and terminals
 
 - You can collapse the Pinned and Active sections of the thread list. Each client remembers your choice. Both sections start expanded. Done threads, Input threads, and the thread you are viewing stay visible in collapsed sections.
+- Turn off Show thread branches under Appearance in Settings for more compact thread rows and more room for thread titles.
+- You can rearrange Active threads with the Working section enabled, and your order stays saved.
 - The new-thread button remembers your last project, including one selected in the new-thread composer. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
+- On web and desktop, when a sidebar action takes you out of the current thread, you return to a new-thread draft in the same project instead of opening another thread.
 - In Source Control settings, you can turn off automatic thread titles and worktree branch names for an environment or a project. New worktree branches have no prefix by default. You can set a prefix in the same settings.
 - Click a terminal path to open a file in T3 Code or a workspace folder in its file explorer. This also works on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path for Copy link or Copy path.
-- Terminal close confirmation is off by default. You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to the terminal.
+- Ctrl+Shift+W closes the focused terminal. Terminal close confirmation is off by default. You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to the terminal.
 
 ## Mobile and accounts
 
