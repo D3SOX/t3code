@@ -124,6 +124,11 @@
           message. Completion notifications wait until all queued turns finish.
         </li>
         <li>
+          Editing a queued message pauses the queue until you save or cancel. Saving updates the
+          message in place and keeps its delivery timing. Removing a queued message returns its text
+          and attachments to the composer alongside any existing draft.
+        </li>
+        <li>
           You can send or queue messages before attachments finish uploading or an earlier send
           finishes. They wait locally and send in order. You can keep composing while they wait.
           Keep web and desktop open until the messages send. Mobile saves its local queue across
@@ -183,6 +188,10 @@
           open those threads.
         </li>
         <li>
+          Clicking a desktop notification brings T3 Code to the foreground and opens its thread,
+          even if the window is minimized or hidden.
+        </li>
+        <li>
           In-app completion notifications disappear when you view their thread. They stay hidden
           while you view it.
         </li>
@@ -212,6 +221,10 @@
         <li>
           On web and desktop, when a sidebar action takes you out of the current thread, you return
           to a new-thread draft in the same project instead of opening another thread.
+        </li>
+        <li>
+          On web and desktop, right-click the Settled section to archive all settled threads. This
+          always asks for confirmation, even when individual archive confirmations are turned off.
         </li>
         <li>
           In Source Control settings, you can turn off automatic thread titles and worktree branch

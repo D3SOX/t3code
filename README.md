@@ -5,6 +5,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 ## Messaging
 
 - Follow-up messages wait until the next tool call finishes by default. You can also queue them after the current turn or steer the agent immediately. All clients offer these choices. The server saves queued messages, which you can edit, reorder, or send immediately. On web and desktop, Up Arrow in an empty composer edits the last queued message. Completion notifications wait until all queued turns finish.
+- Editing a queued message pauses the queue until you save or cancel. Saving updates the message in place and keeps its delivery timing. Removing a queued message returns its text and attachments to the composer alongside any existing draft.
 - You can send or queue messages before attachments finish uploading or an earlier send finishes. They wait locally and send in order. You can keep composing while they wait. Keep web and desktop open until the messages send. Mobile saves its local queue across restarts.
 - On web and desktop, Enter or the send button starts a new thread in the background and opens a fresh draft. Ctrl+Enter or Command+Enter opens the submitted thread. Turn off Start threads in background under General in Settings to reverse these actions. You can customize the shortcuts.
 - Send and interrupt buttons show a loading indicator while requests are pending. You can submit another message while an earlier send is pending.
@@ -20,6 +21,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Agent instructions limit PR links to the task's pull requests. Incidental release-note edits, labels, and coordination updates do not qualify.
 - PR links open in your system browser by default. On desktop, right-click a link to open it in T3 Code instead. If a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
 - Returning to the desktop app clears the viewed thread's system notification and resets the app's unread badge. Other threads' notifications stay in your system history until you open those threads.
+- Clicking a desktop notification brings T3 Code to the foreground and opens its thread, even if the window is minimized or hidden.
 - In-app completion notifications disappear when you view their thread. They stay hidden while you view it.
 
 ## Navigation and terminals
@@ -29,6 +31,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - You can rearrange Active threads with the Working section enabled, and your order stays saved.
 - The new-thread button remembers your last project, including one selected in the new-thread composer. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
 - On web and desktop, when a sidebar action takes you out of the current thread, you return to a new-thread draft in the same project instead of opening another thread.
+- On web and desktop, right-click the Settled section to archive all settled threads. This always asks for confirmation, even when individual archive confirmations are turned off.
 - In Source Control settings, you can turn off automatic thread titles and worktree branch names for an environment or a project. New worktree branches have no prefix by default. You can set a prefix in the same settings.
 - Click a terminal path to open a file in T3 Code or a workspace folder in its file explorer. This also works on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path for Copy link or Copy path.
 - Ctrl+Shift+W closes the focused terminal. Terminal close confirmation is off by default. You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to the terminal.
