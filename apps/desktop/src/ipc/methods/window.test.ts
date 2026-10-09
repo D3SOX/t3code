@@ -28,10 +28,44 @@ import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
+  focusWindow,
   pasteAsText,
   pickProjectFavicon,
   probeRemoteEditors,
 } from "./window.ts";
+
+it.effect.each(["minimized", "hidden", "background"])(
+  "brings a %s notification window into the foreground",
+  (state) =>
+    Effect.gen(function* () {
+      let minimized = state === "minimized";
+      let visible = state !== "hidden";
+      let focused = false;
+      const nativeWindow = {
+        id: 1,
+        isDestroyed: () => false,
+        isMinimized: () => minimized,
+        isVisible: () => visible,
+        restore: () => {
+          minimized = false;
+        },
+        show: () => {
+          visible = true;
+        },
+        focus: () => {
+          focused = visible && !minimized;
+        },
+      } as unknown as Electron.BrowserWindow;
+      const electronWindow = yield* ElectronWindow.make;
+      yield* electronWindow.setMain(nativeWindow);
+      yield* focusWindow
+        .handler(undefined)
+        .pipe(Effect.provideService(ElectronWindow.ElectronWindow, electronWindow));
+      assert.isFalse(minimized);
+      assert.isTrue(visible);
+      assert.isTrue(focused);
+    }).pipe(Effect.scoped, Effect.provideService(HostProcessPlatform, "linux")),
+);
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",

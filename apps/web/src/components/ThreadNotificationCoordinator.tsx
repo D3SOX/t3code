@@ -304,7 +304,12 @@ function EnvironmentNotifications({
         onNotification(environmentId, notification);
         notification.addEventListener("click", () => {
           notification.close();
-          window.focus();
+          // DOM focus cannot restore or activate the native window on Wayland.
+          if (window.desktopBridge?.focusWindow) {
+            void window.desktopBridge.focusWindow().catch(() => window.focus());
+          } else {
+            window.focus();
+          }
           void navigate({
             to: "/$environmentId/$threadId",
             params: { environmentId, threadId: thread.id },
