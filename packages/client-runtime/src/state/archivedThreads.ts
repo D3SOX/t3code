@@ -16,6 +16,19 @@ export interface ArchivedThreadSnapshotsState {
   readonly isLoading: boolean;
 }
 
+export function createArchivedThreadSearchMatcher(searchQuery: string) {
+  const query = searchQuery.trim().toLocaleLowerCase();
+  return (
+    thread: { readonly title: string; readonly branch: string | null },
+    project: { readonly title: string; readonly workspaceRoot: string },
+    environmentLabel: string | null,
+  ): boolean =>
+    query.length === 0 ||
+    [thread.title, thread.branch, project.title, project.workspaceRoot, environmentLabel].some(
+      (value) => value?.toLocaleLowerCase().includes(query),
+    );
+}
+
 const ARCHIVED_THREADS_ENVIRONMENT_KEY_SEPARATOR = "\u001f";
 const environmentIdOrder = Order.String as Order.Order<EnvironmentId>;
 

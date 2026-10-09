@@ -1,4 +1,7 @@
-import type { ArchivedSnapshotEntry } from "@t3tools/client-runtime/state/threads";
+import {
+  createArchivedThreadSearchMatcher,
+  type ArchivedSnapshotEntry,
+} from "@t3tools/client-runtime/state/threads";
 import {
   scopeProject,
   scopeThreadShell,
@@ -24,10 +27,6 @@ function archiveTimestamp(thread: EnvironmentThreadShell): number {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function matchesQuery(value: string | null, query: string): boolean {
-  return value?.toLocaleLowerCase().includes(query) ?? false;
-}
-
 export function buildArchivedThreadGroups(input: {
   readonly snapshots: ReadonlyArray<ArchivedSnapshotEntry>;
   readonly environmentLabels: Readonly<Record<string, string>>;
@@ -35,7 +34,7 @@ export function buildArchivedThreadGroups(input: {
   readonly searchQuery: string;
   readonly sortOrder: ArchivedThreadSortOrder;
 }): ReadonlyArray<ArchivedThreadGroup> {
-  const query = input.searchQuery.trim().toLocaleLowerCase();
+  const matchesSearch = createArchivedThreadSearchMatcher(input.searchQuery);
   const groups: ArchivedThreadGroup[] = [];
 
   for (const entry of input.snapshots) {
@@ -57,16 +56,9 @@ export function buildArchivedThreadGroups(input: {
     for (const rawProject of entry.snapshot.projects) {
       const project = scopeProject(entry.environmentId, rawProject);
       const projectThreads = threadsByProjectId.get(project.id) ?? [];
-      const groupMatches =
-        query.length === 0 ||
-        matchesQuery(project.title, query) ||
-        matchesQuery(project.workspaceRoot, query) ||
-        matchesQuery(environmentLabel, query);
-      const matchingThreads = groupMatches
-        ? projectThreads
-        : projectThreads.filter(
-            (thread) => matchesQuery(thread.title, query) || matchesQuery(thread.branch, query),
-          );
+      const matchingThreads = projectThreads.filter((thread) =>
+        matchesSearch(thread, project, environmentLabel),
+      );
 
       if (matchingThreads.length === 0) {
         continue;

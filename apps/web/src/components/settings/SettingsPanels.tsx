@@ -3,7 +3,15 @@ import { useScopedSettingsWriteAllowed } from "./useScopedSettings";
 import { Spinner } from "~/components/ui/spinner";
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
-import { ArchiveIcon, ArchiveX, CheckIcon, ChevronRightIcon, SettingsIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveX,
+  CheckIcon,
+  ChevronRightIcon,
+  SearchIcon,
+  SettingsIcon,
+  XIcon,
+} from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +25,7 @@ import {
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { presentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { createArchivedThreadSearchMatcher } from "@t3tools/client-runtime/state/threads";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -117,6 +126,7 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import {
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
@@ -3445,7 +3455,8 @@ export function GeneralSettingsPanel() {
 }
 
 export function ArchivedThreadsPanel() {
-  const { scope } = useSettingsScope();
+  const { scope, environments } = useSettingsScope();
+  const [searchQuery, setSearchQuery] = useState("");
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
   const {
     snapshots: archivedSnapshots,
@@ -3502,6 +3513,19 @@ export function ArchivedThreadsPanel() {
     return groups;
   }, [archivedSnapshots, scope]);
 
+  const filteredGroups = useMemo(() => {
+    const matchesSearch = createArchivedThreadSearchMatcher(searchQuery);
+    const environmentLabels = new Map(
+      environments.map((environment) => [environment.environmentId, environment.label]),
+    );
+    return archivedGroups.flatMap(({ project, threads }) => {
+      const matchingThreads = threads.filter((thread) =>
+        matchesSearch(thread, project, environmentLabels.get(project.environmentId) ?? null),
+      );
+      return matchingThreads.length > 0 ? [{ project, threads: matchingThreads }] : [];
+    });
+  }, [archivedGroups, environments, searchQuery]);
+
   const handleArchivedThreadContextMenu = useCallback(
     async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -3552,7 +3576,39 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
-      {archivedGroups.length === 0 ? (
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon aria-hidden className="size-3.5" />
+        </InputGroupAddon>
+        <InputGroupInput
+          type="search"
+          size="sm"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            if (searchQuery.length > 0) setSearchQuery("");
+            else event.currentTarget.blur();
+          }}
+          placeholder="Search archived threads"
+          aria-label="Search archived threads"
+        />
+        {searchQuery.length > 0 && (
+          <InputGroupAddon align="inline-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Clear search"
+              onClick={() => setSearchQuery("")}
+            >
+              <XIcon aria-hidden />
+            </Button>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+      {filteredGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
@@ -3569,18 +3625,23 @@ export function ArchivedThreadsPanel() {
                   ? "Loading archived threads"
                   : archiveError
                     ? "Could not load archived threads"
-                    : "No archived threads"}
+                    : archivedGroups.length > 0
+                      ? "No matching threads"
+                      : "No archived threads"}
               </span>
             }
             description={
               isLoadingArchive
                 ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
+                : (archiveError ??
+                  (archivedGroups.length > 0
+                    ? "Try another thread title, branch, project, or environment."
+                    : "Archived threads will appear here."))
             }
           />
         </SettingsSection>
       ) : (
-        archivedGroups.map(({ project, threads: projectThreads }, index) => (
+        filteredGroups.map(({ project, threads: projectThreads }, index) => (
           <SettingsSection
             key={`${project.environmentId}:${project.id}`}
             id={index === 0 ? searchableSetting("archive").id : undefined}

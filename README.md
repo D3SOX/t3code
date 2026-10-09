@@ -32,6 +32,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - The new-thread button remembers your last project, including one selected in the new-thread composer. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
 - On web and desktop, when a sidebar action takes you out of the current thread, you return to a new-thread draft in the same project instead of opening another thread.
 - On web and desktop, right-click the Settled section to archive all settled threads. This always asks for confirmation, even when individual archive confirmations are turned off.
+- Search archived threads under Settings by thread title, branch, project name or path, or environment name.
 - In Source Control settings, you can turn off automatic thread titles and worktree branch names for an environment or a project. New worktree branches have no prefix by default. You can set a prefix in the same settings.
 - Click a terminal path to open a file in T3 Code or a workspace folder in its file explorer. This also works on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path for Copy link or Copy path.
 - Ctrl+Shift+W closes the focused terminal. Terminal close confirmation is off by default. You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to the terminal.
