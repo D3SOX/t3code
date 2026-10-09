@@ -3376,14 +3376,16 @@ it.effect("emits run_interrupt_result when hard-stop finalizes the active attemp
   }),
 );
 
-it.effect.each([
-  { text: "", withImage: false, silent: true },
-  { text: " \n\t", withImage: false, silent: true },
-  { text: "The task is finished.", withImage: false, silent: false },
-  { text: "", withImage: true, silent: false },
-])(
-  "marks a final response $text withImage=$withImage silent=$silent",
-  ({ text, withImage, silent }) =>
+it.effect.each(
+  [
+    { text: "", withImage: false, silent: true },
+    { text: " \n\t", withImage: false, silent: true },
+    { text: "The task is finished.", withImage: false, silent: false },
+    { text: "", withImage: true, silent: false },
+  ].flatMap((scenario) => [false, true].map((itemNodes) => ({ ...scenario, itemNodes }))),
+)(
+  "marks a final response $text withImage=$withImage itemNodes=$itemNodes silent=$silent",
+  ({ text, withImage, silent, itemNodes }) =>
     Effect.gen(function* () {
       const { finalizedRuns, committedEffects } = yield* captureRootRunTermination({
         key: "empty-final-response",
@@ -3393,43 +3395,75 @@ it.effect.each([
           const message = (
             id: string,
             body: string,
-            nodeId = ids.rootNodeId,
-          ): ProviderAdapterV2Event => ({
-            type: "message.updated",
-            driver,
-            message: {
-              id: MessageId.make(id),
-              threadId: ids.threadId,
-              runId: ids.runId,
-              nodeId,
-              role: "assistant",
-              text: body,
-              attachments:
-                id === "final" && withImage
-                  ? [
-                      {
-                        type: "image",
-                        id: ChatAttachmentId.make("image-1"),
-                        name: "image.png",
-                        mimeType: "image/png",
-                        sizeBytes: 100,
+            parentNodeId = ids.rootNodeId,
+          ): ReadonlyArray<ProviderAdapterV2Event> => {
+            const nodeId = itemNodes
+              ? NodeId.make(`node:provider:codex:native-item:${id}`)
+              : parentNodeId;
+            return [
+              ...(itemNodes
+                ? [
+                    {
+                      type: "node.updated" as const,
+                      driver,
+                      node: {
+                        id: nodeId,
+                        threadId: ids.threadId,
+                        runId: ids.runId,
+                        parentNodeId,
+                        rootNodeId: ids.rootNodeId,
+                        kind: "assistant_message" as const,
+                        status: "completed" as const,
+                        countsForRun: false,
+                        providerThreadId: ids.providerThreadId,
+                        providerTurnId: ids.rootProviderTurnId,
+                        nativeItemRef: null,
+                        runtimeRequestId: null,
+                        checkpointScopeId: null,
+                        startedAt: now,
+                        completedAt: now,
                       },
-                    ]
-                  : [],
-              streaming: false,
-              createdBy: "agent",
-              creationSource: "provider",
-              createdAt: now,
-              updatedAt: now,
-            },
-          });
-          return Stream.make(
-            message("progress", "I’ll check the worker."),
+                    },
+                  ]
+                : []),
+              {
+                type: "message.updated",
+                driver,
+                message: {
+                  id: MessageId.make(id),
+                  threadId: ids.threadId,
+                  runId: ids.runId,
+                  nodeId,
+                  role: "assistant",
+                  text: body,
+                  attachments:
+                    id === "final" && withImage
+                      ? [
+                          {
+                            type: "image",
+                            id: ChatAttachmentId.make("image-1"),
+                            name: "image.png",
+                            mimeType: "image/png",
+                            sizeBytes: 100,
+                          },
+                        ]
+                      : [],
+                  streaming: false,
+                  createdBy: "agent",
+                  creationSource: "provider",
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              },
+            ];
+          };
+          return Stream.fromIterable([
+            ...message("progress", "I’ll check the worker."),
             backgroundTurnItemEvent(ids, "command_execution", "completed", 1),
-            message("final", text),
-            message("child", text.trim() ? "" : "Child finished.", ids.subagentNodeId),
+            ...message("final", text),
+            ...message("child", text.trim() ? "" : "Child finished.", ids.subagentNodeId),
             rootTerminalEvent(ids, "completed"),
-          );
+          ]);
         },
       });
       assert.equal(finalizedRuns.at(-1)?.completionSilent, silent);
