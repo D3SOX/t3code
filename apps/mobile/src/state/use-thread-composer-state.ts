@@ -587,6 +587,10 @@ export function useThreadComposerState() {
         return null;
       }
 
+      // Native events can outlive the editor that emitted them. An edit's
+      // repeated submit must not send the normal draft after saving closes it.
+      if (activeComposerDraftKey(selectedThreadShell) !== composerDraftKey) return null;
+
       // Editing a queued message repurposes the composer: the send button saves
       // the edit in place instead of enqueuing a new message.
       const editKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
@@ -750,6 +754,7 @@ export function useThreadComposerState() {
     [
       activeThreadBusy,
       canSteerActiveTurn,
+      composerDraftKey,
       followUpBehavior,
       saveQueuedRunEdit,
       selectedEnvironmentRuntime?.connectionState,
@@ -766,10 +771,11 @@ export function useThreadComposerState() {
         return;
       }
 
-      const threadKey = activeComposerDraftKey(selectedThreadShell);
-      setComposerDraftText(threadKey, value);
+      // A late native text event from the saved edit belongs to its old draft.
+      if (activeComposerDraftKey(selectedThreadShell) !== composerDraftKey) return;
+      if (composerDraftKey !== null) setComposerDraftText(composerDraftKey, value);
     },
-    [selectedThreadShell],
+    [composerDraftKey, selectedThreadShell],
   );
 
   const onPickDraftMedia = useCallback(async () => {
