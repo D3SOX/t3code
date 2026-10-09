@@ -58,6 +58,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
+import { captureImageSnapshot, resolveImageSnapshot } from "./ImageSnapshots.ts";
 
 export const ASSET_ROUTE_PREFIX = "/api/assets";
 
@@ -106,6 +107,7 @@ const AssetClaimsSchema = Schema.Union([
     version: Schema.Literal(1),
     kind: Schema.Literal("media-file-exact"),
     filePath: Schema.String,
+    snapshotPath: Schema.optional(Schema.String),
     device: Schema.String,
     inode: Schema.String,
     expiresAt: Schema.Number,
@@ -320,13 +322,31 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
     readonly requestedPath: string;
     readonly resource: AssetResource;
     readonly expiresAt: number;
+    readonly threadId?: ThreadId;
   }) {
     const path = yield* Path.Path;
-    const canonicalFile = yield* resolveCanonicalFile(input.requestedPath).pipe(
+    const sourceFile = yield* resolveCanonicalFile(input.requestedPath).pipe(
       Effect.mapError(
         (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
       ),
     );
+    const fallback =
+      !sourceFile && input.threadId !== undefined
+        ? yield* resolveImageSnapshot({
+            threadId: input.threadId,
+            sourcePath: input.requestedPath,
+          }).pipe(Effect.orElseSucceed(() => null))
+        : null;
+    const canonicalFile =
+      sourceFile ??
+      (fallback
+        ? yield* resolveCanonicalFile(fallback).pipe(
+            Effect.mapError(
+              (cause) =>
+                new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+            ),
+          )
+        : null);
     if (!canonicalFile) {
       return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
     }
@@ -345,10 +365,10 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
               (dimensions) => ({
                 identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
                 dimensions,
+                file,
               }),
             ),
       ),
-      Effect.scoped,
       Effect.mapError(
         (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
       ),
@@ -356,18 +376,34 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
     if (!opened) {
       return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
     }
+    const snapshotPath =
+      sourceFile &&
+      input.threadId !== undefined &&
+      hostPreviewMimeTypeFromExtension(path.extname(canonicalFile))?.startsWith("image/")
+        ? yield* captureImageSnapshot({
+            threadId: input.threadId,
+            sourcePath: input.requestedPath,
+            extension: path.extname(canonicalFile),
+            file: opened.file,
+          }).pipe(Effect.orElseSucceed(() => null))
+        : fallback
+          ? canonicalFile
+          : null;
+    const filePath = sourceFile ?? input.requestedPath;
     return {
       claims: {
         version: 1 as const,
         kind: "media-file-exact" as const,
-        filePath: canonicalFile,
+        filePath,
+        ...(snapshotPath ? { snapshotPath } : {}),
         ...opened.identity,
         expiresAt: input.expiresAt,
       },
-      fileName: path.basename(canonicalFile),
+      fileName: path.basename(filePath),
       imageDimensions: opened.dimensions,
     };
   },
+  Effect.scoped,
 );
 
 const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileAsset")(
@@ -489,6 +525,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         requestedPath,
         resource: input.resource,
         expiresAt,
+        threadId: input.resource.threadId,
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
@@ -889,7 +926,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
   const path = yield* Path.Path;
   if (claims.kind === "media-file-exact") {
     if (decodedPath !== path.basename(claims.filePath)) return null;
-    const canonicalFile = yield* resolveCanonicalFile(claims.filePath).pipe(
+    let canonicalFile = yield* resolveCanonicalFile(claims.filePath).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Failed to resolve canonical media path.", {
           filePath: claims.filePath,
@@ -898,10 +935,18 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       ),
       Effect.orElseSucceed(() => null),
     );
-    if (canonicalFile !== claims.filePath) return null;
+    if (canonicalFile === null && claims.snapshotPath) {
+      canonicalFile = yield* resolveCanonicalFile(claims.snapshotPath).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (canonicalFile !== claims.snapshotPath) return null;
+    } else if (canonicalFile !== claims.filePath) return null;
     const mimeType = hostPreviewMimeTypeFromExtension(path.extname(canonicalFile));
     if (!mimeType) return null;
-    const file = yield* openMediaFile(canonicalFile, claims).pipe(
+    const file = yield* openMediaFile(
+      canonicalFile,
+      canonicalFile === claims.filePath ? claims : undefined,
+    ).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Failed to open canonical media file.", { filePath: canonicalFile, cause }),
       ),

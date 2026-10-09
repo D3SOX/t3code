@@ -222,6 +222,10 @@ it.effect("cancels active work without reviving a run while disposing delegated 
       (event) => event.type === "run.updated" && event.payload.id === queuedRun.id,
     );
     assert.lengthOf(queuedRunUpdates, 1);
+    assert.deepEqual(
+      plan.effects.find((effect) => effect.request.type === "attachment.cleanup")?.request,
+      { type: "attachment.cleanup", attachmentIds: [] },
+    );
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
 

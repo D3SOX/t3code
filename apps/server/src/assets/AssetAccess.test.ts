@@ -27,6 +27,9 @@ import { vi } from "vite-plus/test";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as ResourceCleanup from "../orchestration-v2/ResourceCleanupService.ts";
+import * as PreviewManager from "../preview/Manager.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -125,7 +128,121 @@ const layerTest = Layer.mergeAll(
   ServerSecretStore.layer.pipe(Layer.provide(layerConfig)),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
+const readImageAsset = Effect.fn(function* (asset: { readonly relativeUrl: string }) {
+  const suffix = asset.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+  const separator = suffix.indexOf("/");
+  const resolved = yield* resolveAsset(suffix.slice(0, separator), suffix.slice(separator + 1));
+  if (resolved?.kind !== "file") throw new Error("The image became unavailable");
+  const response = HttpServerResponse.toWeb(yield* assetFileResponse(resolved));
+  return new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()));
+});
+
 describe("AssetAccess", () => {
+  it.effect("keeps an earlier image readable after a later test run cleans its results", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-history-" });
+      const results = path.join(root, "results");
+      const firstPath = path.join(results, "first.png");
+      const threadId = ThreadId.make("image-history");
+      yield* fs.makeDirectory(results);
+      yield* fs.writeFile(firstPath, screenshotPng);
+      const first = yield* issueAssetUrl({
+        resource: { _tag: "media-file", threadId, path: firstPath },
+      });
+      yield* fs.remove(results, { recursive: true });
+      yield* fs.makeDirectory(results);
+      const secondPath = path.join(results, "second.png");
+      yield* fs.writeFile(secondPath, screenshotPng);
+      yield* issueAssetUrl({ resource: { _tag: "media-file", threadId, path: secondPath } });
+
+      for (const asset of [
+        first,
+        yield* issueAssetUrl({
+          resource: { _tag: "media-file", threadId, path: firstPath },
+        }),
+      ]) {
+        expect(yield* readImageAsset(asset)).toEqual(screenshotPng);
+      }
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("refreshes edited images and retains each preview version after source deletion", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-revisions-" });
+      const imagePath = path.join(root, "screenshot.png");
+      const resource = {
+        _tag: "media-file" as const,
+        threadId: ThreadId.make("image-revisions"),
+        path: imagePath,
+      };
+      yield* fs.writeFile(imagePath, screenshotPng);
+      const first = yield* issueAssetUrl({ resource });
+      // Repeated previews reuse the retained file without invalidating earlier URLs.
+      yield* issueAssetUrl({ resource });
+      const updated = screenshotPng.slice();
+      new DataView(updated.buffer).setUint32(16, 800);
+      yield* fs.writeFile(imagePath, updated);
+      const second = yield* issueAssetUrl({ resource });
+      expect(yield* readImageAsset(second)).toEqual(updated);
+      yield* fs.remove(imagePath);
+      expect(yield* readImageAsset(first)).toEqual(screenshotPng);
+      expect(yield* readImageAsset(second)).toEqual(updated);
+      const renewed = yield* issueAssetUrl({ resource });
+      expect(renewed.relativeUrl.endsWith("/screenshot.png")).toBe(true);
+      expect(renewed.imageDimensions).toEqual({ width: 800, height: 844 });
+      expect(yield* readImageAsset(renewed)).toEqual(updated);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("removes only the deleted thread's retained images, even without uploads", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-cleanup-" });
+      const imagePath = path.join(root, "screenshot.png");
+      const firstResource = {
+        _tag: "media-file" as const,
+        threadId: ThreadId.make("image-delete"),
+        path: imagePath,
+      };
+      const otherResource = { ...firstResource, threadId: ThreadId.make("image-keep") };
+      yield* fs.writeFile(imagePath, screenshotPng);
+      yield* issueAssetUrl({ resource: firstResource });
+      const other = yield* issueAssetUrl({ resource: otherResource });
+      yield* fs.remove(imagePath);
+      const cleanup = yield* ResourceCleanup.ResourceCleanupService;
+      yield* cleanup.cleanupAttachments([], firstResource.threadId);
+      const deleted = yield* Effect.flip(issueAssetUrl({ resource: firstResource }));
+      expect(deleted._tag).toBe("AssetWorkspaceAssetNotFoundError");
+      expect(yield* readImageAsset(other)).toEqual(screenshotPng);
+      expect(yield* readImageAsset(yield* issueAssetUrl({ resource: otherResource }))).toEqual(
+        screenshotPng,
+      );
+      const unrelated = yield* Effect.flip(
+        issueAssetUrl({
+          resource: { ...firstResource, threadId: ThreadId.make("image-unrelated") },
+        }),
+      );
+      expect(unrelated._tag).toBe("AssetWorkspaceAssetNotFoundError");
+    }).pipe(
+      Effect.provide(
+        ResourceCleanup.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
+              Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
+            ),
+          ),
+          Layer.provideMerge(layerTest),
+        ),
+      ),
+    ),
+  );
+
   it.effect("loads private media immediately after login with the GitHub credential", () => {
     let lookups = 0;
     const authorizations: Array<string | undefined> = [];

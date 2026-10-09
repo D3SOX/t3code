@@ -119,13 +119,19 @@ export const statMediaFile = Effect.fn("statMediaFile")(function* (
   });
 });
 
-export const streamMediaFile = (file: OpenMediaFile, offset: bigint, bytesToRead: bigint) => {
+export const streamMediaFile = (
+  file: OpenMediaFile,
+  offset: bigint,
+  bytesToRead: bigint,
+  options: { readonly closeOnDone?: boolean } = {},
+) => {
   const start = Number(offset);
   const end = Number(offset + bytesToRead - 1n);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) {
     return null;
   }
   return NodeStream.fromReadable<Uint8Array>({
+    closeOnDone: options.closeOnDone,
     evaluate: () =>
       file.handle.createReadStream({
         autoClose: false,
