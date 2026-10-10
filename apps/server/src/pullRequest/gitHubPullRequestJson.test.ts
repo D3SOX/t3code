@@ -1,6 +1,8 @@
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vite-plus/test";
 
+import { evaluatePullRequestWatch } from "../orchestration-v2/pullRequestWatch.ts";
+
 import {
   buildPullRequestSummariesGraphQlQuery,
   buildPullRequestWatchFingerprintsGraphQlQuery,
@@ -13,6 +15,8 @@ import {
   buildSetFilesViewedGraphQlMutation,
   decodePullRequestActivityJson,
   decodePullRequestDetailJson,
+  decodePullRequestCheckContextsJson,
+  pullRequestChecksFromContexts,
   decodePullRequestFilesJson,
   decodePullRequestFilesViewedJson,
   decodePullRequestListJson,
@@ -434,6 +438,112 @@ describe("pull request detail decoding", () => {
     ]);
     expect(detail.checksState).toBe("pending");
   });
+
+  it.each(["detail", "contexts"])(
+    "keeps overlapping CI pending until the newer run finishes: %s",
+    (source) => {
+      const older = {
+        __typename: "CheckRun",
+        name: "ios",
+        workflowName: "CI",
+        checkSuite: { workflowRun: { workflow: { name: "CI" } } },
+        status: "COMPLETED",
+        conclusion: "SUCCESS",
+        startedAt: "2026-10-10T10:07:24Z",
+        completedAt: "2026-10-10T10:19:48Z",
+      };
+      const newer = {
+        ...older,
+        status: "IN_PROGRESS",
+        conclusion: "",
+        startedAt: "2026-10-10T10:08:37Z",
+        completedAt: "0001-01-01T00:00:00Z",
+      };
+      const decode = (checks: ReadonlyArray<typeof older>) => {
+        if (source === "detail") {
+          return expectSuccess(
+            decodePullRequestDetailJson(
+              JSON.stringify({ ...JSON.parse(detailJson), statusCheckRollup: checks }),
+            ),
+          );
+        }
+        const page = expectSuccess(
+          decodePullRequestCheckContextsJson(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    headRefOid: "head",
+                    commits: {
+                      nodes: [
+                        {
+                          commit: {
+                            statusCheckRollup: {
+                              contexts: { nodes: checks, pageInfo: { hasNextPage: false } },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        );
+        return pullRequestChecksFromContexts(page.contexts);
+      };
+      for (const checks of [
+        [newer, older],
+        [older, newer],
+      ]) {
+        const pending = decode(checks);
+        expect(pending.checks.map((check) => check.status)).toEqual(["pending"]);
+        expect(pending.checksState).toBe("pending");
+      }
+      const finished = decode([
+        {
+          ...newer,
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          completedAt: "2026-10-10T10:25:00Z",
+        },
+        older,
+      ]);
+      expect(finished.checks.map((check) => check.status)).toEqual(["success"]);
+      expect(finished.checksState).toBe("passing");
+      const waiting = evaluatePullRequestWatch(
+        {
+          startedAt: "2026-10-10T09:53:31Z",
+          headSha: "head",
+          failedChecks: [],
+          passed: false,
+          passedChecks: [],
+          remarksThrough: "2026-10-10T09:53:31Z",
+          remarkIds: [],
+          conflicting: false,
+          wakes: 0,
+        },
+        {
+          headSha: "head",
+          checks: decode([newer, older]).checks,
+          mergeability: "mergeable",
+          author: null,
+        },
+        [],
+      );
+      expect(waiting.changes).toEqual([]);
+      const ready = {
+        headSha: "head",
+        checks: finished.checks,
+        mergeability: "mergeable" as const,
+        author: null,
+      };
+      const notified = evaluatePullRequestWatch(waiting.next, ready, []);
+      expect(notified.changes).toEqual([{ kind: "checks-passed", count: 1, required: false }]);
+      expect(evaluatePullRequestWatch(notified.next, ready, []).changes).toEqual([]);
+    },
+  );
 
   it("merges reviews with comments in time order and keeps a bodyless approval", () => {
     const detail = expectSuccess(activity(JSON.parse(detailJson) as Record<string, unknown>));

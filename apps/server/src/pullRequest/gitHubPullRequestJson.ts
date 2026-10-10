@@ -1626,9 +1626,9 @@ function isNamelessCheck(raw: Schema.Schema.Type<typeof RawCheckSchema>): boolea
 }
 
 /**
- * The rollup as the deduper reads it: a check, the workflow that owns it, and when the run last
- * had something to say. A queued run reports a completion time it has not reached, so the start
- * stands in for it rather than sorting the newest run to the bottom.
+ * The rollup as the deduper reads it: a check, the workflow that owns it, and when the run
+ * started. Completion times cannot order overlapping runs: an older run can finish after
+ * its replacement starts. Hosts without a start time fall back to completion time.
  */
 function toCheckEntries(
   raw: ReadonlyArray<Schema.Schema.Type<typeof RawCheckSchema>> | null | undefined,
@@ -1650,7 +1650,7 @@ function toCheckEntries(
           ...(typeof check.isRequired === "boolean" ? { required: check.isRequired } : {}),
         },
         workflowName: trimmed(check.workflowName),
-        at: realTimestamp(check.completedAt) ?? realTimestamp(check.startedAt),
+        at: realTimestamp(check.startedAt) ?? realTimestamp(check.completedAt),
       },
     ];
   });
