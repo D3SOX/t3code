@@ -10207,6 +10207,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           );
         if (
           thread.settledOverride !== null ||
+          visibleThreadPullRequests(thread.pullRequests ?? []).some(
+            (link) => link.watch !== undefined,
+          ) ||
           DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt)
         ) {
           return yield* new OrchestratorDispatchError({

@@ -2579,7 +2579,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
-  it.effect.each(["manual", "automatic"])("settling ends every pull request watch: %s", (mode) =>
+  it.effect.each(["manual", "automatic"])("only manual settlement stops watches: %s", (mode) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
@@ -2614,13 +2614,25 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const started = before?.pullRequests?.[0]?.watch;
       assert.isDefined(started);
       if (started === undefined || before === null) return;
-      yield* orchestrator.dispatch({
+      const settlement = orchestrator.dispatch({
         ...(mode === "manual"
           ? { type: "thread.settle" as const }
           : { type: "thread.auto-settle" as const, snapshotAt: before.updatedAt }),
         commandId: CommandId.make(`pr-watch-settle-${mode}`),
         threadId,
       });
+      if (mode === "automatic") {
+        const refused = yield* settlement.pipe(Effect.flip);
+        assert.equal(refused._tag, "OrchestratorDispatchError");
+        assert.deepEqual(yield* orchestrator.getThreadShell(threadId), before);
+        assert.isTrue((yield* maintenance.rebuild).valid);
+        assert.deepEqual(
+          (yield* orchestrator.getThreadShell(threadId))?.pullRequests,
+          before.pullRequests,
+        );
+        return;
+      }
+      yield* settlement;
       const expected = before.pullRequests?.map(({ watch: _watch, ...link }) => link);
       assert.deepEqual((yield* orchestrator.getThreadShell(threadId))?.pullRequests, expected);
       assert.isTrue((yield* maintenance.rebuild).valid);
@@ -3223,6 +3235,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     "missing comments",
     "thread list truncated",
     "CI completion",
+    "merge from host",
+    "merge from sync snapshot",
   ])("wakes a watched thread for host changes: %s", (mode) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -3271,6 +3285,69 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const detail = watchedPullRequestDetail({ projectId, number: key.number, at });
       const initialWatch = (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch;
       assert.isDefined(initialWatch);
+      if (mode.startsWith("merge from")) {
+        if (mode === "merge from sync snapshot") {
+          yield* orchestrator.dispatch({
+            type: "thread.pull-request-link.sync",
+            commandId: CommandId.make(`pr-watch-merged-snapshot-${mode}`),
+            threadId,
+            ...key,
+            snapshot: {
+              state: "merged",
+              title: detail.title,
+              headBranch: detail.headBranch,
+              baseBranch: detail.baseBranch,
+              isDraft: false,
+              updatedAt: at,
+              syncedAt: at,
+              mergedAt: at,
+            },
+            stack: null,
+          });
+          const beforeWake = yield* orchestrator.getThreadShell(threadId);
+          const refused = yield* orchestrator
+            .dispatch({
+              type: "thread.auto-settle",
+              commandId: CommandId.make(`pr-watch-merge-auto-settle-${mode}`),
+              threadId,
+              snapshotAt: beforeWake!.updatedAt,
+            })
+            .pipe(Effect.flip);
+          assert.equal(refused._tag, "OrchestratorDispatchError");
+        }
+        const makeReactor = PullRequestWatchReactor.make.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              NodeServices.layer,
+              Layer.mock(PullRequestService.PullRequestService)({
+                detail: () => Effect.succeed({ ...detail, state: "merged", mergedAt: at }),
+                activity: () =>
+                  Effect.succeed({
+                    comments: [],
+                    commentCount: 0,
+                    commentsTruncated: false,
+                    reviewThreads: [],
+                    commits: [],
+                  }),
+              }),
+            ),
+          ),
+        );
+        const reactor = yield* makeReactor;
+        yield* reactor.sweep;
+        yield* reactor.sweep;
+        // Restarting the server must not send the same merge wake again.
+        yield* (yield* makeReactor).sweep;
+        const records = yield* orchestrator.getThreadRecords(threadId, ["messages", "runs"]);
+        assert.equal(records.messages.length, 1);
+        assert.include(records.messages[0]!.text, "was merged");
+        assert.equal(records.messages[0]!.notification?.summary, "#7: merged, stopped watching");
+        assert.equal(records.runs.length, 1);
+        assert.isUndefined(
+          (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch,
+        );
+        return;
+      }
       if (mode === "CI completion") {
         const required = [
           "Analyze (actions)",

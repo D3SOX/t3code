@@ -109,8 +109,8 @@ export function threadHasQueuedTurnStart(
 
 /**
  * A merged or closed pull request settles the thread unless the user wrote to
- * it afterwards. Runs that background work, a PR watch, or another agent
- * started do not count, so they cannot hold a merged thread open.
+ * it afterwards. Completed runs started by background work or another agent
+ * do not count; active PR watches block settlement until their final wake.
  */
 function pullRequestSettles(
   thread: Pick<
@@ -142,6 +142,11 @@ export function isAutoSettlementCandidate(
 ): boolean {
   if (thread.archivedAt !== null || thread.settledOverride !== null) return false;
   if (thread.pinnedAt != null || thread.autoSettleDisabledAt != null) return false;
+  if (
+    visibleThreadPullRequests(thread.pullRequests ?? []).some((link) => link.watch !== undefined)
+  ) {
+    return false;
+  }
   // Blocked-on-you work must never park behind a settled override.
   if (thread.pendingRuntimeRequest !== null) return false;
   // A live run, or background work that will wake the agent, is not
