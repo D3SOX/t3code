@@ -1636,6 +1636,7 @@ function toCheckEntries(
   readonly check: PullRequestCheck;
   readonly workflowName: string | null;
   readonly at: string | null;
+  readonly active: boolean;
 }> {
   return (raw ?? []).flatMap((check) => {
     const name = trimmed(check.name) ?? trimmed(check.context);
@@ -1651,6 +1652,7 @@ function toCheckEntries(
         },
         workflowName: trimmed(check.workflowName),
         at: realTimestamp(check.startedAt) ?? realTimestamp(check.completedAt),
+        active: check.__typename === "CheckRun" && toCheckStatus(check) === "pending",
       },
     ];
   });

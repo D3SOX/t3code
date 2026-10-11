@@ -439,9 +439,14 @@ describe("pull request detail decoding", () => {
     expect(detail.checksState).toBe("pending");
   });
 
-  it.each(["detail", "contexts"])(
-    "keeps overlapping CI pending until the newer run finishes: %s",
-    (source) => {
+  it.each([
+    { source: "detail", last: "newer" },
+    { source: "contexts", last: "newer" },
+    { source: "detail", last: "older" },
+    { source: "contexts", last: "older" },
+  ])(
+    "keeps overlapping CI pending until the last run finishes: $source, $last",
+    ({ source, last }) => {
       const older = {
         __typename: "CheckRun",
         name: "ios",
@@ -456,7 +461,7 @@ describe("pull request detail decoding", () => {
         ...older,
         status: "IN_PROGRESS",
         conclusion: "",
-        startedAt: "2026-10-10T10:08:37Z",
+        startedAt: last === "older" ? "2026-10-10T10:06:00Z" : "2026-10-10T10:08:37Z",
         completedAt: "0001-01-01T00:00:00Z",
       };
       const decode = (checks: ReadonlyArray<typeof older>) => {
@@ -498,7 +503,7 @@ describe("pull request detail decoding", () => {
         [older, newer],
       ]) {
         const pending = decode(checks);
-        expect(pending.checks.map((check) => check.status)).toEqual(["pending"]);
+        expect(pending.checks.some((check) => check.status === "pending")).toBe(true);
         expect(pending.checksState).toBe("pending");
       }
       const finished = decode([

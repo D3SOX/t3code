@@ -6,20 +6,60 @@ import { dedupeChecks } from "./pullRequestChecks.ts";
 function entry(
   name: string,
   status: PullRequestCheckStatus,
-  extra: { readonly workflowName?: string | null; readonly at?: string | null } = {},
+  extra: {
+    readonly workflowName?: string | null;
+    readonly at?: string | null;
+    readonly active?: boolean;
+  } = {},
 ): {
   readonly check: PullRequestCheck;
   readonly workflowName: string | null;
   readonly at: string | null;
+  readonly active?: boolean;
 } {
   return {
     check: { name, status, description: null, url: null },
     workflowName: extra.workflowName ?? null,
     at: extra.at ?? null,
+    ...(extra.active === undefined ? {} : { active: extra.active }),
   };
 }
 
 describe("dedupeChecks", () => {
+  it.each(["success", "failure"] as const)(
+    "keeps a live older run beside the newest %s result",
+    (status) => {
+      const running = entry("ios", "pending", {
+        workflowName: "CI",
+        at: "2026-10-11T12:39:29Z",
+        active: true,
+      });
+      const completed = entry("ios", status, { workflowName: "CI", at: "2026-10-11T12:39:44Z" });
+      for (const entries of [
+        [running, completed],
+        [completed, running],
+      ]) {
+        expect(dedupeChecks(entries)).toEqual([completed.check, running.check]);
+      }
+      // A completed rerun still supersedes earlier completed results.
+      expect(
+        dedupeChecks([
+          { ...running, active: false, check: { ...running.check, status: "failure" } },
+          completed,
+        ]),
+      ).toEqual([completed.check]);
+    },
+  );
+
+  it("keeps an unstarted live job pending beside a dated result", () => {
+    const queued = entry("ios", "pending", { active: true });
+    const completed = entry("ios", "success", { at: "2026-10-11T12:39:44Z" });
+    expect(dedupeChecks([queued, completed]).map((check) => check.status)).toEqual([
+      "success",
+      "pending",
+    ]);
+  });
+
   it("keeps the newest run of a check the host listed twice", () => {
     const checks = dedupeChecks([
       entry("Prepare PR size config", "success", {
