@@ -5,6 +5,17 @@ import { flattenThemeColor, themeColorWithAlpha } from "../../lib/mobileTheme";
 export const THREAD_LIST_V2_MONO_FONT = "monospace";
 export const THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME = "px-3 py-2.5";
 export const THREAD_LIST_V2_ROW_DIVIDERS = false;
+export const THREAD_LIST_V2_SIDEBAR_ROW_STYLE = {
+  borderRadius: 20,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+} satisfies ViewStyle;
+export const THREAD_LIST_V2_SIDEBAR_ROW_CONTAINER_STYLE = {
+  borderRadius: 20,
+  overflow: "hidden",
+  marginHorizontal: 8,
+  marginVertical: 2,
+} satisfies ViewStyle;
 
 export const selectedThreadRowColors = {
   foregroundClassName: "text-thread-selected-foreground",
@@ -35,14 +46,9 @@ export function getThreadListV2RowAppearance(
       : backgroundColor;
   const style: ViewStyle = {
     backgroundColor: rowBackgroundColor,
-    borderRadius: 20,
+    borderRadius: THREAD_LIST_V2_SIDEBAR_ROW_STYLE.borderRadius,
   };
-  const swipeContainerStyle: ViewStyle = {
-    borderRadius: 20,
-    overflow: "hidden",
-    marginHorizontal: 8,
-    marginVertical: 2,
-  };
+  const swipeContainerStyle = THREAD_LIST_V2_SIDEBAR_ROW_CONTAINER_STYLE;
 
   return {
     className: undefined,
@@ -62,7 +68,7 @@ export function getThreadListV2RowAppearance(
       ? "accent-drawer-foreground-muted"
       : "accent-foreground-tertiary",
     style,
-    cardStyle: sidebarPane ? { ...style, paddingHorizontal: 12, paddingVertical: 10 } : style,
+    cardStyle: sidebarPane ? { ...style, ...THREAD_LIST_V2_SIDEBAR_ROW_STYLE } : style,
     swipeContainerStyle,
     swipeBackgroundColor: backgroundColor,
     providerIconSurfaceColor: rowBackgroundColor,

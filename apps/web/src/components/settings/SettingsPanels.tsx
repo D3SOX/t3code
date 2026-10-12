@@ -438,6 +438,7 @@ function AboutVersionSection() {
   return (
     <>
       <SettingsRow
+        id={searchableSetting("app-version").id}
         title={<AboutVersionTitle />}
         description={description}
         control={
@@ -460,7 +461,7 @@ function AboutVersionSection() {
       />
       {hasDesktopBridge ? (
         <SettingsRow
-          title="Update track"
+          {...searchableSetting("update-track")}
           description="Use stable releases or nightly builds. Switch back anytime."
           control={
             <Select
@@ -492,7 +493,7 @@ function AboutVersionSection() {
         />
       ) : selectedHostedAppChannel ? (
         <SettingsRow
-          title="Update track"
+          {...searchableSetting("update-track")}
           description="Switches the hosted app release channel."
           control={
             <Select
@@ -2174,7 +2175,7 @@ export function GeneralSettingsPanel() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const navigate = useNavigate();
-  const { scope, environment, connectedEnvironments } = useSettingsScope();
+  const { scope, environment, connectedEnvironments, target } = useSettingsScope();
   // The representative environment supplies the provider list for pickers;
   // a fanned-out model choice is validated against every target before it
   // is written. Per-machine tuning (background activity overrides) still
@@ -2210,7 +2211,11 @@ export function GeneralSettingsPanel() {
   const textGenModel = textGenerationModelSelection.model;
   const textGenModelOptions = textGenerationModelSelection.options;
   const textGenerationModelInstanceEntries = sortProviderInstanceEntries(
-    applyProviderInstanceSettings(deriveProviderInstanceEntries(textGenerationProviders), settings),
+    applyProviderInstanceSettings(
+      deriveProviderInstanceEntries(textGenerationProviders),
+      settings,
+      target?.projectId ?? null,
+    ),
   );
   const hasTextGenerationProvider = textGenerationModelInstanceEntries.some(
     (entry) => entry.enabled && entry.isAvailable,
@@ -3307,6 +3312,7 @@ export function GeneralSettingsPanel() {
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <ProviderModelPicker
+                  environmentId={environmentId}
                   activeInstanceId={textGenInstanceId}
                   model={textGenModel}
                   lockedProvider={null}
@@ -3394,6 +3400,7 @@ export function GeneralSettingsPanel() {
         ) : (
           <>
             <SettingsRow
+              id={searchableSetting("app-version").id}
               title={<AboutVersionTitle />}
               description="Current version of the application."
             />

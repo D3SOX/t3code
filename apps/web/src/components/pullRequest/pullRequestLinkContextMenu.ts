@@ -1,4 +1,8 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
+import {
+  type SourceControlClientDefinition,
+  UNKNOWN_SOURCE_CONTROL_CLIENT,
+} from "@t3tools/client-runtime/source-control-clients";
 
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
@@ -8,22 +12,16 @@ import { toastManager } from "../ui/toast";
 export type PullRequestLinkContextMenuAction = "copy-link" | "open-app" | "open-external";
 
 /** Named for the host rather than "externally": the point is where you will land. */
-const OPEN_ON_HOST_LABELS: Partial<Record<string, string>> = {
-  github: "Open on GitHub",
-  gitlab: "Open on GitLab",
-  forgejo: "Open on Forgejo",
-  bitbucket: "Open on Bitbucket",
-  "azure-devops": "Open on Azure DevOps",
-};
-
-export const openOnHostLabel = (provider: string): string =>
-  OPEN_ON_HOST_LABELS[provider] ?? "Open on host";
+export const openOnHostLabel = (host: SourceControlClientDefinition): string =>
+  host === UNKNOWN_SOURCE_CONTROL_CLIENT ? "Open on host" : `Open on ${host.label}`;
 
 /** Keep both explicit destinations available regardless of the saved click preference. */
-export function pullRequestLinkContextMenuItems(): readonly ContextMenuItem<PullRequestLinkContextMenuAction>[] {
+export function pullRequestLinkContextMenuItems(
+  openLabel = "Open in system browser",
+): readonly ContextMenuItem<PullRequestLinkContextMenuAction>[] {
   return [
     { id: "open-app", label: "Open in T3 Code" },
-    { id: "open-external", label: "Open in system browser" },
+    { id: "open-external", label: openLabel },
     { id: "copy-link", label: "Copy link", icon: "copy" },
   ];
 }
@@ -39,17 +37,19 @@ export function pullRequestLinkContextMenuItems(): readonly ContextMenuItem<Pull
 export async function showPullRequestLinkContextMenu({
   url,
   openInApp,
+  openLabel,
   position,
 }: {
   readonly url: string;
   readonly openInApp: () => void | Promise<void>;
+  readonly openLabel?: string;
   readonly position: { readonly x: number; readonly y: number };
 }): Promise<void> {
   const api = readLocalApi();
   if (!api) return;
   let action: PullRequestLinkContextMenuAction | null = null;
   try {
-    action = await api.contextMenu.show(pullRequestLinkContextMenuItems(), position);
+    action = await api.contextMenu.show(pullRequestLinkContextMenuItems(openLabel), position);
   } catch {
     // A menu that could not be shown has already cost the reader their right-click; there is
     // nothing to say about it that a second popup would not make worse.

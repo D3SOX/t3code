@@ -39,7 +39,10 @@ import { composerContextSendBlockReason, reidentifyComposerContext } from "../li
 import { uuidv4 } from "../lib/uuid";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
-import { isModelSelectionUnavailable } from "../lib/modelOptions";
+import {
+  describeUnavailableModelSelection,
+  isModelSelectionUnavailable,
+} from "../lib/modelOptions";
 import { resolveProviderInteractionMode } from "./legacy-plan-mode";
 import {
   convertPastedImagesToAttachments,
@@ -640,12 +643,14 @@ export function useThreadComposerState() {
       const serverConfig = selectedEnvironmentRuntime?.serverConfig;
       if (
         selectedEnvironmentRuntime?.connectionState === "connected" &&
-        isModelSelectionUnavailable(serverConfig, modelSelection)
+        isModelSelectionUnavailable(serverConfig, modelSelection, thread.projectId)
       ) {
-        Alert.alert(
-          "Antigravity model unavailable",
-          "Set up Antigravity on web or desktop, or choose another model.",
+        const { title, detail } = describeUnavailableModelSelection(
+          serverConfig,
+          modelSelection,
+          thread.projectId,
         );
+        Alert.alert(title, detail);
         return null;
       }
       const provider = serverConfig?.providers.find(
@@ -696,12 +701,17 @@ export function useThreadComposerState() {
       // Steering travels as "auto" so a turn that ends in the meantime degrades
       // to a queued run on the server instead of failing the delivery and
       // bouncing the message back into the draft.
-      const followUpDispatchMode = resolveMobileFollowUpDispatchMode({
-        running: activeThreadBusy,
-        canSteer: canSteerActiveTurn,
-        preference: followUpBehavior,
-        ...(followUpOverride === undefined ? {} : { override: followUpOverride }),
-      });
+      const setupRunning = [selectedThreadActivityRun?.status, selectedThreadRuntime?.status].some(
+        (status) => status === "preparing" || status === "starting",
+      );
+      const followUpDispatchMode = setupRunning
+        ? "queue"
+        : resolveMobileFollowUpDispatchMode({
+            running: activeThreadBusy,
+            canSteer: canSteerActiveTurn,
+            preference: followUpBehavior,
+            ...(followUpOverride === undefined ? {} : { override: followUpOverride }),
+          });
 
       const metadata = makeQueuedMessageMetadata();
       const messageId = MessageId.make(metadata.messageId);
@@ -759,7 +769,9 @@ export function useThreadComposerState() {
       saveQueuedRunEdit,
       selectedEnvironmentRuntime?.connectionState,
       selectedEnvironmentRuntime?.serverConfig,
+      selectedThreadActivityRun?.status,
       selectedThreadCreation,
+      selectedThreadRuntime?.status,
       selectedThreadShell,
       uploadThreadFeedback,
     ],

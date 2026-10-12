@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
@@ -64,7 +64,7 @@ it.effect.each(["minimized", "hidden", "background"])(
       assert.isFalse(minimized);
       assert.isTrue(visible);
       assert.isTrue(focused);
-    }).pipe(Effect.scoped, Effect.provideService(HostProcessPlatform, "linux")),
+    }).pipe(Effect.scoped, Effect.provideService(HostProcess.Platform, "linux")),
 );
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
@@ -321,7 +321,7 @@ describe("pickProjectFavicon", () => {
             filters: [
               {
                 name: "Images",
-                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"],
+                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "icns"],
               },
             ],
           },
@@ -348,7 +348,7 @@ describe("pickProjectFavicon", () => {
   );
 });
 
-it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
+it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
   "finds remote editors installed without PATH launchers",
   () =>
     Effect.gen(function* () {
@@ -367,11 +367,11 @@ it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
         yield* fs.chmod(executable, 0o755);
       }
       const editors = yield* probeRemoteEditors.handler(undefined).pipe(
-        Effect.provideService(HostProcessEnvironment, {
+        Effect.provideService(HostProcess.Environment, {
           HOME: home,
           PATH: path.join(home, "empty"),
         }),
-        Effect.provideService(HostProcessPlatform, "darwin"),
+        Effect.provideService(HostProcess.Platform, "darwin"),
       );
       assert.include(editors, "cursor");
       assert.include(editors, "vscode");
