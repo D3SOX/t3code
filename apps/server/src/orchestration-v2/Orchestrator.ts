@@ -88,6 +88,7 @@ import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.t
 import { CommandReceiptStoreV2 } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
 import { notificationTurnItem } from "@t3tools/provider-core/server/notification";
+import { refreshQueuedPullRequestMessage } from "./pullRequestWatch.ts";
 import { isRestartNoteSource } from "./RestartBackgroundNote.ts";
 import { isUndeliveredMailboxSteer } from "./NotificationMailbox.ts";
 import { EventSinkV2 } from "./EventSink.ts";
@@ -1280,7 +1281,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // Every terminal run checks the queue. Only a deliverable queued run
       // needs the transcript for provider handoff and legacy import context.
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
-      const projection = yield* readCommandProjection(threadId);
+      let projection = yield* readCommandProjection(threadId);
       if (
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
@@ -1303,6 +1304,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           )[0]?.lastError ?? null;
       if (usageLimitBlockedRun(projection.runs, projection.turnItems, sessionError) !== null) {
         return;
+      }
+      const refreshed = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
+      if (
+        yield* refreshQueuedPullRequestRuns(
+          threadId,
+          threadPullRequestsOf(projection.thread),
+          CommandId.make(`command:system:refresh-pr-wakes:${threadId}`),
+          refreshed,
+        )
+      ) {
+        yield* writeSystemEvents(yield* Ref.get(refreshed));
+        projection = yield* readCommandProjection(threadId);
       }
       const queuedRun = nextQueuedRun(projection);
       if (queuedRun === undefined) {
@@ -2349,6 +2362,65 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  const refreshQueuedPullRequestRuns = Effect.fn("orchestrationV2.refreshQueuedPullRequestRuns")(
+    function* (
+      threadId: ThreadId,
+      links: ReadonlyArray<ThreadPullRequestLink>,
+      commandId: CommandId,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const watched = links.filter((link) => link.watch?.headSha != null);
+      if (watched.length === 0) return false;
+      const { runs } = yield* projectionStore
+        .getThreadRecords(threadId, ["runs"])
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId })));
+      const queued = runs.filter((run) => run.status === "queued");
+      if (queued.length === 0) return false;
+      const { messages } = yield* projectionStore
+        .getThreadRecords(threadId, ["messages"], {
+          messageIds: queued.map((run) => run.userMessageId),
+        })
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId })));
+      let changed = false;
+      for (const run of queued) {
+        const message = messages.find((candidate) => candidate.id === run.userMessageId);
+        if (message === undefined) continue;
+        for (const link of watched) {
+          const refreshed = refreshQueuedPullRequestMessage(
+            message,
+            link,
+            link.watch?.headSha ?? null,
+          );
+          if (refreshed === message) continue;
+          changed = true;
+          const command = {
+            type: "queued-run.cancel" as const,
+            commandId,
+            threadId,
+            runId: run.id,
+          };
+          if (refreshed === null) {
+            yield* dispatchQueuedRunCancel(command, events);
+          } else {
+            const now = yield* DateTime.now;
+            yield* emit(
+              events,
+              command,
+            )({
+              type: "message.updated",
+              threadId,
+              runId: run.id,
+              occurredAt: now,
+              payload: { ...refreshed, updatedAt: now },
+            });
+          }
+          break;
+        }
+      }
+      return changed;
+    },
+  );
+
   // Checked under the thread lock: the watch or the thread can change while the host is read.
   // The watch is recorded first so the wake's own thread events carry it.
   const dispatchPullRequestWatchSync = Effect.fn("orchestrationV2.dispatch.pullRequestWatchSync")(
@@ -2384,6 +2456,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandType: command.type,
           cause: "The pull request watch ended or its thread settled while it was read.",
         });
+      }
+      if (link !== undefined && command.watch !== null) {
+        yield* refreshQueuedPullRequestRuns(
+          command.threadId,
+          [{ ...link, watch: command.watch }],
+          command.commandId,
+          events,
+        );
       }
       yield* dispatchThreadMutation(command, events, effects);
       if (command.wake === undefined) return;

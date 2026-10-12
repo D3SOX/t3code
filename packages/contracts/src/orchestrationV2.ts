@@ -1186,7 +1186,16 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
     Schema.Struct({ kind: Schema.Literal("background_command").transform("command") }),
     SubagentNotificationSource,
     CommandNotificationSource,
-    Schema.Struct({ kind: Schema.Literal("monitor") }),
+    Schema.Struct({
+      kind: Schema.Literal("monitor"),
+      /** The observed PR head, so queued check updates can expire after a push. */
+      pullRequest: Schema.optional(
+        Schema.Struct({
+          ...ThreadPullRequestKey.fields,
+          headSha: Schema.NullOr(TrimmedNonEmptyString),
+        }),
+      ),
+    }),
     Schema.Struct({ kind: Schema.Literal("background_task") }),
     /** T3 Code itself, such as a restart continuing an interrupted turn. */
     Schema.Struct({ kind: Schema.Literal("system") }),

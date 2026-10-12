@@ -1429,6 +1429,8 @@ describe("background work kinds from older or newer servers", () => {
     ).toEqual({ kind: "background_task" });
     expect(sourceOf({ kind: "background_command" })).toEqual({ kind: "command" });
     expect(sourceOf({ kind: "monitor" })).toEqual({ kind: "monitor" });
+    const pullRequest = { host: "github.com", repository: "o/r", number: 7, headSha: "abc123" };
+    expect(sourceOf({ kind: "monitor", pullRequest })).toEqual({ kind: "monitor", pullRequest });
   });
 
   it("sends and stores sources that clients from before specific kinds still decode", () => {

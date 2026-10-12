@@ -566,7 +566,7 @@ export const make = Effect.gen(function* () {
           target,
           report.exhausted ? null : report.next,
           pullRequestWatchMessage({
-            number: target.link.number,
+            ...identityOf(target.link),
             url: target.link.url,
             baseBranch: detail.baseBranch,
             headSha: report.next.headSha,

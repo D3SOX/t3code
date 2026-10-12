@@ -1,10 +1,14 @@
 import type {
   OrchestrationV2Notification,
+  OrchestrationV2ConversationMessage,
   PullRequestCheck,
   PullRequestComment,
   PullRequestDetail,
   ThreadPullRequestWatch,
+  ThreadPullRequestLink,
+  ThreadPullRequestKey,
 } from "@t3tools/contracts";
+import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
 
 /**
  * Wakes in a row that bring only comments. Check, conflict, or push news resets the count, so
@@ -188,13 +192,14 @@ const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
 };
 
 /** The wake the agent reads and the timeline notification the user sees. */
-export function pullRequestWatchMessage(input: {
-  readonly number: number;
-  readonly url: string;
-  readonly baseBranch: string;
-  readonly headSha: string | null;
-  readonly report: PullRequestWatchReport;
-}): { readonly text: string; readonly notification: OrchestrationV2Notification } {
+export function pullRequestWatchMessage(
+  input: ThreadPullRequestKey & {
+    readonly url: string;
+    readonly baseBranch: string;
+    readonly headSha: string | null;
+    readonly report: PullRequestWatchReport;
+  },
+): { readonly text: string; readonly notification: OrchestrationV2Notification } {
   const { changes, exhausted } = input.report;
   const context = {
     baseBranch: input.baseBranch,
@@ -216,13 +221,69 @@ export function pullRequestWatchMessage(input: {
   return {
     text,
     notification: {
-      source: { kind: "monitor" },
+      source: {
+        kind: "monitor",
+        pullRequest: {
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+          headSha: input.headSha,
+        },
+      },
       outcome: failed
         ? "failed"
         : changes.every((change) => change.kind === "checks-passed")
           ? "completed"
           : "updated",
       summary: `#${input.number}: ${summary.join(", ")}`,
+    },
+  };
+}
+
+/** Drop stale check news before delivery, retaining any comments bundled with it. */
+export function refreshQueuedPullRequestMessage(
+  message: OrchestrationV2ConversationMessage,
+  link: Pick<ThreadPullRequestLink, "host" | "repository" | "number" | "url">,
+  headSha: string | null,
+): OrchestrationV2ConversationMessage | null {
+  const notification = message.notification;
+  if (notification?.source.kind !== "monitor" || headSha === null) return message;
+  const observed = notification.source.pullRequest;
+  if (observed !== undefined) {
+    if (
+      !threadPullRequestKeysEqual(observed, link) ||
+      observed.headSha === null ||
+      observed.headSha === headSha
+    )
+      return message;
+  } else {
+    // Released versions stored the PR identity and abbreviated commit only in the wake text.
+    if (
+      !message.id.startsWith("message:pr-watch:") ||
+      !message.text.startsWith(
+        `Update on pull request #${link.number} (${link.url}), which T3 Code is watching for you:\n`,
+      )
+    )
+      return message;
+    const commit = message.text.match(
+      /^- (?:Checks failed|All \d+ (?:required )?checks? passed) on ([\da-f]+)[:.]$/m,
+    )?.[1];
+    if (commit === undefined || headSha.startsWith(commit)) return message;
+  }
+
+  const text = message.text.replace(
+    /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? passed[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
+    "",
+  );
+  if (text === message.text) return message;
+  if (!/^- \d+ new comments?:$/m.test(text)) return null;
+  return {
+    ...message,
+    text,
+    notification: {
+      ...notification,
+      outcome: "updated",
+      summary: `#${link.number}: new comments${notification.summary.includes("stopped watching") ? ", stopped watching" : ""}`,
     },
   };
 }

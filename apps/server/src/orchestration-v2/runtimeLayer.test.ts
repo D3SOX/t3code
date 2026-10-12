@@ -2586,6 +2586,231 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  it.effect.each([
+    "legacy",
+    "legacy-passed",
+    "legacy-mixed",
+    "tagged",
+    "mixed",
+    "conflict",
+    "delivery",
+  ])("discards queued check updates from previous PR commits: %s", (mode) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const mixed = mode.endsWith("mixed");
+      const threadId = ThreadId.make(`pr-watch-obsolete-queue-${mode}`);
+      yield* seedProject({
+        projectId: ProjectId.make(`obsolete-project-${mode}`),
+        title: "Watch queue",
+        workspaceRoot: "/workspace/watch",
+        defaultModelSelection: null,
+        createdAt: "2026-10-01T00:00:00.000Z",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make(`obsolete-create-${mode}`),
+        threadId,
+        projectId: ProjectId.make(`obsolete-project-${mode}`),
+        title: "Watch queue",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const key = { host: "github.com", repository: "pingdotgg/t3code", number: 7 };
+      const url = "https://github.com/pingdotgg/t3code/pull/7";
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.watch",
+        commandId: CommandId.make(`obsolete-watch-${mode}`),
+        threadId,
+        ...key,
+        watching: true,
+        link: { url, source: "agent" },
+      });
+      const watch = (yield* orchestrator.getThreadShell(threadId))!.pullRequests![0]!.watch!;
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`obsolete-active-${mode}`),
+        createdBy: "user",
+        creationSource: "web",
+        threadId,
+        messageId: MessageId.make(`obsolete-active-${mode}`),
+        text: "Work while CI runs",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+      });
+      const header = `Update on pull request #7 (${url}), which T3 Code is watching for you:`;
+      for (const [id, text] of [
+        [
+          "checks",
+          `${header}\n${mode === "conflict" ? "- The branch now conflicts with main.\n" : mode === "legacy-passed" ? "- All 3 required checks passed on aaaaaaa.\n" : "- Checks failed on aaaaaaa:\n  - lint\n"}${mixed ? "- 1 new comment:\n  - reviewer: Fix this\n" : ""}`,
+        ],
+        ["comments", `${header}\n- 1 new comment:\n  - reviewer: Fix this`],
+        [
+          "other-pr",
+          `Update on pull request #8 (https://github.com/pingdotgg/t3code/pull/8), which T3 Code is watching for you:\n- Checks failed on aaaaaaa:\n  - lint`,
+        ],
+      ]) {
+        if (mode === "delivery" && id !== "checks") continue;
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request-watch.sync",
+          commandId: CommandId.make(`obsolete-wake-${id}-${mode}`),
+          threadId,
+          ...key,
+          startedAt: watch.startedAt,
+          watch: { ...watch, headSha: "aaaaaaaaaa" },
+          wake: {
+            messageId: MessageId.make(`message:pr-watch:obsolete-${id}-${mode}`),
+            text: text!,
+            notification: {
+              source: {
+                kind: "monitor",
+                ...(mode.startsWith("legacy")
+                  ? {}
+                  : {
+                      pullRequest: {
+                        ...key,
+                        number: id === "other-pr" ? 8 : 7,
+                        headSha: "aaaaaaaaaa",
+                      },
+                    }),
+              },
+              outcome: "failed",
+              summary: "#7: checks failed",
+            },
+          },
+        });
+      }
+      if (mode !== "delivery")
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`obsolete-user-${mode}`),
+          threadId,
+          messageId: MessageId.make(`obsolete-user-${mode}`),
+          text: "Keep my queued follow-up",
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+        });
+      const before = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
+      assert.equal(
+        before.runs.filter((run) => run.status === "queued").length,
+        mode === "delivery" ? 1 : 4,
+      );
+      if (mode === "delivery") {
+        // Recover a backlog saved before push handling expired queued updates.
+        const eventSink = yield* EventSink.EventSinkV2;
+        const projection = yield* orchestrator.getThreadProjection(threadId);
+        const active = projection.runs.find((run) => run.status !== "queued")!;
+        const now = yield* DateTime.now;
+        yield* eventSink.write({
+          commandId: CommandId.make("obsolete-recovery"),
+          events: [
+            {
+              id: EventId.make("obsolete-recovery-head"),
+              type: "thread.pull-request-synced",
+              threadId,
+              occurredAt: now,
+              payload: {
+                ...projection.thread,
+                pullRequests: projection.thread.pullRequests!.map((link) => ({
+                  ...link,
+                  watch: { ...watch, headSha: "bbbbbbbbbb" },
+                })),
+              },
+            },
+            {
+              id: EventId.make("obsolete-recovery-completed"),
+              type: "run.updated",
+              threadId,
+              runId: active.id,
+              occurredAt: now,
+              payload: { ...active, status: "completed", completedAt: now },
+            },
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "queue.resume",
+          commandId: CommandId.make("obsolete-recovery-resume"),
+          threadId,
+        });
+      } else
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request-watch.sync",
+          commandId: CommandId.make(`obsolete-pushed-${mode}`),
+          threadId,
+          ...key,
+          startedAt: watch.startedAt,
+          watch: { ...watch, headSha: "bbbbbbbbbb" },
+          wake: {
+            messageId: MessageId.make(`message:pr-watch:current-${mode}`),
+            text: `${header}\n- Checks failed on bbbbbbb:\n  - lint`,
+            notification: {
+              source: { kind: "monitor", pullRequest: { ...key, headSha: "bbbbbbbbbb" } },
+              outcome: "failed",
+              summary: "#7: checks failed",
+            },
+          },
+        });
+      const records = yield* orchestrator.getThreadRecords(threadId, [
+        "runs",
+        "nodes",
+        "attempts",
+        "turnItems",
+        "messages",
+      ]);
+      const expired = records.runs.find(
+        (run) => run.userMessageId === `message:pr-watch:obsolete-checks-${mode}`,
+      )!;
+      assert.equal(expired.status, mixed ? "queued" : "cancelled");
+      if (mixed) {
+        const retained = records.messages.find((message) => message.id === expired.userMessageId)!;
+        assert.notInclude(retained.text, "Checks failed");
+        assert.include(retained.text, "reviewer: Fix this");
+        assert.equal(retained.notification?.outcome, "updated");
+        assert.equal(retained.notification?.summary, "#7: new comments");
+      } else {
+        assert.equal(
+          records.nodes.find((node) => node.id === expired.rootNodeId)?.status,
+          "cancelled",
+        );
+        assert.equal(
+          records.attempts.find((attempt) => attempt.id === expired.activeAttemptId)?.status,
+          "cancelled",
+        );
+      }
+      assert.equal(
+        records.runs.filter((run) => run.status === "queued").length,
+        mode === "delivery" ? 0 : mixed ? 5 : 4,
+      );
+      if (mode !== "delivery") {
+        assert.equal(
+          records.runs.find((run) => run.userMessageId === `obsolete-user-${mode}`)?.status,
+          "queued",
+        );
+        assert.equal(
+          records.runs.find((run) => run.userMessageId === `message:pr-watch:current-${mode}`)
+            ?.status,
+          "queued",
+        );
+      }
+      assert.isFalse(
+        records.turnItems.some((item) => item.runId === expired.id && item.type === "notification"),
+      );
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.watch",
+        commandId: CommandId.make(`obsolete-stop-${mode}`),
+        threadId,
+        ...key,
+        watching: false,
+      });
+    }),
+  );
+
   it.effect.each(["manual", "automatic"])("only manual settlement stops watches: %s", (mode) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
