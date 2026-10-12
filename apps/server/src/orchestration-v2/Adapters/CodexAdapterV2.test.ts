@@ -827,6 +827,18 @@ describe("CodexAdapterV2 process spawning", () => {
 });
 
 describe("CodexAdapterV2 dynamic tool projection", () => {
+  it.effect("preserves image paths in normalized native view calls", () =>
+    Effect.gen(function* () {
+      const projection = yield* CodexAdapterV2.projectCodexDynamicToolItem({
+        type: "dynamicToolCall",
+        id: "image",
+        tool: "view_image",
+        arguments: { path: "/workspace/preview.png" },
+        status: "completed",
+      });
+      assert.equal(projection.viewedImagePath, "/workspace/preview.png");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
   it.effect("uses the CUA call title while leaving other MCP titles as tool arguments", () =>
     Effect.gen(function* () {
       const call = {
@@ -2031,6 +2043,80 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         firstTerminal: Deferred.await(firstTerminal),
       };
     });
+
+  it.effect.each(["completed", "completed-only", "interrupted"] as const)(
+    "projects native image views as standalone image actions: %s",
+    (mode) =>
+      Effect.gen(function* () {
+        const nativeThreadId = "image-view-thread";
+        const nativeTurnId = "image-view-turn";
+        const image = {
+          type: "imageView" as const,
+          id: "image-view",
+          path: "/workspace/preview.png",
+        };
+        const transcript = makeCodexReplayTranscript({
+          scenario: "image-view",
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Inspect the image." }),
+            ...[
+              ...(mode === "completed-only" ? [] : ["item/started" as const]),
+              ...(mode === "interrupted" ? [] : ["item/completed" as const]),
+            ].map((method) => ({
+              type: "emit_inbound" as const,
+              label: method,
+              frame: {
+                method,
+                params: { threadId: nativeThreadId, turnId: nativeTurnId, item: image },
+              },
+            })),
+            {
+              type: "emit_inbound",
+              label: "turn/completed",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({
+                    id: nativeTurnId,
+                    status: mode === "interrupted" ? "interrupted" : "completed",
+                  }),
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            attemptId: RunAttemptId.make("image-view-attempt"),
+            now: yield* DateTime.now,
+            text: "Inspect the image.",
+          }),
+        );
+        yield* harness.firstTerminal;
+        const images = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          event.turnItem.type === "dynamic_tool" &&
+          event.turnItem.viewedImagePath === image.path
+            ? [event.turnItem]
+            : [],
+        );
+        assert.deepEqual(
+          images.map((item) => item.status),
+          mode === "completed-only" ? ["completed"] : ["running", mode],
+        );
+        assert.equal(new Set(images.map((item) => item.id)).size, 1);
+        assert.equal(images.at(-1)?.nativeItemRef?.nativeId, image.id);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
 
   it.effect.each(["supported", "unsupported", "invalid"] as const)(
     "delivers native history with %s app-server protocol",

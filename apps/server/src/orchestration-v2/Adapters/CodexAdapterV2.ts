@@ -441,6 +441,7 @@ export function codexBackgroundCommandDetail(item: {
 }
 
 export interface CodexDynamicToolProjection extends McpToolPresentation {
+  readonly viewedImagePath?: string;
   readonly toolName: string;
   readonly title?: string;
   readonly input: unknown;
@@ -499,12 +500,19 @@ export const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDyna
     const presentation: McpToolPresentation =
       item.type === "mcpToolCall" ? yield* mcpToolPresentation(item) : {};
     const title = dynamicToolTitle(toolName, item.arguments) ?? presentation.title;
+    const imagePath =
+      typeof item.arguments === "object" && item.arguments !== null && "path" in item.arguments
+        ? item.arguments.path
+        : undefined;
+    const viewedImagePath =
+      toolName === "view_image" && typeof imagePath === "string" ? trimText(imagePath) : undefined;
     const projection: CodexDynamicToolProjection = {
       ...presentation,
       toolName,
       ...(title ? { title } : {}),
       input: item.arguments,
       status: codexItemStatus(item.status).turnItem,
+      ...(viewedImagePath ? { viewedImagePath } : {}),
     };
     return output === undefined ? projection : { ...projection, output };
   },
@@ -3728,6 +3736,34 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             return { node, turnItem };
           });
 
+        const emitImageView = Effect.fn("CodexAdapterV2.emitImageView")(function* (
+          context: ActiveCodexTurnContext,
+          item: { readonly id: string; readonly path: string },
+          completed: boolean,
+          nativeTurnId: string,
+        ) {
+          const tool: CodexDynamicToolItem = {
+            type: "dynamicToolCall",
+            id: item.id,
+            tool: "view_image",
+            arguments: { path: item.path },
+            status: completed ? "completed" : "inProgress",
+          };
+          if (completed) yield* clearRunningDynamicTool(nativeTurnId, item.id);
+          else yield* trackRunningDynamicTool(nativeTurnId, tool);
+          const artifacts = yield* buildDynamicToolArtifacts(context, tool);
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver: CODEX_PROVIDER,
+            node: artifacts.node,
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CODEX_PROVIDER,
+            turnItem: artifacts.turnItem,
+          });
+        });
+
         /**
          * Completes an MCP tool call whose tool names a UI resource: reads the
          * resource through Codex's MCP client, stores it, and records the app
@@ -4713,6 +4749,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.type === "imageView") {
+              yield* emitImageView(context, payload.item, false, payload.turnId);
+              return;
+            }
+
             if (payload.item.type === "mcpToolCall" || payload.item.type === "dynamicToolCall") {
               if (!codexItemStatus(payload.item.status).completed) {
                 yield* trackRunningDynamicTool(payload.turnId, payload.item);
@@ -4860,6 +4901,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   yield* releaseSettledTurnIfIdle(payload.turnId);
                 }
               }
+              return;
+            }
+
+            if (payload.item.type === "imageView") {
+              yield* emitImageView(context, payload.item, true, payload.turnId);
+              if (settled) yield* releaseSettledTurnIfIdle(payload.turnId);
               return;
             }
 
