@@ -1772,6 +1772,7 @@ describe("CodexAdapterV2 session initialize", () => {
         beforeEmitInbound === undefined ? {} : { beforeEmitInbound },
       );
       let initializeRequests = 0;
+      let terminate: Effect.Effect<void> = Effect.void;
       const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
         instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
         settings: DEFAULT_CODEX_SETTINGS,
@@ -1782,16 +1783,19 @@ describe("CodexAdapterV2 session initialize", () => {
               Effect.flatMap((context) =>
                 Effect.service(CodexClient.CodexAppServerClient).pipe(Effect.provide(context)),
               ),
-              Effect.map(
-                (client) =>
-                  ({
-                    ...client,
-                    request: (method, params) =>
-                      Effect.sync(() => {
-                        if (method === "initialize") initializeRequests++;
-                      }).pipe(Effect.andThen(client.request(method, params))),
-                  }) satisfies CodexClient.CodexAppServerClient["Service"],
-              ),
+              Effect.map((client) => {
+                terminate =
+                  openInput.onTermination?.(
+                    new CodexError.CodexAppServerProcessExitedError({ code: 0 }),
+                  ) ?? Effect.void;
+                return {
+                  ...client,
+                  request: (method, params) =>
+                    Effect.sync(() => {
+                      if (method === "initialize") initializeRequests++;
+                    }).pipe(Effect.andThen(client.request(method, params))),
+                } satisfies CodexClient.CodexAppServerClient["Service"];
+              }),
               Effect.mapError(
                 (cause) =>
                   new ProviderAdapter.ProviderAdapterOpenSessionError({
@@ -1821,11 +1825,29 @@ describe("CodexAdapterV2 session initialize", () => {
             runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
           }),
         initializeRequests: () => initializeRequests,
+        events: runtime.events,
+        terminate: () => terminate,
       };
     });
 
   const replayPreamble = (nativeThreadId: string) =>
     codexReplayPreamble({ nativeThreadId, nativeTurnId: "unused", prompt: "unused" });
+
+  it.effect("ends the provider event stream when its app-server exits", () =>
+    Effect.gen(function* () {
+      const session = yield* openReplaySession(
+        makeCodexReplayTranscript({ scenario: "app-server-exit", entries: [] }),
+      );
+      const eventPump = yield* Stream.runDrain(session.events).pipe(Effect.forkScoped);
+      yield* session.terminate();
+      yield* Fiber.join(eventPump);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect("sends one initialize when two threads start on a fresh session at once", () =>
     Effect.gen(function* () {
