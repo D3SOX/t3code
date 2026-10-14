@@ -312,6 +312,7 @@ patchedDependencies:
   dbus-next@0.10.2: patches/dbus-next@0.10.2.patch
   effect@4.0.2: patches/effect@4.0.2.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
+  react-native-enriched-markdown@1.2.0-t3.11: patches/react-native-enriched-markdown@1.2.0-t3.11.patch
   react-native-gesture-handler@3.2.1: patches/react-native-gesture-handler@3.2.1.patch
   react-native-keyboard-controller@1.22.6: patches/react-native-keyboard-controller@1.22.6.patch
   # Android: a nested WebView hands a vertical drag to its scrolling parent at the page's edge.
