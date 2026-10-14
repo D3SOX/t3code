@@ -20,7 +20,7 @@ allowBuilds:
   node-pty: true
   # Ships N-API prebuilds; its install script only rebuilds from source.
   objc-js: false
-  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.11.tgz": true
+  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.11.tgz(patch_hash=8d52600fc7e8fb07b5263abac770f51850c04ccf7215c691a8f5a00701a95b0c)": true
   sharp: true
   tsc-rs: true
   utf-8-validate: false
