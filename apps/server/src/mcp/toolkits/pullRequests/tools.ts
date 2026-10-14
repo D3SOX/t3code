@@ -334,7 +334,7 @@ const WatchPullRequestTool = Tool.make("watch_pull_request", {
 
 const UnwatchPullRequestTool = Tool.make("unwatch_pull_request", {
   description:
-    "Stop T3 Code from watching a pull request for this thread. The pull request stays linked. Pass the URL, or repository plus number.",
+    "Stop T3 Code from watching a pull request for this thread when monitoring is complete or the user asks you to stop. This disables automatic wakes. If a running review blocks a pending push or review response, keep watching and end your turn instead. An external-review-only waiting exception applies after pending fixes have been pushed and actionable feedback has been handled. The pull request stays linked. Pass the URL, or repository plus number.",
   parameters: PullRequestTargetInput,
   success: WatchPullRequestResult,
   failure: PullRequestToolError,
