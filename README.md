@@ -68,15 +68,19 @@ sudo pacman-key --add t3code-d3sox.asc
 sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D
 ```
 
-Add this repository to `/etc/pacman.conf`:
+Configure the repository and install the package:
 
-```ini
+```bash
+grep -q '^[[:space:]]*\[t3code-d3sox\][[:space:]]*$' /etc/pacman.conf || sudo tee -a /etc/pacman.conf >/dev/null <<'REPO'
+
 [t3code-d3sox]
 SigLevel = Required
 Server = https://t3code.d3sox.me/arch/$arch
+REPO
+sudo pacman -Syu t3code-d3sox-git
 ```
 
-Then run `sudo pacman -Syu t3code-d3sox-git`. The repository keeps the newest x86_64 package; older builds remain in [GitHub Releases](https://github.com/D3SOX/t3code/releases). The package conflicts with `t3code-bin`, so pacman will ask to replace it.
+The command adds the repository only if it is missing. Keep the quoted `REPO` marker so `$arch` reaches pacman literally. Future nightly updates arrive with your normal pacman updates. The repository keeps the newest x86_64 package; older builds remain in [GitHub Releases](https://github.com/D3SOX/t3code/releases). The package conflicts with `t3code-bin`, so pacman will ask to replace it.
 
 To build the rolling [`t3code-d3sox-git`](./packaging/aur/t3code-d3sox-git) package yourself instead, use this checkout:
 
