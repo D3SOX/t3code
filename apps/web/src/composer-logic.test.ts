@@ -26,6 +26,7 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
+  shouldHandleComposerMenuKey,
 } from "./composer-logic";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
 import { formatTerminalContextReference } from "./lib/terminalContext";
@@ -353,6 +354,67 @@ describe("composerSubmissionIntentForKey", () => {
     { event: { ...enter, repeat: true } },
   ])("does not submit with %j", (override) => {
     expect(composerSubmissionIntentForKey({ ...input, event: enter, ...override })).toBeNull();
+  });
+});
+
+describe("composer suggestion keyboard priority", () => {
+  const input = {
+    keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    platform: "Linux",
+    isMobileViewport: false,
+    prompt: "$dependa",
+  };
+  const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
+
+  it.each([true, false])(
+    "accepts a selected skill before submitting a new thread with background preference %s",
+    (startThreadsInBackground) => {
+      const trigger = detectComposerTrigger(input.prompt, input.prompt.length);
+      expect(trigger?.kind).toBe("skill");
+      const intent = composerSubmissionIntentForKey({
+        ...input,
+        event: enter,
+        isDraftThread: true,
+        startThreadsInBackground,
+      });
+      expect(intent).toBe(startThreadsInBackground ? "background" : "foreground");
+      expect(shouldHandleComposerMenuKey(enter, intent)).toBe(true);
+    },
+  );
+
+  it.each([false, true])("accepts Enter in an existing thread with running=%s", (isRunning) => {
+    const intent = composerSubmissionIntentForKey({
+      ...input,
+      event: enter,
+      isDraftThread: false,
+      isRunning,
+    });
+    expect(shouldHandleComposerMenuKey(enter, intent)).toBe(true);
+  });
+
+  it("keeps explicit background and alternate submission shortcuts", () => {
+    for (const isDraftThread of [true, false]) {
+      const event = { ...enter, ctrlKey: true, altKey: true };
+      const intent = composerSubmissionIntentForKey({ ...input, event, isDraftThread });
+      expect(intent).toBe("background");
+      expect(shouldHandleComposerMenuKey(event, intent)).toBe(false);
+    }
+    const event = { ...enter, ctrlKey: true };
+    const intent = composerSubmissionIntentForKey({
+      ...input,
+      event,
+      isDraftThread: false,
+      isRunning: true,
+    });
+    expect(intent).toBe("alternate");
+    expect(shouldHandleComposerMenuKey(event, intent)).toBe(false);
+  });
+
+  it.each(["Tab", "ArrowUp", "ArrowDown"])("keeps %s available to the picker", (key) => {
+    const event = { ...enter, key };
+    const intent = composerSubmissionIntentForKey({ ...input, event, isDraftThread: true });
+    expect(intent).toBeNull();
+    expect(shouldHandleComposerMenuKey(event, intent)).toBe(true);
   });
 });
 

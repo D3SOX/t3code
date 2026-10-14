@@ -17,6 +17,16 @@ export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "s
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
+export function shouldHandleComposerMenuKey(
+  event: ShortcutEventLike,
+  submissionIntent: ComposerSubmissionIntent | null,
+): boolean {
+  // Plain Enter accepts suggestions even when new threads start in the background.
+  const isPlainEnter =
+    event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+  return isPlainEnter || submissionIntent === null || submissionIntent === "foreground";
+}
+
 export function isQueuedComposerDispatchMode(mode: ComposerDispatchMode): boolean {
   return mode === "queue" || mode === "next-tool";
 }

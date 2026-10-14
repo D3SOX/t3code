@@ -86,6 +86,7 @@ import {
   expandCollapsedComposerCursor,
   formatAssistantCitationForComposer,
   replaceTextRange,
+  shouldHandleComposerMenuKey,
 } from "../../composer-logic";
 import {
   ACTIVE_COMPOSER_PLACEHOLDER,
@@ -4540,7 +4541,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerMenuOpenRef.current = false;
       return true;
     }
-    if (menuIsActive && (submissionIntent === null || submissionIntent === "foreground")) {
+    if (menuIsActive && shouldHandleComposerMenuKey(event, submissionIntent)) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
       if (key === "ArrowDown" && currentItems.length > 0) {
