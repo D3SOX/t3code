@@ -2,6 +2,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   type AssetUrlState,
   assetUrlStateFromResult,
+  blockedAssetUrlState,
   EMPTY_ASSET_URL_ATOM,
   isMutableAssetResource,
   resolveAssetUrl,
@@ -25,21 +26,21 @@ export function useAssetUrlState(
   const registry = useContext(RegistryContext);
   const fileAccess = useFilesystemReadAccess(environmentId);
   const mutableResource = isMutableAssetResource(resource);
-  const canReadResource = fileAccess.canReadFiles || !mutableResource;
+  const blocked = blockedAssetUrlState(resource, fileAccess);
   const preparedConnection = usePreparedConnection(environmentId);
   const query =
-    !canReadResource || environmentId === null || resource === null
+    blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
       : assetEnvironment.createUrl({ environmentId, input: { resource } });
   const result = useAtomValue(query);
   useEffect(() => {
-    if (!canReadResource || !mutableResource) return;
+    if (blocked !== null || !mutableResource) return;
     const cached = registry.get(query);
     // A new image occurrence must not inherit another message's cached file version.
     // An in-flight request already supplies a fresh URL, so leave it alone.
     if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
-  }, [canReadResource, mutableResource, query, registry]);
-  if (!canReadResource) return { _tag: fileAccess.isPending ? "Loading" : "Failure" };
+  }, [blocked, mutableResource, query, registry]);
+  if (blocked !== null) return blocked;
   return assetUrlStateFromResult(
     result,
     preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null,
