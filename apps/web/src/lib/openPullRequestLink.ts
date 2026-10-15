@@ -126,11 +126,13 @@ export function findProjectOnChangeRequestHost(
  * should still be reading it afterwards. Any change request opens there, not only the thread's
  * own, since the panel is told which one to show.
  */
+/** Cmd/Ctrl-click and middle-click send a pull request to the browser instead of the panel. */
 export function shouldOpenPullRequestExternally(
-  event: Pick<MouseEvent<HTMLElement>, "metaKey" | "ctrlKey">,
+  event: Pick<MouseEvent<HTMLElement>, "metaKey" | "ctrlKey"> &
+    Partial<Pick<MouseEvent<HTMLElement>, "button">>,
   preference: "system" | "app" = "app",
 ): boolean {
-  return event.metaKey || event.ctrlKey || preference === "system";
+  return event.metaKey || event.ctrlKey || event.button === 1 || preference === "system";
 }
 
 export function useOpenChangeRequestLink(
@@ -257,11 +259,13 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
   const linkTarget = useClientSettings((settings) => settings.pullRequestLinkTarget);
   return useCallback(
     (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
+      // Buttons also pass this to onAuxClick for middle-click; a right-click is not an open.
+      if (event.button > 1) return false;
       event.stopPropagation();
       const openInBrowser = shouldOpenPullRequestExternally(event, linkTarget);
       const isAnchor =
         event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
-      // A real link already knows how to cmd/ctrl+click. Leave its default
+      // A real link already knows how to cmd/ctrl/middle-click. Leave its default
       // action alone so the browser (or Electron's window-open handler) opens
       // the host. Buttons have no href, so they still go through openExternal.
       if (openInBrowser && isAnchor) return false;
