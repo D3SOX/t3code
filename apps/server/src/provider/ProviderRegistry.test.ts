@@ -169,6 +169,10 @@ type TestClaudeCapabilities = {
   readonly apiKeySource: string | undefined;
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+  readonly usage?: {
+    readonly rate_limits_available: boolean;
+    readonly rate_limits: null;
+  };
 };
 
 function claudeCapabilities(overrides: Partial<TestClaudeCapabilities> = {}) {
@@ -3129,6 +3133,36 @@ it.layer(
   // ── checkClaudeProviderStatus tests ──────────────────────────
 
   describe("checkClaudeProviderStatus", () => {
+    it.effect("recovers subscription limits when the SDK returns null usage", () =>
+      Effect.gen(function* () {
+        const status = yield* checkClaudeProviderStatus(
+          defaultClaudeSettings,
+          claudeCapabilities({
+            subscriptionType: "max",
+            usage: { rate_limits_available: true, rate_limits: null },
+          }),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          () =>
+            Effect.succeed({
+              response: {
+                rate_limits_available: true,
+                rate_limits: { five_hour: { utilization: 6, resets_at: null } },
+              },
+              resetCredits: undefined,
+            }),
+        );
+        assert.deepStrictEqual(
+          status.usageLimits?.windows.map(({ id, usedPercent }) => ({ id, usedPercent })),
+          [{ id: "five_hour", usedPercent: 6 }],
+        );
+      }).pipe(
+        Effect.provide(layerMockSpawner(() => ({ stdout: "2.1.301\n", stderr: "", code: 0 }))),
+      ),
+    );
+
     it.effect("returns ready when claude is installed and authenticated", () =>
       Effect.gen(function* () {
         const status = yield* checkClaudeProviderStatus(
@@ -3320,7 +3354,11 @@ it.layer(
             undefined,
             undefined,
             undefined,
-            () => Effect.succeed({ availableCount: 2 }),
+            () =>
+              Effect.succeed({
+                response: { rate_limits_available: true, rate_limits: {} },
+                resetCredits: { availableCount: 2 },
+              }),
           );
         const subscription = yield* check({ subscriptionType: "max" });
         const bedrock = yield* check({ apiProvider: "bedrock" });

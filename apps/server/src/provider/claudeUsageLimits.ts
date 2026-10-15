@@ -15,6 +15,7 @@ import type {
   ProviderUsageLimitsUpdate,
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
+  ServerProviderResetCredits,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -29,6 +30,11 @@ import {
 
 const SESSION_MINS = 5 * 60;
 const WEEK_MINS = 7 * 24 * 60;
+
+export interface ClaudeSubscriptionUsage {
+  readonly response: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
+  readonly resetCredits: ServerProviderResetCredits | undefined;
+}
 
 /**
  * The account-wide windows, keyed by the SDK's `rateLimitType`. Model-scoped
@@ -161,7 +167,10 @@ export function claudeUsageResponseToLimits(input: {
   const { response, checkedAt } = input;
   if (!response.rate_limits_available || !response.rate_limits) {
     return {
-      limits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }),
+      limits: makeUnavailableUsageLimits({
+        checkedAt,
+        reason: response.rate_limits_available ? "probeFailed" : "unsupported",
+      }),
       names: { overageIncluded: undefined },
     };
   }

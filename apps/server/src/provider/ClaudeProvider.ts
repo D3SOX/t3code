@@ -3,7 +3,6 @@ import {
   type ModelCapabilities,
   type ServerProvider,
   type ServerProviderSlashCommand,
-  type ServerProviderResetCredits,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -41,6 +40,7 @@ import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/dr
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
   type ClaudeScopedLimitNames,
+  type ClaudeSubscriptionUsage,
   claudeUsageResponseToLimits,
   recordClaudeUsageResponse,
 } from "./claudeUsageLimits.ts";
@@ -283,8 +283,8 @@ type ClaudeCapabilitiesProbe = {
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
   /**
    * Subscription windows from the SDK's `get_usage` control request, or
-   * `undefined` when the request itself failed. Absent windows on an
-   * otherwise successful response mean the account has none (API key).
+   * `undefined` when the request itself failed. `rate_limits_available`
+   * distinguishes unsupported accounts from missing subscription data.
    */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
 };
@@ -505,8 +505,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
   /** Shared with the adapter so turn events reuse the scoped-bucket names this probe saw. */
   scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>,
-  /** Banked resets for a subscription login, given the CLI version for the user agent. */
-  resolveResetCredits?: (version: string) => Effect.Effect<ServerProviderResetCredits | undefined>,
+  /** Limits and banked resets for a subscription login, using the CLI's user agent. */
+  resolveSubscriptionUsage?: (
+    version: string,
+  ) => Effect.Effect<ClaudeSubscriptionUsage | undefined>,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -662,21 +664,25 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
     }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
-  const usageLimits = !capabilities.usage
+  const subscriptionUsage =
+    resolveSubscriptionUsage &&
+    capabilities.subscriptionType &&
+    capabilities.usage?.rate_limits_available !== false &&
+    parsedVersion
+      ? yield* resolveSubscriptionUsage(parsedVersion)
+      : undefined;
+  const usage = capabilities.usage?.rate_limits
+    ? capabilities.usage
+    : (subscriptionUsage?.response ?? capabilities.usage);
+  const usageLimits = !usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
       ? yield* recordClaudeUsageResponse(scopedLimitNames, {
-          response: capabilities.usage,
+          response: usage,
           checkedAt,
         })
-      : claudeUsageResponseToLimits({ response: capabilities.usage, checkedAt }).limits;
-  const resetCredits =
-    resolveResetCredits &&
-    capabilities.subscriptionType &&
-    !usageLimits.unavailable &&
-    parsedVersion
-      ? yield* resolveResetCredits(parsedVersion)
-      : undefined;
+      : claudeUsageResponseToLimits({ response: usage, checkedAt }).limits;
+  const resetCredits = subscriptionUsage?.resetCredits;
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,

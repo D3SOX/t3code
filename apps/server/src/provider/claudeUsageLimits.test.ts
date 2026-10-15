@@ -6,6 +6,15 @@ const checkedAt = "2026-07-18T10:00:00.000Z";
 const noNames = { overageIncluded: undefined } as const;
 
 describe("claudeUsageResponseToLimits", () => {
+  it("treats missing subscription windows as a failed probe, not an unsupported account", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: { rate_limits_available: true, rate_limits: null },
+      }).limits,
+    ).toEqual({ checkedAt, windows: [], unavailable: { reason: "probeFailed" } });
+  });
+
   it("maps the session, weekly, and model-scoped weekly windows", () => {
     expect(
       claudeUsageResponseToLimits({

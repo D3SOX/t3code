@@ -90,8 +90,8 @@ describe("claudeResetCreditsToContract", () => {
   });
 });
 
-effectIt.layer(NodeServices.layer)("readClaudeResetCredits", (it) => {
-  it.effect("reads the grants with the CLI's request", () =>
+effectIt.layer(NodeServices.layer)("readClaudeSubscriptionUsage", (it) => {
+  it.effect("reads the usage windows and grants with one CLI-shaped request", () =>
     Effect.gen(function* () {
       const { configDir } = yield* writeLogin;
       const client = HttpClient.make((request) => {
@@ -105,27 +105,36 @@ effectIt.layer(NodeServices.layer)("readClaudeResetCredits", (it) => {
           HttpClientResponse.fromWeb(
             request,
             Response.json({
+              five_hour: { utilization: 6, resets_at: null },
+              seven_day: { utilization: 33, resets_at: "2026-10-18T06:00:00Z" },
               cedar_ember: { eligible: true, next_grant_id: "grant_a", grants: [grant({})] },
             }),
           ),
         );
       });
-      const credits = yield* ClaudeResetCredits.readClaudeResetCredits(configDir, "2.1.0").pipe(
+      const result = yield* ClaudeResetCredits.readClaudeSubscriptionUsage(configDir, "2.1.0").pipe(
         Effect.provideService(HostProcess.Platform, "linux"),
         Effect.provideService(HttpClient.HttpClient, client),
       );
-      expect(credits).toEqual({ availableCount: 1, nextCreditId: "grant_a" });
+      expect(result?.resetCredits).toEqual({ availableCount: 1, nextCreditId: "grant_a" });
+      expect(result?.response.rate_limits).toMatchObject({
+        five_hour: { utilization: 6, resets_at: null },
+        seven_day: { utilization: 33, resets_at: "2026-10-18T06:00:00Z" },
+      });
     }),
   );
 
   it.effect("reads nothing from keychain logins or failed requests", () =>
     Effect.gen(function* () {
       const { configDir } = yield* writeLogin;
-      const darwin = yield* ClaudeResetCredits.readClaudeResetCredits(configDir, "2.1.0").pipe(
+      const darwin = yield* ClaudeResetCredits.readClaudeSubscriptionUsage(configDir, "2.1.0").pipe(
         Effect.provideService(HostProcess.Platform, "darwin"),
         Effect.provideService(HttpClient.HttpClient, refuseRequests),
       );
-      const limited = yield* ClaudeResetCredits.readClaudeResetCredits(configDir, "2.1.0").pipe(
+      const limited = yield* ClaudeResetCredits.readClaudeSubscriptionUsage(
+        configDir,
+        "2.1.0",
+      ).pipe(
         Effect.provideService(HostProcess.Platform, "linux"),
         Effect.provideService(HttpClient.HttpClient, respond(429, {})),
       );

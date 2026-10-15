@@ -19,6 +19,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import type { ClaudeSubscriptionUsage } from "./claudeUsageLimits.ts";
 
 const API_BASE = "https://api.anthropic.com";
 const PROGRAM = "cedar_ember";
@@ -47,7 +48,23 @@ const CedarEmber = Schema.Struct({
   grants: Schema.optional(Schema.Array(Schema.Unknown)),
   next_grant_id: Schema.optional(Schema.NullOr(Schema.String)),
 });
+const UsageWindow = Schema.Struct({
+  utilization: Schema.NullOr(Schema.Number),
+  resets_at: Schema.NullOr(Schema.String),
+});
 const UsageResponse = Schema.Struct({
+  five_hour: Schema.optionalKey(Schema.NullOr(UsageWindow)),
+  seven_day: Schema.optionalKey(Schema.NullOr(UsageWindow)),
+  model_scoped: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          display_name: Schema.String,
+          ...UsageWindow.fields,
+        }),
+      ),
+    ),
+  ),
   cedar_ember: Schema.optional(Schema.NullOr(Schema.Unknown)),
 });
 const decodeCedarEmber = Schema.decodeUnknownOption(CedarEmber);
@@ -163,10 +180,10 @@ const withClaudeHeaders = (token: string, version: string) =>
   });
 
 /**
- * Reads the banked resets for the login in `configDir`. Any failure reads as
- * "no resets" so the usage bars never break on this optional extra.
+ * Reads limits and banked resets for the login in `configDir` in one request.
+ * Limits also recover SDK responses that claim support but return no windows.
  */
-export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
+export const readClaudeSubscriptionUsage = Effect.fn("readClaudeSubscriptionUsage")(
   function* (configDir: string, version: string) {
     const token = yield* readAccessToken(configDir);
     if (!token) return undefined;
@@ -179,10 +196,23 @@ export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
     const body = yield* HttpClientResponse.schemaBodyJson(UsageResponse)(
       yield* HttpClientResponse.filterStatusOk(response),
     );
-    return claudeResetCreditsToContract(
-      body.cedar_ember,
-      DateTime.toEpochMillis(yield* DateTime.now),
-    );
+    return {
+      response: {
+        rate_limits_available: true,
+        rate_limits:
+          body.five_hour || body.seven_day || body.model_scoped?.length
+            ? {
+                ...(body.five_hour !== undefined ? { five_hour: body.five_hour } : {}),
+                ...(body.seven_day !== undefined ? { seven_day: body.seven_day } : {}),
+                ...(body.model_scoped ? { model_scoped: [...body.model_scoped] } : {}),
+              }
+            : null,
+      },
+      resetCredits: claudeResetCreditsToContract(
+        body.cedar_ember,
+        DateTime.toEpochMillis(yield* DateTime.now),
+      ),
+    } satisfies ClaudeSubscriptionUsage;
   },
   Effect.timeout("10 seconds"),
   Effect.orElseSucceed(() => undefined),
