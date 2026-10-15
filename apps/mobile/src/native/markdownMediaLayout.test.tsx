@@ -75,6 +75,31 @@ afterEach(async () => {
 });
 
 describe("native markdown image reservation", () => {
+  it("reserves the portrait height when shadow and mounted widths round differently", async () => {
+    // Pixel at 350 dpi with 3.5-point message padding: the shadow width is
+    // 421.49 points, while the mounted native view reports 422.4 points.
+    await act(() => {
+      media.nativeProps.onMediaLayout(
+        nativeEvent({ revision: 1, frames: [{ ...frame, width: 422.4 }] }),
+      );
+    });
+    await act(() => measure(media.slots[0] as Slot, 504.23, 422.4));
+
+    expect(media.nativeProps.mediaOverrides[0]).toMatchObject({
+      height: 504.23,
+      // Zero tells native to use the validated height at either rounded width.
+      width: 0,
+    });
+
+    // A real width change still discards that height until React measures again.
+    await act(() => {
+      media.nativeProps.onMediaLayout(
+        nativeEvent({ revision: 1, frames: [{ ...frame, width: 280 }] }),
+      );
+    });
+    expect(media.nativeProps.mediaOverrides[0]?.height).toBe(1);
+  });
+
   it("updates reserved height when an image finishes loading", async () => {
     const slot = media.slots[0] as Slot;
     await act(() => measure(slot, 200));
