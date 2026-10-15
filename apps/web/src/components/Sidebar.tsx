@@ -4331,66 +4331,61 @@ export default function Sidebar() {
   );
 
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
-  const handleSettledContextMenu = useCallback(
-    async (position: { x: number; y: number }) => {
-      const api = readLocalApi();
-      if (!api) return;
-      const targets = settledThreads.map((thread) =>
-        scopeThreadRef(thread.environmentId, thread.id),
-      );
-      const clicked = await settlePromise(() =>
-        api.contextMenu.show(
-          [
-            {
-              id: "archive-all",
-              label: `Archive all (${targets.length})`,
-              disabled:
-                targets.length === 0 ||
-                !canOperateThreads(settledThreads) ||
-                settledThreads.some((thread) => !threadRuntimeCanArchive(thread.runtime)),
-            },
-          ],
-          position,
-        ),
-      );
-      if (
-        clicked._tag === "Failure" ||
-        clicked.value !== "archive-all" ||
-        !checkThreadOperations(settledThreads)
-      )
-        return;
-      const failure = await archiveSettledThreadEntries({
-        entries: targets,
-        confirm: async (count) => {
-          const result = await settlePromise(() =>
-            api.dialogs.confirm(`Archive all ${count} settled thread${count === 1 ? "" : "s"}?`),
-          );
-          return result._tag === "Success" && result.value;
-        },
-        archive: async (threadRef) => {
-          // The set is captured before confirmation; newly settled threads are
-          // excluded, and threads that wake while the dialog is open are kept.
-          if (!settledThreadKeysRef.current.has(scopedThreadKey(threadRef))) return null;
-          const current = readThreadShell(threadRef);
-          if (!current || !checkThreadOperations([current])) return null;
-          return archiveThread(threadRef, {
-            onArchived: () => removeFromSelection([scopedThreadKey(threadRef)]),
-          });
-        },
-      });
-      if (failure !== null && !isAtomCommandInterrupted(failure)) {
-        const error = squashAtomCommandFailure(failure);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not archive all settled threads",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
+  const handleSettledContextMenu = useStableCallback(async (position: { x: number; y: number }) => {
+    const api = readLocalApi();
+    if (!api) return;
+    const targets = settledThreads.map((thread) => scopeThreadRef(thread.environmentId, thread.id));
+    const clicked = await settlePromise(() =>
+      api.contextMenu.show(
+        [
+          {
+            id: "archive-all",
+            label: `Archive all (${targets.length})`,
+            disabled:
+              targets.length === 0 ||
+              !canOperateThreads(settledThreads) ||
+              settledThreads.some((thread) => !threadRuntimeCanArchive(thread.runtime)),
+          },
+        ],
+        position,
+      ),
+    );
+    if (
+      clicked._tag === "Failure" ||
+      clicked.value !== "archive-all" ||
+      !checkThreadOperations(settledThreads)
+    )
+      return;
+    const failure = await archiveSettledThreadEntries({
+      entries: targets,
+      confirm: async (count) => {
+        const result = await settlePromise(() =>
+          api.dialogs.confirm(`Archive all ${count} settled thread${count === 1 ? "" : "s"}?`),
         );
-      }
-    },
-    [settledThreads, archiveThread, removeFromSelection],
-  );
+        return result._tag === "Success" && result.value;
+      },
+      archive: async (threadRef) => {
+        // The set is captured before confirmation; newly settled threads are
+        // excluded, and threads that wake while the dialog is open are kept.
+        if (!settledThreadKeysRef.current.has(scopedThreadKey(threadRef))) return null;
+        const current = readThreadShell(threadRef);
+        if (!current || !checkThreadOperations([current])) return null;
+        return archiveThread(threadRef, {
+          onArchived: () => removeFromSelection([scopedThreadKey(threadRef)]),
+        });
+      },
+    });
+    if (failure !== null && !isAtomCommandInterrupted(failure)) {
+      const error = squashAtomCommandFailure(failure);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not archive all settled threads",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    }
+  });
   const handleMultiSelectContextMenu = useStableCallback(
     async (position: { x: number; y: number }) => {
       const api = readLocalApi();
