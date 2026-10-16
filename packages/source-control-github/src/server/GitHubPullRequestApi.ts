@@ -1357,6 +1357,11 @@ export const make = Effect.gen(function* () {
           })
           .pipe(
             graphql({ ...input, operation, allowReserve }),
+            Effect.filterOrFail(
+              (result) => !result.repository?.pullRequest?.baseRef?.rules?.pageInfo.hasNextPage,
+              () =>
+                readError(input.cwd, operation, new Error("Required checks read is incomplete.")),
+            ),
             Effect.map(toPullRequestCore),
             Effect.flatMap(found({ ...input, operation })),
             // Past a hundred checks the first page would let the rest imply success, so the whole

@@ -14,7 +14,7 @@ export function useEnvironmentIdentification() {
   const stage = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   return {
     mode,
-    artworkStage: mode === "artwork" && stage !== "Alpha" ? stage : null,
+    artworkStage: mode === "artwork" && stage !== "Beta" ? stage : null,
     isReady: AsyncResult.isSuccess(preferences),
     savePreferences,
   };

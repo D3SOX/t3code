@@ -495,7 +495,7 @@ export function useThreadComposerState() {
         },
       });
       if (result._tag !== "Success") {
-        Alert.alert("Could not cancel the edit", "Try again after reconnecting.");
+        Dialog.alert("Could not cancel the edit", "Try again after reconnecting.");
         return;
       }
       endQueuedRunEdit(selectedThreadKey);

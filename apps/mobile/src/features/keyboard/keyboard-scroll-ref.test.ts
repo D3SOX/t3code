@@ -13,6 +13,13 @@ const babel = require(
   transformFileSync: (file: string, options: Record<string, unknown>) => { code: string };
 };
 
+const compile = (file: string) =>
+  babel.transformFileSync(NodePath.join(packageRoot, file), {
+    configFile: NodePath.resolve(import.meta.dirname, "../../..", "babel.config.js"),
+    envName: "production",
+    caller: { name: "metro", platform: "android", isDev: false, supportsStaticESM: false },
+  }).code;
+
 describe("keyboard chat scroll correction", () => {
   it.each([true, false])("handles the UI-runtime animated ref (mounted: %s)", (mounted) => {
     const dispatchScroll = vi.fn();
@@ -23,49 +30,53 @@ describe("keyboard chat scroll correction", () => {
         useExtraContentPadding?: (options: Record<string, unknown>) => void;
       };
     } = { exports: {} };
-    const compiled = babel.transformFileSync(
-      NodePath.join(
-        packageRoot,
-        "src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts",
-      ),
+    const reanimated = {
+      useAnimatedReaction: (_prepare: unknown, reaction: typeof reactToPadding) => {
+        reactToPadding = reaction;
+      },
+      scrollTo: (ref: { value: unknown }, ...args: unknown[]) => {
+        if (ref.value) dispatchScroll(...args);
+      },
+    };
+    NodeVM.runInNewContext(
+      compile("src/components/KeyboardChatScrollView/useExtraContentPadding/index.ts"),
       {
-        configFile: NodePath.resolve(import.meta.dirname, "../../..", "babel.config.js"),
-        envName: "production",
-        caller: { name: "metro", platform: "android", isDev: false, supportsStaticESM: false },
+        module,
+        exports: module.exports,
+        requestAnimationFrame: (frame: () => void) => frames.push(frame),
+        require: (name: string) => {
+          if (name.startsWith("@babel/runtime/")) return require(name);
+          switch (name) {
+            case "react":
+              return { useCallback: (callback: unknown) => callback };
+            case "react-native":
+              return { Platform: { OS: "android" } };
+            case "react-native-reanimated":
+            case "../../../reanimated":
+              return reanimated;
+            case "../../utils/safeScrollTo": {
+              const helper = { exports: {} };
+              NodeVM.runInNewContext(compile("src/components/utils/safeScrollTo.ts"), {
+                module: helper,
+                exports: helper.exports,
+                require: (name: string) => {
+                  if (name.startsWith("@babel/runtime/")) return require(name);
+                  if (name === "react-native-reanimated") return reanimated;
+                  throw new Error(`Unexpected helper dependency: ${name}`);
+                },
+              });
+              return helper.exports;
+            }
+            case "../../../architecture":
+              return { IS_FABRIC: true };
+            case "../useChatKeyboard/helpers":
+              return { isScrollAtEnd: () => true, shouldShiftContent: () => true };
+            default:
+              throw new Error(`Unexpected dependency: ${name}`);
+          }
+        },
       },
-    ).code;
-    NodeVM.runInNewContext(compiled, {
-      module,
-      exports: module.exports,
-      requestAnimationFrame: (frame: () => void) => frames.push(frame),
-      require: (name: string) => {
-        if (name.startsWith("@babel/runtime/")) return require(name);
-        switch (name) {
-          case "react":
-            return { useCallback: (callback: unknown) => callback };
-          case "react-native":
-            return { Platform: { OS: "android" } };
-          case "react-native-reanimated":
-          case "../../../reanimated":
-            return {
-              useAnimatedReaction: (_prepare: unknown, reaction: typeof reactToPadding) => {
-                reactToPadding = reaction;
-              },
-              // Reanimated 4.7 serializes native animated refs as UI-runtime
-              // shareable objects. Its scrollTo checks .value before dispatch.
-              scrollTo: (ref: { value: unknown }, ...args: unknown[]) => {
-                if (ref.value) dispatchScroll(...args);
-              },
-            };
-          case "../../../architecture":
-            return { IS_FABRIC: true };
-          case "../useChatKeyboard/helpers":
-            return { isScrollAtEnd: () => true, shouldShiftContent: () => true };
-          default:
-            throw new Error(`Unexpected dependency: ${name}`);
-        }
-      },
-    });
+    );
     module.exports.useExtraContentPadding!({
       scrollViewRef: { value: mounted ? {} : null },
       extraContentPadding: { value: 100 },

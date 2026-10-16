@@ -1144,9 +1144,9 @@ export interface GitHubPullRequestCore extends GitHubPullRequestDetail {
 // The commit rollup omits dependent jobs until they start. Branch protection still requires
 // them, so materialize pending checks before deduplication and computing the rollup state.
 function withRequiredCheckContexts(
-  checks: ReadonlyArray<Schema.Schema.Type<typeof RawCheckSchema>> | null | undefined,
+  checks: ReadonlyArray<GitHubCheckContext> | null | undefined,
   required: ReadonlyArray<string>,
-): ReadonlyArray<Schema.Schema.Type<typeof RawCheckSchema>> {
+): ReadonlyArray<GitHubCheckContext> {
   const requiredNames = new Set(required);
   const present = new Set<string>();
   const marked = (checks ?? []).map((check) => {
@@ -1179,7 +1179,6 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
   const repository = result.repository;
   const pr = repository?.pullRequest;
   if (repository == null || pr == null) return null;
-  if (pr.baseRef?.rules?.pageInfo.hasNextPage) return null;
   const contexts = nodesOf(pr.commits)[0]?.commit.statusCheckRollup?.contexts;
   const requiredCheckContexts = [
     ...new Set([
@@ -1190,7 +1189,7 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
           : [],
       ),
     ]),
-  ];
+  ].filter((name) => name !== null);
   return {
     reviewRequestTeams: nodesOf(pr.reviewRequests).flatMap(
       ({ requestedReviewer }) => toRequestedTeam(requestedReviewer) ?? [],
@@ -1250,20 +1249,8 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
 /** A detail as a REST pull request names it, for the provider's tests and fixtures. */
 export function decodePullRequestDetailJson(
   raw: string,
-  requiredCheckContexts: ReadonlyArray<string> = [],
 ): Result.Result<GitHubPullRequestDetail, DecodeFailure> {
-  const decoded = decodeDetail(raw);
-  return Result.isSuccess(decoded)
-    ? Result.succeed(
-        toDetail({
-          ...decoded.success,
-          statusCheckRollup: withRequiredCheckContexts(
-            decoded.success.statusCheckRollup,
-            requiredCheckContexts,
-          ),
-        }),
-      )
-    : Result.fail(decoded.failure);
+  return Result.map(decodeDetail(raw), toDetail);
 }
 
 export interface GitHubWorkflowRunPage {

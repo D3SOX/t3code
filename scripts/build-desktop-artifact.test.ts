@@ -500,7 +500,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       const { allowBuilds = {} } = yield* readWorkspaceConfig();
       const repoRoot = path.join(import.meta.dirname, "..");
       for (const key of Object.keys(allowBuilds)) {
-        const tarball = key.split("@file:")[1];
+        const tarball = key.split("@file:")[1]?.split("(patch_hash=")[0];
         if (tarball === undefined) continue;
         assert.isTrue(
           yield* fs.exists(path.join(repoRoot, tarball)),

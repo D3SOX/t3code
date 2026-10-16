@@ -60,7 +60,7 @@ const coreResponse = (pullRequest: Readonly<Record<string, unknown>> = {}) => ({
         viewerCanUpdate: true,
         viewerDidAuthor: false,
         viewerCanUpdateBranch: true,
-        baseRef: { compare: { behindBy: 2 } },
+        baseRef: { compare: { behindBy: 2 }, branchProtectionRule: null },
         reviewRequests: { nodes: [] },
         labels: { nodes: [] },
         commits: { nodes: [] },
@@ -2321,7 +2321,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
           headRefOid: "abc123",
           isMergeQueueEnabled: false,
           mergeStateStatus: "BLOCKED",
-          baseRef: { compare: { behindBy: 2 } },
+          baseRef: { compare: { behindBy: 2 }, branchProtectionRule: null },
           ...pullRequest,
         },
       },
@@ -4212,14 +4212,18 @@ layer("GitHubPullRequestApi.layer", (it) => {
         ];
         const checks = (mode === "no runs" ? [] : required)
           .slice(1)
-          .map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS", isRequired: true }));
+          .map((name) =>
+            checkRun({ name, status: "COMPLETED", conclusion: "SUCCESS", isRequired: true }),
+          );
         if (mode === "wrong app")
-          checks.push({
-            name: "e2e",
-            status: "COMPLETED",
-            conclusion: "SUCCESS",
-            isRequired: false,
-          });
+          checks.push(
+            checkRun({
+              name: "e2e",
+              status: "COMPLETED",
+              conclusion: "SUCCESS",
+              isRequired: false,
+            }),
+          );
         const response = coreResponse({
           baseRef: {
             compare: { behindBy: 0 },
@@ -4231,6 +4235,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
                   ? [
                       {
                         parameters: {
+                          __typename: "RequiredStatusChecksParameters",
                           requiredStatusChecks: required.map((context) => ({ context })),
                         },
                       },
@@ -4309,12 +4314,14 @@ layer("GitHubPullRequestApi.layer", (it) => {
                         commit: {
                           statusCheckRollup: {
                             contexts: {
-                              nodes: required.map((name) => ({
-                                name,
-                                status: "COMPLETED",
-                                conclusion: "SUCCESS",
-                                isRequired: true,
-                              })),
+                              nodes: required.map((name) =>
+                                checkRun({
+                                  name,
+                                  status: "COMPLETED",
+                                  conclusion: "SUCCESS",
+                                  isRequired: true,
+                                }),
+                              ),
                               pageInfo: { hasNextPage: false },
                             },
                           },

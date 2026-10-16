@@ -25,15 +25,15 @@ export function CompactBrandTitle(
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
   const { mode } = useEnvironmentIdentification();
-  const artworkStage = mode === "artwork" && stageLabel !== "Alpha" ? stageLabel : null;
-  const showPill = mode === "pill" && stageLabel !== "Alpha";
+  const artworkStage = mode === "artwork" && stageLabel !== "Beta" ? stageLabel : null;
+  const showPill = mode === "pill" && stageLabel !== "Beta";
 
   return (
     <View
       aria-level={1}
       accessibilityLabel={
         props.accessibilityLabel ??
-        `T3 Code (D3SOX), Threads${mode !== "none" && stageLabel !== "Alpha" ? `, ${stageLabel}` : ""}`
+        `T3 Code (D3SOX), Threads${mode !== "none" && stageLabel !== "Beta" ? `, ${stageLabel}` : ""}`
       }
       accessible
       role="heading"

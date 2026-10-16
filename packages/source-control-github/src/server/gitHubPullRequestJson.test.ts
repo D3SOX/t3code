@@ -11,7 +11,7 @@ import {
   toPullRequestSummary,
   toPullRequestWatchFingerprint,
   decodePullRequestDetailJson,
-  decodePullRequestCheckContextsJson,
+  toPullRequestCheckContextsPage,
   pullRequestChecksFromContexts,
   decodePullRequestFilesJson,
   decodePullRequestStacksJson,
@@ -36,6 +36,7 @@ import {
   LabelCandidates,
   PullRequestActivity,
   PullRequestCore,
+  PullRequestCheckContexts,
   PullRequestFilesViewed,
   PullRequestNodeId,
   ReviewerCandidates,
@@ -106,6 +107,10 @@ const decodePullRequestActivityJson = through(
   toPullRequestActivityPage,
 );
 const decodePullRequestCoreJson = through(PullRequestCore.result, toPullRequestCore);
+const decodePullRequestCheckContextsJson = through(
+  PullRequestCheckContexts.result,
+  toPullRequestCheckContextsPage,
+);
 /**
  * Fills in what every review read answers with, so each fixture below says only what it is about:
  * a page with no more after it, an actor typed as a person, no reactions, no edits.
@@ -753,11 +758,7 @@ describe("pull request detail decoding", () => {
       };
       const decode = (checks: ReadonlyArray<typeof older>) => {
         if (source === "detail") {
-          return expectSuccess(
-            decodePullRequestDetailJson(
-              JSON.stringify({ ...JSON.parse(detailJson), statusCheckRollup: checks }),
-            ),
-          );
+          return detailOf(checks.map(check));
         }
         const page = expectSuccess(
           decodePullRequestCheckContextsJson(
@@ -771,7 +772,10 @@ describe("pull request detail decoding", () => {
                         {
                           commit: {
                             statusCheckRollup: {
-                              contexts: { nodes: checks, pageInfo: { hasNextPage: false } },
+                              contexts: {
+                                nodes: checks.map(check),
+                                pageInfo: { hasNextPage: false, endCursor: null },
+                              },
                             },
                           },
                         },
