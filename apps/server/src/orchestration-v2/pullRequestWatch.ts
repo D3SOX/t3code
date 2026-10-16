@@ -21,6 +21,11 @@ const SNIPPET_LENGTH = 200;
 export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "checks-passed"; readonly count: number; readonly required: boolean }
+  | {
+      readonly kind: "checks-completed";
+      readonly count: number;
+      readonly failed: ReadonlyArray<PullRequestCheck>;
+    }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
   | { readonly kind: "conflicting" };
 
@@ -60,6 +65,7 @@ export function evaluatePullRequestWatch(
   let passed = headMoved ? false : watch.passed;
   let passedChecks = headMoved ? [] : watch.passedChecks;
   let allPassedChecks = headMoved ? [] : watch.allPassedChecks;
+  let completedChecks = headMoved ? [] : watch.completedChecks;
   if (detail.checks.length > 0) {
     const failed = detail.checks.filter(isFailedCheck);
     const newlyFailed = failed.filter((check) => !failedChecks.includes(check.name));
@@ -86,6 +92,18 @@ export function evaluatePullRequestWatch(
       changes.push({ kind: "checks-passed", count: allNames.length, required: false });
     }
     allPassedChecks = allPassedNow ? allNames : [];
+    const completed = detail.checks.every((check) => check.status !== "pending");
+    // An early failure already woke the agent, but it may be waiting for the other jobs.
+    // New failures and an all-pass result already produce their own wake on this pass.
+    if (
+      completed &&
+      failed.length > 0 &&
+      newlyFailed.length === 0 &&
+      allNames.join("\n") !== (completedChecks ?? []).join("\n")
+    ) {
+      changes.push({ kind: "checks-completed", count: allNames.length, failed });
+    }
+    completedChecks = completed ? allNames : [];
   }
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
@@ -128,6 +146,7 @@ export function evaluatePullRequestWatch(
       passed,
       passedChecks: passedChecks ?? [],
       ...(allPassedChecks === undefined ? {} : { allPassedChecks }),
+      ...(completedChecks === undefined ? {} : { completedChecks }),
       remarksThrough,
       remarkIds,
       conflicting,
@@ -169,6 +188,14 @@ function changeLines(
       return [
         `- All ${change.count} ${change.required ? "required " : ""}${change.count === 1 ? "check" : "checks"} passed${context.commit}.`,
       ];
+    case "checks-completed":
+      return [
+        `- All ${change.count} ${change.count === 1 ? "check" : "checks"} finished${context.commit}; ${change.failed.length} ${change.failed.length === 1 ? "check still needs" : "checks still need"} attention:`,
+        ...listed(
+          change.failed,
+          (check) => `  - ${check.name} (${check.status})${check.url ? ` ${check.url}` : ""}`,
+        ),
+      ];
     case "remarks":
       return [
         `- ${change.remarks.length} new ${change.remarks.length === 1 ? "comment" : "comments"}:`,
@@ -187,6 +214,7 @@ function changeLines(
 const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-failed": "checks failed",
   "checks-passed": "checks passed",
+  "checks-completed": "checks finished with failures",
   remarks: "new comments",
   conflicting: "merge conflict",
 };
@@ -214,7 +242,10 @@ export function pullRequestWatchMessage(
       : "Look into each item and act on it as your task requires. T3 Code keeps watching and wakes you on the next change, so end your turn when you are done. Keep watching while a running review blocks a pending push or review response; ending your turn to wait still needs automatic wakes. When the requested monitoring is complete or the user asks you to stop, call unwatch_pull_request so the thread returns to their inbox.",
   ].join("\n");
   const failed = changes.some(
-    (change) => change.kind === "checks-failed" || change.kind === "conflicting",
+    (change) =>
+      change.kind === "checks-failed" ||
+      change.kind === "checks-completed" ||
+      change.kind === "conflicting",
   );
   const summary = changes.map((change) => SUMMARY[change.kind]);
   if (exhausted) summary.push("stopped watching");
@@ -272,7 +303,7 @@ export function refreshQueuedPullRequestMessage(
   }
 
   const text = message.text.replace(
-    /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? passed[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
+    /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? (?:passed|finished)[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
     "",
   );
   if (text === message.text) return message;

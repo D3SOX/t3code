@@ -62,6 +62,64 @@ const remark = (
 const noRemarks: ReadonlyArray<PullRequestComment> = [];
 
 describe("evaluatePullRequestWatch", () => {
+  it("wakes when remaining CI finishes after an earlier failure", () => {
+    const running = detail({
+      checks: [check("android (31, shard 8/8)", "failure"), check("android (36)", "pending")],
+    });
+    const early = evaluatePullRequestWatch(watch(), running, noRemarks);
+    assert.deepEqual(early.changes, [{ kind: "checks-failed", failed: [running.checks[0]!] }]);
+    const finished = detail({
+      checks: [running.checks[0]!, check("android (36)", "success")],
+    });
+    const report = evaluatePullRequestWatch(early.next, finished, noRemarks);
+    assert.deepEqual(report.changes, [
+      { kind: "checks-completed", count: 2, failed: [running.checks[0]!] },
+    ]);
+    assert.deepEqual(evaluatePullRequestWatch(report.next, finished, noRemarks).changes, []);
+  });
+
+  it("deduplicates failed completion across empty reads, reruns, later checks, and pushes", () => {
+    const failed = check("lint", "failure");
+    const finished = detail({ checks: [failed, check("test", "success")] });
+    const reported = evaluatePullRequestWatch(watch(), finished, noRemarks);
+    assert.equal(reported.changes.length, 1);
+    const unreadable = evaluatePullRequestWatch(reported.next, detail({ checks: [] }), noRemarks);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        unreadable.next,
+        { ...finished, checks: finished.checks.toReversed() },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const pending = evaluatePullRequestWatch(
+      reported.next,
+      detail({ checks: [failed, check("test", "pending")] }),
+      noRemarks,
+    );
+    assert.deepEqual(pending.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(pending.next, finished, noRemarks).changes, [
+      { kind: "checks-completed", count: 2, failed: [failed] },
+    ]);
+    const late = evaluatePullRequestWatch(
+      reported.next,
+      detail({ checks: [...finished.checks, check("package", "success")] }),
+      noRemarks,
+    );
+    assert.deepEqual(late.changes, [{ kind: "checks-completed", count: 3, failed: [failed] }]);
+    const pushed = evaluatePullRequestWatch(
+      reported.next,
+      { ...finished, headSha: "bbbbbbbbbb" },
+      noRemarks,
+    );
+    assert.deepEqual(pushed.changes, [{ kind: "checks-failed", failed: [failed] }]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(pushed.next, { ...finished, headSha: "bbbbbbbbbb" }, noRemarks)
+        .changes,
+      [],
+    );
+  });
+
   it("wakes when remaining CI finishes after required checks passed", () => {
     const green = detail({
       checks: [{ ...check("lint", "success"), required: true }, check("iOS", "pending")],
@@ -388,6 +446,30 @@ describe("evaluatePullRequestWatch", () => {
 });
 
 describe("pullRequestWatchMessage", () => {
+  it("distinguishes finished CI with outstanding failures from passing CI", () => {
+    const report = evaluatePullRequestWatch(
+      watch({ headSha: "aaaaaaaaaa", failedChecks: ["lint"] }),
+      detail({ checks: [check("lint", "failure"), check("test", "success")] }),
+      noRemarks,
+    );
+    const message = pullRequestWatchMessage({
+      host: "github.com",
+      repository: "o/r",
+      number: 12,
+      url: "https://github.com/o/r/pull/12",
+      baseBranch: "main",
+      headSha: report.next.headSha,
+      report,
+    });
+    assert.include(
+      message.text,
+      "All 2 checks finished on aaaaaaa; 1 check still needs attention:",
+    );
+    assert.include(message.text, "lint (failure) https://ci.example/lint");
+    assert.equal(message.notification.outcome, "failed");
+    assert.equal(message.notification.summary, "#12: checks finished with failures");
+  });
+
   it("tells the agent what changed and marks failures for the timeline", () => {
     const report = evaluatePullRequestWatch(
       watch(),

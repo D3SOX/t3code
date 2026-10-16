@@ -2592,6 +2592,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     "legacy-mixed",
     "tagged",
     "mixed",
+    "completed",
+    "completed-mixed",
     "conflict",
     "delivery",
   ])("discards queued check updates from previous PR commits: %s", (mode) =>
@@ -2646,7 +2648,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       for (const [id, text] of [
         [
           "checks",
-          `${header}\n${mode === "conflict" ? "- The branch now conflicts with main.\n" : mode === "legacy-passed" ? "- All 3 required checks passed on aaaaaaa.\n" : "- Checks failed on aaaaaaa:\n  - lint\n"}${mixed ? "- 1 new comment:\n  - reviewer: Fix this\n" : ""}`,
+          `${header}\n${mode === "conflict" ? "- The branch now conflicts with main.\n" : mode === "legacy-passed" ? "- All 3 required checks passed on aaaaaaa.\n" : mode.startsWith("completed") ? "- All 3 checks finished on aaaaaaa; 1 still need attention:\n  - lint (failure)\n" : "- Checks failed on aaaaaaa:\n  - lint\n"}${mixed ? "- 1 new comment:\n  - reviewer: Fix this\n" : ""}`,
         ],
         ["comments", `${header}\n- 1 new comment:\n  - reviewer: Fix this`],
         [
@@ -3441,7 +3443,11 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       fingerprint = { status: "OPEN settled", remarks: "1" };
       yield* reactor.sweep;
       assert.deepEqual(reads(), { detail: 4, activity: 2 });
-      assert.deepEqual(yield* summaries, ["#11: checks failed", "#11: new comments"]);
+      assert.deepEqual(yield* summaries, [
+        "#11: checks failed",
+        "#11: checks finished with failures",
+        "#11: new comments",
+      ]);
 
       // While the host is rate limited, a pass reads nothing and the watch stays on.
       fingerprint = "rate-limited";
@@ -3455,7 +3461,11 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       yield* TestClock.adjust("30 minutes");
       yield* reactor.sweep;
       assert.deepEqual(reads(), { detail: 5, activity: 3 });
-      assert.deepEqual(yield* summaries, ["#11: checks failed", "#11: new comments"]);
+      assert.deepEqual(yield* summaries, [
+        "#11: checks failed",
+        "#11: checks finished with failures",
+        "#11: new comments",
+      ]);
     }),
   );
 
@@ -3467,6 +3477,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     "missing comments",
     "thread list truncated",
     "CI completion",
+    "failed CI completion",
     "merge from host",
     "merge from sync snapshot",
   ])("wakes a watched thread for host changes: %s", (mode) =>
@@ -3580,7 +3591,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         );
         return;
       }
-      if (mode === "CI completion") {
+      if (mode === "CI completion" || mode === "failed CI completion") {
         const required = [
           "Analyze (actions)",
           "Analyze (javascript-typescript)",
@@ -3588,7 +3599,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           "lint",
         ].map((name) => ({
           name,
-          status: "success" as const,
+          status: mode === "failed CI completion" ? ("failure" as const) : ("success" as const),
           required: true,
           description: null,
           url: null,
@@ -3620,6 +3631,46 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         yield* reactor.sweep;
         const records = () => orchestrator.getThreadRecords(threadId, ["messages"]);
         assert.equal((yield* records()).messages.length, 1);
+
+        if (mode === "failed CI completion") {
+          current = {
+            ...current,
+            checks: [...required, { name: "iOS", status: "success", description: null, url: null }],
+          };
+          reactor = yield* makeReactor;
+          yield* reactor.sweep;
+          yield* (yield* makeReactor).sweep;
+          const completed = (yield* records()).messages;
+          assert.equal(completed.length, 2);
+          assert.isTrue(
+            completed.some((message) => message.text.includes("All 5 checks finished")),
+          );
+          assert.equal(
+            (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch
+              ?.completedChecks?.length,
+            5,
+          );
+          // Rerunning a successful job must persist the pending state even with no new wake.
+          current = {
+            ...current,
+            checks: [...required, { name: "iOS", status: "pending", description: null, url: null }],
+          };
+          reactor = yield* makeReactor;
+          yield* reactor.sweep;
+          assert.deepEqual(
+            (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch
+              ?.completedChecks,
+            [],
+          );
+          current = {
+            ...current,
+            checks: [...required, { name: "iOS", status: "success", description: null, url: null }],
+          };
+          yield* (yield* makeReactor).sweep;
+          yield* (yield* makeReactor).sweep;
+          assert.equal((yield* records()).messages.length, 3);
+          return;
+        }
 
         // The four-second aggregate can appear and finish between minute-long sweeps.
         current = {

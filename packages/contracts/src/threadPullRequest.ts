@@ -116,6 +116,8 @@ export const ThreadPullRequestWatch = Schema.Struct({
   ),
   /** All checks that passed, independently of the required gate. Empty while CI is pending. */
   allPassedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** All finished checks, including failures. Empty while any check is pending. */
+  completedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Remarks from others created up to this host time were reported. */
   remarksThrough: IsoDateTime,
   /** Remarks created exactly at `remarksThrough` that were reported, so a late one still counts. */
