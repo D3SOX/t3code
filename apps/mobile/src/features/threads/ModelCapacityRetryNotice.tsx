@@ -4,7 +4,7 @@ import { capacityRetryLabel, getModelCapacityRetry } from "@t3tools/shared/model
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { useThreadDetail } from "../../state/use-thread-detail";
 
 export function ModelCapacityRetryNotice({
