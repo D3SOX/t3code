@@ -30,12 +30,11 @@ export function SubscriptionUsage(props: SubscriptionUsageProps, environment: Wi
     { name: "Claude", detail: "Open T3 to connect", windows: [], expiresAt: 0, totalWindows: 0 },
   ];
   return (
-    // The card is one Button so a tap reaches the app's interaction listener,
-    // which opens props.url. expo-widgets has no Android counterpart to widgetURL.
+    // expo-widgets' native target opens the saved link even when app JS is stopped.
     <Button
+      {...{ target: props.url ?? "expo-widgets://open-app" }}
       colors={{ containerColor: colors.surface }}
       modifiers={[fillMaxSize()]}
-      onClick={() => {}}
     >
       <Column modifiers={[fillMaxSize(), paddingAll(16)]}>
         {providers.map((provider, index) => {

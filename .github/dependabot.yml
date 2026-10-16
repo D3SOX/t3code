@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: cargo
+    directories:
+      - /native/hyprland-snap-shot
+      - /native/kde-snap-shot
+      - /native/resource-monitor
+    schedule:
+      interval: weekly
+  - package-ecosystem: gradle
+    directories:
+      - /apps/mobile/modules/t3-agent-notifications/android
+      - /apps/mobile/modules/t3-composer-editor/android
+      - /apps/mobile/modules/t3-native-controls/android
+      - /apps/mobile/modules/t3-review-diff/android
+      - /apps/mobile/modules/t3-terminal/android
+      - /apps/mobile/modules/t3-widget-expiry/android
+    schedule:
+      interval: weekly
