@@ -6,7 +6,6 @@ Ending a turn to await a review is still monitoring. If a running review blocks 
 
 /**
  * Shared runtime context; omit model and effort when the harness manages them dynamically.
- * `modelName` is the display name users see in the model picker; `model` is the slug.
  */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
