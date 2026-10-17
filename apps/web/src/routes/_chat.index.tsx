@@ -2,8 +2,7 @@ import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { isElectron } from "../env";
 import { NoProjectsHero } from "../components/NoProjectsHero";
@@ -23,24 +22,15 @@ import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { useUiStateStore } from "~/uiStateStore";
-
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments, isReady } = useEnvironments();
-
   if (authGateState.status === "hosted-static") {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedStaticOnboardingState />;
   }
-
   return <IndexDraftLanding />;
 }
-
-/**
- * Landing on the index route drops straight into a draft thread for the most
- * recently chosen project, so the first screen is a prompt instead of a dead
- * end. Falls back to an add-project hero when no project exists yet.
- */
 function IndexDraftLanding() {
   const projects = useProjects();
   const threads = useThreadShells();
@@ -51,49 +41,50 @@ function IndexDraftLanding() {
   // Read at effect time: this page stays mounted while a navigation away from
   // "/" is still loading, but the router already points at the new location.
   const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
-  const startingRef = useRef(false);
-  const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
-
-  const mostRecentProject = useMemo(
-    () =>
-      bootstrapped
-        ? (projects.find(
-            (project) =>
-              project.environmentId === lastNewThreadProjectRef?.environmentId &&
-              project.id === lastNewThreadProjectRef.projectId,
-          ) ??
-          sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
-          null)
-        : null,
-    [bootstrapped, lastNewThreadProjectRef, projects, threads],
-  );
-
+  // One start per attempt; a retry request opens the next attempt.
+  const startedAttemptRef = useRef<number | null>(null);
+  const [startState, setStartState] = useState({
+    failed: false,
+    retryRequest: 0,
+  });
+  const mostRecentProject = bootstrapped
+    ? (projects.find(
+        (project) =>
+          project.environmentId === lastNewThreadProjectRef?.environmentId &&
+          project.id === lastNewThreadProjectRef.projectId,
+      ) ??
+      sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
+      null)
+    : null;
+  const attempt = startState.retryRequest;
   useEffect(() => {
     // Starting a draft after the user has left would replace the page they picked.
-    if (mostRecentProject === null || startingRef.current || !isStillOnIndex()) {
+    if (mostRecentProject === null || startedAttemptRef.current === attempt || !isStillOnIndex()) {
       return;
     }
     const projectRef = scopeProjectRef(mostRecentProject.environmentId, mostRecentProject.id);
-    // A project removed since this render is gone from the store; the next
-    // render picks another one.
     if (readProject(projectRef) === null) {
       return;
     }
-    startingRef.current = true;
-    void handleNewThread(projectRef, { replace: true })
+    startedAttemptRef.current = attempt;
+    void handleNewThread(projectRef, {
+      replace: true,
+    })
       .then((opened) => {
-        // The project was removed while its draft started; land on the next one.
         if (opened === null) {
-          startingRef.current = false;
-          setStartState((state) => ({ ...state, retryRequest: state.retryRequest + 1 }));
+          setStartState((state) => ({
+            ...state,
+            retryRequest: state.retryRequest + 1,
+          }));
         }
       })
       .catch(() => {
-        startingRef.current = false;
-        setStartState((state) => ({ ...state, failed: true }));
+        setStartState((state) => ({
+          ...state,
+          failed: true,
+        }));
       });
-  }, [handleNewThread, mostRecentProject, startState.retryRequest]);
-
+  }, [attempt, handleNewThread, mostRecentProject]);
   if (!bootstrapped) {
     return null;
   }
@@ -109,11 +100,8 @@ function IndexDraftLanding() {
       />
     ) : null;
   }
-  // First-run routing to the welcome wizard happens in FirstRunGate at the
-  // root, before this route ever renders.
   return <NoProjectsHero />;
 }
-
 function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
@@ -135,11 +123,9 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
     </SidebarInset>
   );
 }
-
 export const Route = createFileRoute("/_chat/")({
   component: ChatIndexRouteView,
 });
-
 function HostedStaticOnboardingState() {
   const cloudEnabled = hasCloudPublicConfig();
   const localEnvironmentOff = isLocalEnvironmentDisabled();
@@ -148,7 +134,6 @@ function HostedStaticOnboardingState() {
     : cloudEnabled
       ? "Enable T3 Connect on that machine, then open Connections here to sign in with the same account. You can also add the machine using a pairing link."
       : "Open Connections and add that machine using its pairing link. This app must be able to reach it.";
-
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">

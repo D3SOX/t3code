@@ -13,7 +13,6 @@ import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
-
 interface PendingActionState {
   questionIndex: number;
   isLastQuestion: boolean;
@@ -21,7 +20,6 @@ interface PendingActionState {
   isResponding: boolean;
   isComplete: boolean;
 }
-
 interface ComposerPrimaryActionsProps {
   compact: boolean;
   canOperateThread: boolean;
@@ -30,6 +28,8 @@ interface ComposerPrimaryActionsProps {
   canInterrupt: boolean;
   followUpBehavior?: "queue" | "next-tool" | "steer";
   submissionHints?: string;
+  canSteer?: boolean;
+  alternateShortcutLabel?: string | null;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
@@ -51,7 +51,6 @@ interface ComposerPrimaryActionsProps {
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
 }
-
 const formatPendingPrimaryActionLabel = (input: {
   compact: boolean;
   isLastQuestion: boolean;
@@ -69,14 +68,11 @@ const formatPendingPrimaryActionLabel = (input: {
   }
   return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
 };
-
 const messageActionPillClassName =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-message-action font-medium text-base text-message-action-foreground shadow-xs shadow-message-action/24 outline-none hover:bg-message-action-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:text-sm";
-
 const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
 };
-
 export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   compact,
   canOperateThread,
@@ -85,6 +81,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   canInterrupt,
   followUpBehavior = "steer",
   submissionHints,
+  canSteer = true,
   showPlanFollowUpPrompt,
   promptHasText,
   isSendBusy,
@@ -107,13 +104,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onToggleKeepFullHistory,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
-    ? { onPointerDown: preventPointerFocus }
+    ? {
+        onPointerDown: preventPointerFocus,
+      }
     : undefined;
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const shortcutModifiers = useShortcutModifierState();
   const dispatchAction = resolveComposerDispatchMode({
     running: isRunning,
     activeTurnDefault: followUpBehavior,
+    canSteer,
     alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
   });
   const isQueuing =
@@ -124,7 +124,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const stageBackdropVariant = useSidebarStageBackdropVariant(
     environmentIdentificationMode === "artwork",
   );
-
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
     <Tooltip key="interrupt">
       <TooltipTrigger
@@ -156,7 +155,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       <TooltipPopup>{isInterruptBusy ? "Interrupting..." : "Interrupt"}</TooltipPopup>
     </Tooltip>
   );
-
   if (pendingAction) {
     return (
       <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
@@ -206,7 +204,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </div>
     );
   }
-
   if (!isInterruptBusy && showPlanFollowUpPrompt && (promptHasText || !canResume)) {
     if (promptHasText) {
       return (
@@ -220,7 +217,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         </button>
       );
     }
-
     return (
       <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
         <button
@@ -262,22 +258,18 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </div>
     );
   }
-
   if (
     isInterruptBusy ||
     (canInterrupt && !hasSendableContent && !isEditingQueuedMessage && !isSendBusy)
   ) {
     return renderStopGenerationButton(false);
   }
-
   const showResume = canResume && !hasSendableContent && !isEditingQueuedMessage;
-
   const compactTokens =
     compactBeforeSendTokens !== null && !showResume && !isEditingQueuedMessage
       ? formatContextWindowTokens(compactBeforeSendTokens)
       : null;
   const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
-
   const submitLabel = showResume
     ? "Resume thread"
     : isEditingQueuedMessage
@@ -310,7 +302,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       : showResume
         ? submitLabel
         : (submissionHints ?? submitLabel));
-
   const sendButton = (
     <button
       type={showResume ? "button" : "submit"}
@@ -358,7 +349,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       )}
     </button>
   );
-
   const submit = (
     <Tooltip key="submit">
       <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
@@ -368,7 +358,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </Tooltip>
   );
   if (compactTokens === null) return submit;
-
   return (
     <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
       <Tooltip>

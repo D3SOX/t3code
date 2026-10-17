@@ -10,15 +10,12 @@ import {
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { useCallback, useContext, useEffect, useMemo } from "react";
-
+import { useContext, useEffect } from "react";
 import { assetEnvironment } from "~/state/assets";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { usePreparedConnection } from "~/state/session";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
-
 export { resolveAssetUrl, type AssetUrlState } from "@t3tools/client-runtime/state/assets";
-
 export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
@@ -31,7 +28,12 @@ export function useAssetUrlState(
   const query =
     blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
-      : assetEnvironment.createUrl({ environmentId, input: { resource } });
+      : assetEnvironment.createUrl({
+          environmentId,
+          input: {
+            resource,
+          },
+        });
   const result = useAtomValue(query);
   useEffect(() => {
     if (blocked !== null || !mutableResource) return;
@@ -46,7 +48,6 @@ export function useAssetUrlState(
     preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null,
   );
 }
-
 export function useAssetUrlRefresh(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
@@ -57,40 +58,48 @@ export function useAssetUrlRefresh(
     reportFailure: false,
     refresh: true,
   });
-  return useCallback(async () => {
+  return async () => {
     if (environmentId === null || resource === null || httpBaseUrl === null) return null;
-    const result = await refresh({ environmentId, input: { resource } });
+    const result = await refresh({
+      environmentId,
+      input: {
+        resource,
+      },
+    });
     if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     return resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
-  }, [environmentId, resource, refresh, httpBaseUrl]);
+  };
 }
-
 export function useAssetUrls(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<AssetResource>,
 ): ReadonlyArray<string | null> {
   const preparedConnection = usePreparedConnection(environmentId);
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
-  const allowedResources = useMemo(
-    () =>
-      canReadFiles ? resources : resources.filter((resource) => !isMutableAssetResource(resource)),
-    [canReadFiles, resources],
-  );
+  const allowedResources = canReadFiles
+    ? resources
+    : resources.filter((resource) => !isMutableAssetResource(resource));
   const results = useAtomValue(
     assetEnvironment.createUrls({
       environmentId,
       resources: allowedResources,
     }),
   );
-  return useMemo(() => {
-    if (preparedConnection._tag === "None") return resources.map(() => null);
-    let resultIndex = 0;
-    return resources.map((resource) => {
-      if (!canReadFiles && isMutableAssetResource(resource)) return null;
-      const result = results[resultIndex++];
-      return result && AsyncResult.isSuccess(result)
+  if (preparedConnection._tag === "None") return resources.map(() => null);
+  const urls: Array<string | null> = [];
+  let resultIndex = 0;
+  for (const resource of resources) {
+    if (!canReadFiles && isMutableAssetResource(resource)) {
+      urls.push(null);
+      continue;
+    }
+    const result = results[resultIndex];
+    resultIndex += 1;
+    urls.push(
+      result && AsyncResult.isSuccess(result)
         ? resolveAssetUrl(preparedConnection.value.httpBaseUrl, result.value.relativeUrl)
-        : null;
-    });
-  }, [canReadFiles, preparedConnection, resources, results]);
+        : null,
+    );
+  }
+  return urls;
 }

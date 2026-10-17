@@ -14,8 +14,7 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useEffectEvent, useRef } from "react";
-
+import { useEffect, useEffectEvent, useRef } from "react";
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironmentIds } from "../state/environments";
 import { environmentShell } from "../state/shell";
@@ -28,7 +27,6 @@ import {
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 import { toastManager } from "./ui/toast";
-
 export function ThreadNotificationCoordinator() {
   const environmentIds = useEnvironmentIds();
   const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
@@ -39,7 +37,13 @@ export function ThreadNotificationCoordinator() {
     (settings) => settings.inAppNotificationsEnabled,
   );
   const pending = useRef(
-    new Map<string, { environmentId: EnvironmentId; notification: Notification }>(),
+    new Map<
+      string,
+      {
+        environmentId: EnvironmentId;
+        notification: Notification;
+      }
+    >(),
   );
   const unread = useRef(new Set<string>());
   const dismissViewedThread = useEffectEvent(() => {
@@ -58,26 +62,26 @@ export function ThreadNotificationCoordinator() {
     unread.current.delete(tag);
     setNotificationBadge(unread.current.size);
   });
-
-  const onNotification = useCallback((environmentId: EnvironmentId, notification: Notification) => {
+  const onNotification = (environmentId: EnvironmentId, notification: Notification) => {
     pending.current.get(notification.tag)?.notification.close();
-    pending.current.set(notification.tag, { environmentId, notification });
+    pending.current.set(notification.tag, {
+      environmentId,
+      notification,
+    });
     unread.current.add(notification.tag);
     setNotificationBadge(unread.current.size);
-  }, []);
-
+  };
   useEffect(() => {
     const activeIds = new Set(environmentIds);
     const count = pending.current.size;
-    for (const [tag, { environmentId, notification }] of pending.current) {
-      if (activeIds.has(environmentId)) continue;
-      notification.close();
+    for (const [tag, entry] of pending.current) {
+      if (activeIds.has(entry.environmentId)) continue;
+      entry.notification.close();
       pending.current.delete(tag);
       unread.current.delete(tag);
     }
     if (count !== pending.current.size) setNotificationBadge(unread.current.size);
   }, [environmentIds]);
-
   useEffect(() => {
     const clearAll = () => {
       for (const { notification } of pending.current.values()) notification.close();
@@ -101,11 +105,9 @@ export function ThreadNotificationCoordinator() {
       clearAll();
     };
   }, [mode]);
-
   useEffect(() => {
     if (activeEnvironmentId && activeThreadId) dismissViewedThread();
   }, [activeEnvironmentId, activeThreadId]);
-
   useEffect(() => {
     if (!hasNotificationSound(mode)) return;
     document.addEventListener("pointerdown", unlockNotificationAudio);
@@ -115,9 +117,7 @@ export function ThreadNotificationCoordinator() {
       document.removeEventListener("keydown", unlockNotificationAudio);
     };
   }, [mode]);
-
   if (mode === "off" && !inAppNotificationsEnabled) return null;
-
   return environmentIds.map((environmentId) => (
     <EnvironmentNotifications
       key={environmentId}
@@ -126,14 +126,12 @@ export function ThreadNotificationCoordinator() {
     />
   ));
 }
-
 interface NotificationState {
   readonly raw: OrchestrationV2ThreadShell;
   readonly subagentRequest: PendingSubagentRequest | null;
   readonly attention: string | null;
   readonly completion: number | null;
 }
-
 function EnvironmentNotifications({
   environmentId,
   onNotification,
@@ -168,7 +166,6 @@ function EnvironmentNotifications({
     pendingToasts.current.delete(threadId);
     toastManager.close(toastId);
   });
-
   useEffect(() => {
     if (inAppNotificationsEnabled) {
       if (activeEnvironmentId && activeThreadId) dismissViewedToast();
@@ -177,7 +174,6 @@ function EnvironmentNotifications({
       pendingToasts.current.clear();
     }
   }, [activeEnvironmentId, activeThreadId, inAppNotificationsEnabled]);
-
   useEffect(() => {
     const dismiss = () => dismissViewedToast();
     const toasts = pendingToasts.current;
@@ -190,7 +186,6 @@ function EnvironmentNotifications({
       toasts.clear();
     };
   }, []);
-
   useEffect(() => {
     if (threads === null) {
       previous.current.clear();
@@ -220,7 +215,12 @@ function EnvironmentNotifications({
         Number.isFinite(completedAt)
           ? completedAt
           : (prior?.completion ?? null);
-      next.set(thread.id, { raw: rawThread, subagentRequest, attention, completion });
+      next.set(thread.id, {
+        raw: rawThread,
+        subagentRequest,
+        attention,
+        completion,
+      });
       if (!prior || thread.archivedAt !== null) continue;
       const kind =
         attention && attention !== prior.attention
@@ -283,7 +283,10 @@ function EnvironmentNotifications({
               toastManager.close(toastId);
               void navigate({
                 to: "/$environmentId/$threadId",
-                params: { environmentId, threadId: thread.id },
+                params: {
+                  environmentId,
+                  threadId: thread.id,
+                },
               });
             },
           },
@@ -307,7 +310,6 @@ function EnvironmentNotifications({
         onNotification(environmentId, notification);
         notification.addEventListener("click", () => {
           notification.close();
-          // DOM focus cannot restore or activate the native window on Wayland.
           if (window.desktopBridge?.focusWindow) {
             void window.desktopBridge.focusWindow().catch(() => window.focus());
           } else {
@@ -315,7 +317,10 @@ function EnvironmentNotifications({
           }
           void navigate({
             to: "/$environmentId/$threadId",
-            params: { environmentId, threadId: thread.id },
+            params: {
+              environmentId,
+              threadId: thread.id,
+            },
           });
         });
       } catch {
@@ -333,6 +338,5 @@ function EnvironmentNotifications({
     onNotification,
     threads,
   ]);
-
   return null;
 }

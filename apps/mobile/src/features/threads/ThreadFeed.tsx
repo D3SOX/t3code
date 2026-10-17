@@ -66,6 +66,8 @@ import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
+import { useDeviceType } from "../../native/native-layout-metrics";
+import { isDuoDevice } from "../../lib/device-type";
 import {
   memo,
   useCallback,
@@ -1003,7 +1005,7 @@ function renderFeedEntry(
     readonly reviewCommentColors: ReviewCommentColors;
     readonly reviewCommentBubbleWidth: number;
     readonly themeAppearance: "light" | "dark";
-    readonly usesNativeWorkspaceColumns: boolean;
+    readonly duoColumns: boolean;
     readonly userBubbleMaxWidth: number;
     readonly markdownContentWidth: number;
     readonly contentWidth: number;
@@ -1220,19 +1222,11 @@ function renderFeedEntry(
             className="min-w-0 gap-2 rounded-[20px] px-3.5 py-2.5"
             style={{
               backgroundColor: userBubbleColor,
-              maxWidth:
-                props.usesNativeWorkspaceColumns && Platform.OS === "ios" && !Platform.isPad
-                  ? "85%"
-                  : props.userBubbleMaxWidth,
+              maxWidth: props.duoColumns ? "85%" : props.userBubbleMaxWidth,
               ...(hasReviewCommentContext
                 ? { width: props.reviewCommentBubbleWidth }
                 : hasWideBlock
-                  ? {
-                      width:
-                        props.usesNativeWorkspaceColumns && Platform.OS === "ios" && !Platform.isPad
-                          ? "85%"
-                          : props.userBubbleMaxWidth,
-                    }
+                  ? { width: props.duoColumns ? "85%" : props.userBubbleMaxWidth }
                   : null),
             }}
           >
@@ -1704,7 +1698,8 @@ function ThreadFeedPlaceholder(props: {
 }
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
-  const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
+  const deviceType = useDeviceType();
+  const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
   const navigation = useNavigation();
   const { themeAppearance } = useAppearancePreferences();
@@ -2523,7 +2518,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               reviewCommentColors,
               reviewCommentBubbleWidth,
               themeAppearance,
-              usesNativeWorkspaceColumns,
+              duoColumns,
               userBubbleMaxWidth,
               markdownContentWidth,
               contentWidth,
@@ -2562,7 +2557,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       reviewCommentColors,
       reviewCommentBubbleWidth,
       themeAppearance,
-      usesNativeWorkspaceColumns,
+      duoColumns,
       userBubbleMaxWidth,
       markdownContentWidth,
       contentWidth,
@@ -2617,10 +2612,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             // Horizontal Duo reservations are already included in the row padding.
             contentInsetAdjustmentBehavior={
               usesNativeAutomaticInsets
-                ? usesNativeWorkspaceColumns &&
-                  Platform.OS === "ios" &&
-                  !Platform.isPad &&
-                  props.layoutVariant === "split"
+                ? duoColumns && props.layoutVariant === "split"
                   ? "scrollableAxes"
                   : "automatic"
                 : "never"
