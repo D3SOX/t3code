@@ -325,7 +325,7 @@ export function useQueuedRunEdit(input: {
       },
     });
     if (paused._tag === "Failure") return;
-    try {
+    await (async () => {
       const connection = readPreparedConnection(environmentId);
       if (!connection) throw new Error("The environment is not connected.");
       const files = await prepareRevertedMessageAttachments({
@@ -396,7 +396,7 @@ export function useQueuedRunEdit(input: {
         });
         focusComposerSoon();
       }
-    } catch (error) {
+    })().catch(async (error) => {
       await editQueuedRunCommand({
         environmentId,
         input: {
@@ -410,7 +410,7 @@ export function useQueuedRunEdit(input: {
           ? error.message
           : "Could not return the queued message to the composer.",
       );
-    }
+    });
   };
   const removeEditingAttachment = useStableCallback((attachmentId: string) => {
     setEditing((current) =>

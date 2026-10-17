@@ -386,7 +386,7 @@ import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { createPageScrollController, type PageScrollKey } from "./chat/pageScrollController";
 import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
+import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
   BranchRestoreConfirmHost,
   DeviceSetupDialogHost,
@@ -416,7 +416,7 @@ import {
   type PanelLayoutControlsProps,
   RightPanelMaximizeControl,
 } from "./chat/PanelLayoutControls";
-import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
+import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
@@ -1365,13 +1365,6 @@ export default function ChatView(props: ChatViewProps) {
   const citeAssistantTextStable = useStableCallback(citeAssistantText);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
-  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-  useEffect(() => {
-    const item = expandedImage?.images[expandedImage.index];
-    if (item?.type !== "video" || item.src === null || !item.src.startsWith("blob:")) return;
-    const src = item.src;
-    return () => revokeBlobPreviewUrl(src);
-  }, [expandedImage]);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   // Set by "Work locally": the draft whose restored message should be resent
   // once the cancelled dispatch has settled and the draft is in local mode.
@@ -3530,7 +3523,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     interruptInFlight.current = true;
     setPendingInterruptThreadKey(routeThreadKey);
-    try {
+    return await (async () => {
       const result = await interruptThreadTurn({
         environmentId,
         input: {
@@ -3544,10 +3537,10 @@ export default function ChatView(props: ChatViewProps) {
           error instanceof Error ? error.message : "Failed to interrupt the current turn.",
         );
       }
-    } finally {
+    })().finally(() => {
       interruptInFlight.current = false;
       setPendingInterruptThreadKey(null);
-    }
+    });
   };
   const onInterruptStable = useStableCallback(onInterrupt);
   useEffect(() => subscribeSnapShotComposerFocus(focusComposerStable), [focusComposerStable]);
@@ -4837,17 +4830,12 @@ export default function ChatView(props: ChatViewProps) {
     setRetiredOptimisticMessages(optimisticUserMessages);
     setOptimisticUserMessages([]);
     resetLocalDispatch();
-    setExpandedImage(null);
   }
   useEffect(() => {
     for (const message of retiredOptimisticMessages) {
       revokeUserMessagePreviewUrls(message);
     }
   }, [retiredOptimisticMessages]);
-  const closeExpandedImage = () => {
-    setExpandedImage(null);
-  };
-  const closeExpandedImageStable = useStableCallback(closeExpandedImage);
   const activeWorktreePath = activeThread?.worktreePath ?? null;
   const derivedEnvMode: DraftThreadEnvMode = resolveEffectiveEnvMode({
     activeWorktreePath,
@@ -6955,7 +6943,7 @@ export default function ChatView(props: ChatViewProps) {
           let releasedComposer = false;
           let canRestoreDraft = () => false;
           let startedCount = 0;
-          try {
+          await (async () => {
             const attachments = await turnAttachmentsPromise;
             const fileBlockReason = readLiveAttachmentCapabilities().fileBlockReason;
             if (fileBlockReason !== null) throw new Error(fileBlockReason);
@@ -7074,92 +7062,102 @@ export default function ChatView(props: ChatViewProps) {
             if (failedSelections.length === 0 && turnUsesAttachmentUploads) {
               releaseDraftAttachments(composerAttachmentsSnapshot);
             }
-          } catch (error) {
-            failedSelections.push(...multipleModelSelections);
-            setThreadError(
-              threadIdForSend,
-              error instanceof Error ? error.message : "Failed to send messages.",
-            );
-          } finally {
-            const restoreFailedDraft = () => {
-              setMultipleModelSelections(failedSelections);
-              if (clearedDraft) {
-                setComposerDraftPrompt(composerDraftTarget, messageTextForSend);
-                addComposerDraftImages(
-                  composerDraftTarget,
-                  composerImagesSnapshot.map(cloneComposerImageForRetry),
-                );
-                addComposerDraftFiles(composerDraftTarget, composerFilesSnapshot);
-                setComposerDraftTerminalContexts(
-                  composerDraftTarget,
-                  composerTerminalContextsSnapshot,
-                );
-                setComposerDraftPreviewAnnotations(
-                  composerDraftTarget,
-                  composerPreviewAnnotationsSnapshot,
-                );
-                setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
-                setComposerDraftThreadContexts(composerDraftTarget, composerThreadContextsSnapshot);
-                if (composerRef.current && currentRouteThreadKeyRef.current === routeThreadKey) {
-                  promptRef.current = messageTextForSend;
-                  composerRef.current.resetCursorState({
-                    cursor: collapseExpandedComposerCursor(
-                      messageTextForSend,
-                      messageTextForSend.length,
-                    ),
-                    prompt: messageTextForSend,
-                    detectTrigger: true,
-                  });
+          })()
+            .catch(async (error) => {
+              failedSelections.push(...multipleModelSelections);
+              setThreadError(
+                threadIdForSend,
+                error instanceof Error ? error.message : "Failed to send messages.",
+              );
+            })
+            .finally(() => {
+              const restoreFailedDraft = () => {
+                setMultipleModelSelections(failedSelections);
+                if (clearedDraft) {
+                  setComposerDraftPrompt(composerDraftTarget, messageTextForSend);
+                  addComposerDraftImages(
+                    composerDraftTarget,
+                    composerImagesSnapshot.map(cloneComposerImageForRetry),
+                  );
+                  addComposerDraftFiles(composerDraftTarget, composerFilesSnapshot);
+                  setComposerDraftTerminalContexts(
+                    composerDraftTarget,
+                    composerTerminalContextsSnapshot,
+                  );
+                  setComposerDraftPreviewAnnotations(
+                    composerDraftTarget,
+                    composerPreviewAnnotationsSnapshot,
+                  );
+                  setComposerDraftReviewComments(
+                    composerDraftTarget,
+                    composerReviewCommentsSnapshot,
+                  );
+                  setComposerDraftThreadContexts(
+                    composerDraftTarget,
+                    composerThreadContextsSnapshot,
+                  );
+                  if (composerRef.current && currentRouteThreadKeyRef.current === routeThreadKey) {
+                    promptRef.current = messageTextForSend;
+                    composerRef.current.resetCursorState({
+                      cursor: collapseExpandedComposerCursor(
+                        messageTextForSend,
+                        messageTextForSend.length,
+                      ),
+                      prompt: messageTextForSend,
+                      detectTrigger: true,
+                    });
+                  }
+                }
+              };
+              if (failedSelections.length > 0) {
+                if (canRestoreDraft() && composerRef.current) {
+                  restoreFailedDraft();
+                } else if (clearedDraft) {
+                  const recoveryToastId = toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title: "A background prompt could not be sent",
+                      description:
+                        "Your newer draft is unchanged. Restore the failed prompt when this composer is empty.",
+                      timeout: 0,
+                      actionProps: {
+                        children: "Restore prompt",
+                        onClick: () => {
+                          if (
+                            !draftId ||
+                            !useComposerDraftStore.getState().getDraftSession(draftId) ||
+                            sendInFlightRef.current ||
+                            composerDraftHasUserContent(
+                              useComposerDraftStore
+                                .getState()
+                                .getComposerDraft(composerDraftTarget),
+                            )
+                          ) {
+                            toastManager.update(recoveryToastId, {
+                              description:
+                                "Return to the original draft and send or clear its current prompt before restoring.",
+                            });
+                            return;
+                          }
+                          restoreFailedDraft();
+                          void navigate({
+                            to: "/draft/$draftId",
+                            params: {
+                              draftId,
+                            },
+                          });
+                          toastManager.close(recoveryToastId);
+                        },
+                      },
+                    }),
+                  );
                 }
               }
-            };
-            if (failedSelections.length > 0) {
-              if (canRestoreDraft() && composerRef.current) {
-                restoreFailedDraft();
-              } else if (clearedDraft) {
-                const recoveryToastId = toastManager.add(
-                  stackedThreadToast({
-                    type: "error",
-                    title: "A background prompt could not be sent",
-                    description:
-                      "Your newer draft is unchanged. Restore the failed prompt when this composer is empty.",
-                    timeout: 0,
-                    actionProps: {
-                      children: "Restore prompt",
-                      onClick: () => {
-                        if (
-                          !draftId ||
-                          !useComposerDraftStore.getState().getDraftSession(draftId) ||
-                          sendInFlightRef.current ||
-                          composerDraftHasUserContent(
-                            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
-                          )
-                        ) {
-                          toastManager.update(recoveryToastId, {
-                            description:
-                              "Return to the original draft and send or clear its current prompt before restoring.",
-                          });
-                          return;
-                        }
-                        restoreFailedDraft();
-                        void navigate({
-                          to: "/draft/$draftId",
-                          params: {
-                            draftId,
-                          },
-                        });
-                        toastManager.close(recoveryToastId);
-                      },
-                    },
-                  }),
-                );
+              if (!releasedComposer) {
+                sendInFlightRef.current = false;
+                resetLocalDispatch();
               }
-            }
-            if (!releasedComposer) {
-              sendInFlightRef.current = false;
-              resetLocalDispatch();
-            }
-          }
+            });
           return;
         }
         let firstComposerImageName: string | null = null;
@@ -7504,14 +7502,14 @@ export default function ChatView(props: ChatViewProps) {
   const onSend = async (...args: Parameters<typeof sendMessage>) => {
     if (sendInFlightRef.current && localSubmissions.pending === 0) return;
     setPendingSendThreadKey(routeThreadKey);
-    try {
+    return await (async () => {
       await sendMessage(...args);
-    } finally {
+    })().finally(() => {
       sendInFlightRef.current = localSubmissions.pending > 0;
       if (!sendInFlightRef.current) {
         setPendingSendThreadKey((key) => (key === routeThreadKey ? null : key));
       }
-    }
+    });
   };
   async function onSubmitPlanFollowUp({
     text,
@@ -8036,7 +8034,7 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const onExpandTimelineImage = (preview: ExpandedImagePreview) => {
-    setExpandedImage(preview);
+    openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
@@ -9070,13 +9068,7 @@ export default function ChatView(props: ChatViewProps) {
 
       <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
       <LinkPullRequestDialogHost />
-      {expandedImage && (
-        <ExpandedImageDialog
-          key={expandedImageKey(expandedImage)}
-          preview={expandedImage}
-          onClose={closeExpandedImageStable}
-        />
-      )}
+      <ExpandedImageDialogHost threadKey={routeThreadKey} />
     </div>
   );
   return (

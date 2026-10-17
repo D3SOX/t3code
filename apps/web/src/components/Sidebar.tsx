@@ -3305,7 +3305,7 @@ export default function Sidebar() {
       const threadKey = scopedThreadKey(threadRef);
       if (settlingThreadKeysRef.current.has(threadKey)) return;
       settlingThreadKeysRef.current.add(threadKey);
-      try {
+      return await (async () => {
         const navigateAfterSettle = planForwardNavigation(threadKey);
         const result = await settleThread(threadRef);
         if (result._tag === "Failure") {
@@ -3333,9 +3333,9 @@ export default function Sidebar() {
           navigateAfterSettle?.();
         }
         return;
-      } finally {
+      })().finally(() => {
         settlingThreadKeysRef.current.delete(threadKey);
-      }
+      });
     })();
   };
   useEffect(() => registerSettleAndAdvance(attemptSettle), [attemptSettle]);
@@ -3958,7 +3958,7 @@ export default function Sidebar() {
       } as const;
     }
     snoozingThreadKeysRef.current.add(threadKey);
-    try {
+    return await (async () => {
       // Snoozing the open thread moves you forward, same as settle —
       // both park the thread you're done with for now.
       const navigateAfterSnooze = planForwardNavigation(threadKey);
@@ -3987,9 +3987,9 @@ export default function Sidebar() {
       return {
         status: "success",
       } as const;
-    } finally {
+    })().finally(() => {
       snoozingThreadKeysRef.current.delete(threadKey);
-    }
+    });
   };
   const attemptSnooze = (
     threadRef: ScopedThreadRef,

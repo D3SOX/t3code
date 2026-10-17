@@ -176,7 +176,7 @@ export function QueuedRunsControl({
     if (activeRun === null || !workflow?.canPromoteToSteer || steerInFlightRef.current) return;
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
-    try {
+    return await (async () => {
       await promote({
         environmentId: props.environmentId,
         input: {
@@ -190,10 +190,10 @@ export function QueuedRunsControl({
               }),
         },
       });
-    } finally {
+    })().finally(() => {
       steerInFlightRef.current = false;
       setBusyRunId(null);
-    }
+    });
   };
   useImperativeHandle(ref, () => ({
     steerNext(repeat) {
@@ -224,16 +224,16 @@ export function QueuedRunsControl({
     const entry = queued.find(({ run }) => run.id === runId);
     if (!entry) return;
     setBusyRunId(runId);
-    try {
+    return await (async () => {
       await props.onRemoveQueuedRun({
         runId,
         messageId: entry.messageId,
         text: entry.text,
         attachments: entry.attachments,
       });
-    } finally {
+    })().finally(() => {
       setBusyRunId(null);
-    }
+    });
   };
   return (
     <ComposerBanner.Attachment>
