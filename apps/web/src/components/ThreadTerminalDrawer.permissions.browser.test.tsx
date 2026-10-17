@@ -43,6 +43,13 @@ vi.mock(import("../editorPreferences"), async (original) => ({
   ...(await original()),
   useOpenInPreferredEditor: (() => state.otherCommand) as never,
 }));
+vi.mock(import("../remoteOpen"), async (original) => ({
+  ...(await original()),
+  useRemoteOpenResolution: (() => ({
+    state: { mode: "local-exec" },
+    isResolved: true,
+  })) as never,
+}));
 vi.mock(import("../state/terminal"), async (original) => {
   const actual = await original();
   return {
