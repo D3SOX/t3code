@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
-  type AssetUrlState,
+  type AssetUrlState as RuntimeAssetUrlState,
   assetUrlStateFromResult,
   blockedAssetUrlState,
   EMPTY_ASSET_URL_ATOM,
@@ -15,7 +15,11 @@ import { assetEnvironment } from "~/state/assets";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { usePreparedConnection } from "~/state/session";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
-export { resolveAssetUrl, type AssetUrlState } from "@t3tools/client-runtime/state/assets";
+
+export { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
+
+export type AssetUrlState = RuntimeAssetUrlState & { readonly waiting?: boolean };
+
 export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
@@ -43,10 +47,13 @@ export function useAssetUrlState(
     if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
   }, [blocked, mutableResource, query, registry]);
   if (blocked !== null) return blocked;
-  return assetUrlStateFromResult(
-    result,
-    preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null,
-  );
+  return {
+    ...assetUrlStateFromResult(
+      result,
+      preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null,
+    ),
+    ...(result.waiting ? { waiting: true } : {}),
+  };
 }
 export function useAssetUrlRefresh(
   environmentId: EnvironmentId | null,

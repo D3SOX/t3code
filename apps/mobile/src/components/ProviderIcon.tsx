@@ -166,7 +166,6 @@ export function ProviderInstanceIcon(props: {
   readonly showBadge?: boolean;
   readonly surfaceColor: string;
 }) {
-  const initials = providerInstanceInitials(props.displayName);
   return (
     <View
       style={{

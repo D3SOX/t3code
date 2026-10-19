@@ -81,10 +81,7 @@ import {
   useComposerDraft,
   useComposerDraftSettings,
 } from "./use-composer-drafts";
-import {
-  resolveComposerDispatchMode,
-  type ActiveTurnComposerAction,
-} from "@t3tools/client-runtime/state/composer-dispatch";
+import { type ActiveTurnComposerAction } from "@t3tools/client-runtime/state/composer-dispatch";
 import { Atom } from "effect/reactivity";
 import { AsyncResult } from "effect/reactivity";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -363,6 +360,10 @@ export function useThreadComposerState() {
   })();
   // A compacting turn cannot take steering input, so follow-ups queue meanwhile.
   const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true && !isCompacting;
+  // A stop or a restart holds the queue, completion wakes included, until it
+  // is resumed; the queue sheet lists only the user's own messages.
+  const queueHeld = queueWorkflow?.isHeld === true;
+
   const runlessWorkStartedAt = selectedThreadProjection
     ? deriveRunlessWorkStartedAt(selectedThreadProjection.projection)
     : null;
@@ -1028,6 +1029,7 @@ export function useThreadComposerState() {
     composerDraftKey,
     followUpBehavior,
     canSteerActiveTurn,
+    queueHeld,
     queuedRunEdit,
     isSavingQueuedEdit,
     cancelQueuedRunEdit,

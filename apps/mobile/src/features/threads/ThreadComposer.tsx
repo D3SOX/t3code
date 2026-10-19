@@ -3,7 +3,7 @@ import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { ModelCapacityRetryNotice } from "./ModelCapacityRetryNotice";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
@@ -183,6 +183,8 @@ export interface ThreadComposerProps {
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void | Promise<unknown>;
+  /** Present while the thread's queue is held. */
+  readonly onResumeQueue: (() => Promise<void>) | null;
   readonly onSendMessage: (followUp?: ActiveTurnComposerAction) => Promise<MessageId | null>;
   /** `/usage-limits` resolves locally; the host decides where the report shows. Null clears it. */
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
@@ -423,6 +425,17 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   // Stopping the agent is not what the send button means in edit mode.
   const showStopAction =
     stopping || (!sending && !hasContent && props.canStopThread && queuedEdit === null);
+  const onResumeQueue = props.onResumeQueue;
+  const [resumingQueue, setResumingQueue] = useState(false);
+  const showResumeAction =
+    !hasContent && !showStopAction && queuedEdit === null && onResumeQueue !== null;
+  const handleResumeQueue = async () => {
+    if (resumingQueue || onResumeQueue === null) return;
+    setResumingQueue(true);
+    await onResumeQueue();
+    setResumingQueue(false);
+  };
+
   const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
   const attachmentsUploading =
     props.connectionState === "connected" &&
@@ -1049,6 +1062,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     disabled={!props.canOperateThread}
                     onPress={handleStopThread}
                   />
+                ) : showResumeAction ? (
+                  <ComposerActionButton
+                    accessibilityLabel="Resume queue"
+                    icon="play"
+                    disabled={!props.canOperateThread || resumingQueue}
+                    onPress={() => void handleResumeQueue()}
+                  />
                 ) : (
                   <SendActionButton
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
@@ -1147,6 +1167,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       variant="danger"
                       disabled={!props.canOperateThread}
                       onPress={handleStopThread}
+                    />
+                  ) : showResumeAction && voicePresentation.showsSend ? (
+                    <ComposerActionButton
+                      accessibilityLabel="Resume queue"
+                      icon="play"
+                      disabled={!props.canOperateThread || resumingQueue}
+                      onPress={() => void handleResumeQueue()}
                     />
                   ) : voicePresentation.showsSend || sending || queuedEdit?.saving === true ? (
                     <SendActionButton

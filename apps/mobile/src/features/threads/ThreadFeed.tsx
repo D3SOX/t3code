@@ -80,8 +80,6 @@ import {
   type RefObject,
 } from "react";
 import {
-  Alert,
-  ActivityIndicator,
   Image,
   Platform,
   type LayoutChangeEvent,
@@ -125,12 +123,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/VideoPreviewModal";
 import { VideoAttachmentTile } from "../../components/VideoAttachmentTile";
 import { resolveMarkdownMediaPreview } from "../../lib/markdownMedia";
-import {
-  attachmentVideoPreviewSource,
-  mediaVideoPreviewUri,
-  mediaVideoThumbnailKey,
-  type MediaVideoPreviewSource,
-} from "../../lib/videoPreviewSource";
+import { attachmentVideoPreviewSource } from "../../lib/videoPreviewSource";
 import { CopyTextButton } from "./CopyTextButton";
 import { Menu } from "../../components/ui/Menu";
 import { copyPromptLink } from "../prompt-links/prompt-link-actions";
@@ -1306,9 +1299,7 @@ function renderFeedEntry(
                 accessibilityLabel={intentBadge.accessibilityLabel}
                 className="flex-row items-center gap-1"
               >
-                {intentBadge.icon ? (
-                  <SymbolView name={intentBadge.icon} size={12} tintColor={iconSubtleColor} />
-                ) : null}
+                <SymbolView name="arrow.uturn.forward" size={12} tintColor={iconSubtleColor} />
                 <Text className="font-t3-medium text-xs text-foreground-secondary">
                   {intentBadge.label}
                 </Text>

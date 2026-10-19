@@ -289,6 +289,26 @@ export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
 export const DEFAULT_PULL_REQUEST_LINK_TARGET: BrowserLinkTarget = "system";
 
+/**
+ * What the address bar searches with when the input is not an address.
+ * "custom" uses `browserCustomSearchUrl`, a template with `%s` for the query.
+ */
+export const BrowserSearchEngine = Schema.Literals([
+  "duckduckgo",
+  "google",
+  "bing",
+  "brave",
+  "kagi",
+  "ecosia",
+  "custom",
+]);
+export type BrowserSearchEngine = typeof BrowserSearchEngine.Type;
+export const DEFAULT_BROWSER_SEARCH_ENGINE: BrowserSearchEngine = "duckduckgo";
+export const BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH = 2048;
+export const BrowserCustomSearchUrl = Schema.String.check(
+  Schema.isMaxLength(BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH),
+);
+
 export const LoadBalancingWeights = Schema.Record(
   TrimmedNonEmptyString,
   Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
@@ -367,6 +387,16 @@ export const ClientSettingsSchema = Schema.Struct({
   pullRequestLinkTarget: BrowserLinkTarget.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PULL_REQUEST_LINK_TARGET)),
   ),
+
+  browserSearchEngine: BrowserSearchEngine.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_SEARCH_ENGINE)),
+  ),
+
+  // Kept when the engine is switched away from "custom" so switching back restores it.
+  browserCustomSearchUrl: BrowserCustomSearchUrl.pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
+
   /**
    * Whether an agent using a preview pops the floating mini player into
    * view. Only applies when the agent didn't ask either way — an explicit
@@ -1758,6 +1788,8 @@ export const ClientSettingsPatch = Schema.Struct({
   browserRecordingShowMousePresses: Schema.optionalKey(Schema.Boolean),
   browserLinkTarget: Schema.optionalKey(BrowserLinkTarget),
   pullRequestLinkTarget: Schema.optionalKey(BrowserLinkTarget),
+  browserSearchEngine: Schema.optionalKey(BrowserSearchEngine),
+  browserCustomSearchUrl: Schema.optionalKey(BrowserCustomSearchUrl),
   browserAutoShowFloatingPreview: Schema.optionalKey(Schema.Boolean),
   browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),

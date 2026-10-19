@@ -115,6 +115,8 @@ export type BrowserDefaultSettings = Pick<
   | "browserRecordingShowMousePresses"
   | "browserLinkTarget"
   | "pullRequestLinkTarget"
+  | "browserSearchEngine"
+  | "browserCustomSearchUrl"
   | "browserAutoShowFloatingPreview"
 >;
 
@@ -154,6 +156,10 @@ export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings)
       : []),
     ...(settings.pullRequestLinkTarget !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinkTarget
       ? ["Open pull requests in"]
+      : []),
+    ...(settings.browserSearchEngine !== DEFAULT_UNIFIED_SETTINGS.browserSearchEngine ||
+    settings.browserCustomSearchUrl !== DEFAULT_UNIFIED_SETTINGS.browserCustomSearchUrl
+      ? ["Search engine"]
       : []),
     ...(settings.browserAutoShowFloatingPreview !==
     DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview

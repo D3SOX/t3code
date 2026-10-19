@@ -2909,6 +2909,11 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         commandId: CommandId.make(`pr-watch-settle-restart-${mode}`),
       });
       assert.isDefined((yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch);
+      yield* orchestrator.dispatch({
+        ...restart,
+        commandId: CommandId.make(`pr-watch-settle-cleanup-${mode}`),
+        watching: false,
+      });
     }),
   );
 

@@ -39,7 +39,6 @@ import {
   shouldShowCollapsedSidebarThread,
   resolveSidebarV2TopStatus,
   resolveThreadLastVisitedAt,
-  resolveThreadRowClassName,
   resolveThreadStatusPill,
   resolveWorkingStartedAt,
   pullRequestMatchesSearchQuery,
@@ -64,7 +63,6 @@ import {
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 
 import {
