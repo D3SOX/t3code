@@ -234,6 +234,17 @@ export const updateCommand = Command.make("update", {
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
+      if (
+        BootService.isDesktopCliInvocation(
+          yield* HostProcess.Arguments,
+          (yield* HostProcess.Environment).ELECTRON_RUN_AS_NODE,
+        )
+      ) {
+        return yield* new CliUpdateError({
+          reason:
+            "This CLI belongs to the desktop app. Update the app through its updater or package manager, then run `t3 service restart` to use the updated build.",
+        });
+      }
       const logLevel = yield* GlobalFlag.LogLevel;
       const config = yield* resolveCliAuthConfig(flags, logLevel);
       return yield* runUpdate({

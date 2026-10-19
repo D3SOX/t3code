@@ -5,10 +5,29 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NetService from "@t3tools/shared/Net";
+import * as Layer from "effect/Layer";
+import { Command } from "effect/cli";
 
-import { repointLauncher, resolveLauncherPath } from "./update.ts";
+import { repointLauncher, resolveLauncherPath, updateCommand } from "./update.ts";
 
-it.layer(NodeServices.layer)("t3 update launcher", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("t3 update launcher", (it) => {
+  it.effect("keeps desktop CLI updates with the desktop installation", () =>
+    Effect.gen(function* () {
+      const error = yield* Command.runWith(updateCommand, { version: "0.1.0" })([]).pipe(
+        Effect.provideService(HostProcess.Arguments, [
+          "/opt/t3/t3code",
+          "/opt/t3/resources/app.asar/apps/server/dist/bin.mjs",
+        ]),
+        Effect.provideService(HostProcess.Environment, { ELECTRON_RUN_AS_NODE: "1" }),
+        Effect.flip,
+      );
+      assert.equal(error._tag, "CliUpdateError");
+      assert.include(error.message, "desktop app");
+      assert.include(error.message, "t3 service restart");
+    }),
+  );
+
   it.effect("repoints a symlink that lives in a runtime versions tree", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

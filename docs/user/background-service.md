@@ -5,14 +5,15 @@ to keep a terminal open.
 
 ## Manage the service
 
-Install the `t3` CLI first ([Install T3 Code](./install.md#command-line)), then
-run these commands on the machine that will host T3 Code:
+Use the desktop app's installed `t3` command, or
+[install the standalone CLI](./install.md#command-line), then run these commands
+on the machine that will host T3 Code:
 
 | Task                            | Command                |
 | ------------------------------- | ---------------------- |
 | Install and start               | `t3 service install`   |
 | Inspect status and log location | `t3 service status`    |
-| Move to a newer release         | `t3 update`            |
+| Update a standalone CLI         | `t3 update`            |
 | Restart                         | `t3 service restart`   |
 | Stop and remove from startup    | `t3 service uninstall` |
 
@@ -20,8 +21,20 @@ Uninstalling the service leaves your projects, threads, and settings intact.
 Running `t3 service install` again repairs a service that `t3 service status`
 reports as broken.
 
-`t3 update` downloads the newest release on your channel and switches `t3`
-and the service to it. Restarting interrupts running agent turns, terminals,
+When installed through the desktop app's CLI, the service uses that app's bundled
+server. Update the app through its updater or package manager, then run
+`t3 service restart`. The service follows the installed app through its CLI
+launcher, including when an AppImage moves or is replaced. `t3 update` directs
+desktop CLI users to update the app instead of downloading a separate server.
+
+The service uses the same T3 home, including saved settings and authorization.
+Installing it does not copy the desktop's network access settings or port.
+Configure a fixed port or bind address separately. On Linux, existing systemd
+drop-ins for `T3CODE_PORT`, `T3CODE_HOST`, or `ExecStart` remain in place during
+installation and repair.
+
+For standalone installs, `t3 update` downloads the newest release on your channel
+and switches `t3` and the service to it. Restarting interrupts running agent turns, terminals,
 and remote clients, so it asks first; answer no and the service keeps running
 the old version until you run `t3 service restart`. Pass `--yes` from a
 script. A server you started by hand is left running; stop and start it again
