@@ -20,6 +20,15 @@ const state = vi.hoisted(() => ({
   turnError: false,
   queued: false,
   limited: false,
+  usageLimitResetAt: null as string | null,
+  startedAt: "2026-09-13T09:00:00.000Z",
+  environmentIds: ["env-1"],
+  extraThreads: [] as Array<{
+    id: string;
+    limited: boolean;
+    providerInstanceId?: string;
+    usageLimitResetAt?: string;
+  }>,
   subagent: false,
   prWatch: false,
   completionSilent: false,
@@ -76,6 +85,7 @@ function mockThreadShell() {
           ? "failed"
           : "running",
     lastErrorClass: state.limited ? "usage_limit" : null,
+    usageLimitResetAt: state.usageLimitResetAt,
     pendingRuntimeRequest: state.input
       ? { id: "request-1", kind: "user_input", createdAt: SHELL_NOW }
       : state.approval
@@ -90,7 +100,7 @@ function mockThreadShell() {
     createdAt: SHELL_NOW,
     updatedAt: SHELL_NOW,
     latestRunRequestedAt: SHELL_NOW,
-    latestRunStartedAt: SHELL_NOW,
+    latestRunStartedAt: DateTime.makeUnsafe(state.startedAt),
     latestRunCompletedAt: state.completedAt ? DateTime.makeUnsafe(state.completedAt) : undefined,
     archivedAt: state.archivedAt ? DateTime.makeUnsafe(state.archivedAt) : null,
     settledOverride: null,
@@ -102,7 +112,18 @@ function mockThreadShell() {
 
 let stableParent: ReturnType<typeof mockThreadShell> | null = null;
 function mockThreads() {
-  if (state.delegatedChild === null) return [mockThreadShell()];
+  if (state.delegatedChild === null)
+    return [
+      mockThreadShell(),
+      ...state.extraThreads.map((thread) => ({
+        ...mockThreadShell(),
+        id: thread.id,
+        providerInstanceId: thread.providerInstanceId ?? "codex",
+        status: thread.limited ? "failed" : "running",
+        lastErrorClass: thread.limited ? "usage_limit" : null,
+        usageLimitResetAt: thread.usageLimitResetAt ?? state.usageLimitResetAt,
+      })),
+    ];
   stableParent ??= mockThreadShell();
   const child = {
     ...mockThreadShell(),
@@ -145,7 +166,7 @@ vi.mock(import("../hooks/useSettings"), async (original) => ({
 }));
 vi.mock(import("../state/environments"), async (original) => ({
   ...(await original()),
-  useEnvironmentIds: (() => ["env-1"]) as never,
+  useEnvironmentIds: (() => [...state.environmentIds]) as never,
 }));
 vi.mock(import("../threadNotifications"), async (original) => ({
   ...(await original()),
@@ -190,6 +211,10 @@ beforeEach(() => {
     turnError: false,
     queued: false,
     limited: false,
+    usageLimitResetAt: null,
+    startedAt: "2026-09-13T09:00:00.000Z",
+    environmentIds: ["env-1"],
+    extraThreads: [],
     subagent: false,
     prWatch: false,
     completionSilent: false,
@@ -213,6 +238,100 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
+  it.each([false, true])("alerts only once for the same limit when focused=%s", async (focused) => {
+    state.mode = "notifications-and-sound";
+    state.focused = focused;
+    state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
+    state.extraThreads = [{ id: "thread-2", limited: false }];
+    await render();
+
+    state.limited = true;
+    await render();
+    expect(focused ? state.add : state.notification).toHaveBeenCalledTimes(1);
+    expect(state.sound).toHaveBeenCalledTimes(1);
+
+    state.extraThreads = [{ id: "thread-2", limited: true }];
+    await render();
+    expect(focused ? state.add : state.notification).toHaveBeenCalledTimes(1);
+    expect(state.sound).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a different reset window but suppresses retries within the same window", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
+    await render();
+    state.limited = true;
+    await render();
+    state.limited = false;
+    await render();
+    state.limited = true;
+    await render();
+    expect(state.notification).toHaveBeenCalledTimes(1);
+    expect(state.sound).toHaveBeenCalledTimes(1);
+
+    state.limited = false;
+    await render();
+    state.usageLimitResetAt = "2026-09-13T19:00:00.000Z";
+    state.limited = true;
+    await render();
+    expect(state.notification).toHaveBeenCalledTimes(2);
+    expect(state.sound).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps separate provider instances and environments eligible for alerts", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    state.environmentIds = ["env-1", "env-2"];
+    state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
+    state.extraThreads = [{ id: "thread-2", limited: false, providerInstanceId: "other-account" }];
+    await render();
+    state.limited = true;
+    state.extraThreads = [{ id: "thread-2", limited: true, providerInstanceId: "other-account" }];
+    await render();
+    expect(state.notification).toHaveBeenCalledTimes(4);
+    expect(state.sound).toHaveBeenCalledTimes(4);
+  });
+
+  it("allows a new limit without a reset time after a later successful turn", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    state.extraThreads = [{ id: "thread-2", limited: false }];
+    await render();
+    state.limited = true;
+    await render();
+    state.extraThreads = [{ id: "thread-2", limited: true }];
+    await render();
+    expect(state.notification).toHaveBeenCalledTimes(1);
+
+    state.limited = false;
+    state.startedAt = "2026-09-13T09:30:00.000Z";
+    await complete();
+    state.notification.mockClear();
+    state.sound.mockClear();
+    state.completedAt = null;
+    state.limited = true;
+    await render();
+    expect(state.notification).toHaveBeenCalledTimes(1);
+    expect(state.sound).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not consume the shared alert when the first thread cannot notify", async () => {
+    state.mode = "notifications";
+    state.active = { environmentId: "env-1", threadId: "thread-1" };
+    state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
+    state.extraThreads = [{ id: "thread-2", limited: false }];
+    await render();
+    state.limited = true;
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+
+    state.extraThreads = [{ id: "thread-2", limited: true }];
+    await render();
+    expect(state.add).toHaveBeenCalledTimes(1);
+  });
+
   it("dismisses the toast when its thread is opened through normal navigation", async () => {
     await render();
     await complete();
@@ -430,6 +549,7 @@ describe("thread notifications", () => {
     state[event] = false;
     await render();
     state.focused = false;
+    if (event === "limited") state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
     state[event] = true;
     await render();
     await render();
@@ -442,12 +562,15 @@ describe("thread notifications", () => {
     });
   });
 
-  it("alerts when only a dev server is left running, not while a monitor can wake the agent", async () => {
+  it("waits for background work to finish before alerting completion", async () => {
     await render();
     state.background = [{ taskId: "watch", kind: "monitor" }];
     await complete();
     expect(state.add).not.toHaveBeenCalled();
     state.background = [{ taskId: "dev", kind: "command" }];
+    await render();
+    expect(state.add).not.toHaveBeenCalled();
+    state.background = [];
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.add).toHaveBeenLastCalledWith(

@@ -151,6 +151,9 @@ function EnvironmentNotifications({
     strict: false,
   });
   const previous = useRef(new Map<ThreadId, NotificationState>());
+  const notifiedUsageLimits = useRef(
+    new Map<string, { providerInstanceId: string; resetAt: string | null; notifiedAt: number }>(),
+  );
   const pendingToasts = useRef(new Map<ThreadId, ReturnType<typeof toastManager.add>>());
   const dismissViewedToast = useEffectEvent(() => {
     if (
@@ -201,6 +204,19 @@ function EnvironmentNotifications({
         next.set(rawThread.id, prior);
         continue;
       }
+      // Without a reset time, a successful turn started after the alert is
+      // evidence that this provider can work again.
+      if (rawThread.status === "completed" && rawThread.latestRunStartedAt) {
+        for (const [key, limit] of notifiedUsageLimits.current) {
+          if (
+            limit.resetAt === null &&
+            limit.providerInstanceId === rawThread.providerInstanceId &&
+            rawThread.latestRunStartedAt.epochMilliseconds > limit.notifiedAt
+          ) {
+            notifiedUsageLimits.current.delete(key);
+          }
+        }
+      }
       const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
@@ -231,6 +247,33 @@ function EnvironmentNotifications({
             ? "completion"
             : null;
       if (!kind) continue;
+      const foreground = document.visibilityState === "visible" && document.hasFocus();
+      const showToast =
+        inAppNotificationsEnabled &&
+        foreground &&
+        (activeEnvironmentId !== environmentId || activeThreadId !== thread.id);
+      const showNotification =
+        hasDesktopNotifications(mode) &&
+        !foreground &&
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted";
+      if (!hasNotificationSound(mode) && !showToast && !showNotification) continue;
+      if (status === "limited") {
+        const resetAt = rawThread.usageLimitResetAt ?? null;
+        const key = JSON.stringify([
+          rawThread.providerInstanceId,
+          resetAt === null ? (rawThread.lastError?.trim() ?? null) : Date.parse(resetAt),
+        ]);
+        if (notifiedUsageLimits.current.has(key)) continue;
+        notifiedUsageLimits.current.set(key, {
+          providerInstanceId: rawThread.providerInstanceId,
+          resetAt,
+          notifiedAt: rawThread.updatedAt.epochMilliseconds,
+        });
+        if (notifiedUsageLimits.current.size > 128) {
+          notifiedUsageLimits.current.delete(notifiedUsageLimits.current.keys().next().value!);
+        }
+      }
       const title =
         kind === "completion"
           ? "Thread completed"
@@ -246,12 +289,7 @@ function EnvironmentNotifications({
           hasNotificationSound(getClientSettings().notificationMode),
         );
       }
-      if (
-        inAppNotificationsEnabled &&
-        document.visibilityState === "visible" &&
-        document.hasFocus() &&
-        (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
-      ) {
+      if (showToast) {
         const previousToastId = pendingToasts.current.get(thread.id);
         if (previousToastId) toastManager.close(previousToastId);
         const toastId = toastManager.add({
@@ -294,13 +332,7 @@ function EnvironmentNotifications({
         pendingToasts.current.set(thread.id, toastId);
         continue;
       }
-      if (
-        !hasDesktopNotifications(mode) ||
-        (document.visibilityState === "visible" && document.hasFocus()) ||
-        typeof Notification === "undefined" ||
-        Notification.permission !== "granted"
-      )
-        continue;
+      if (!showNotification) continue;
       try {
         const notification = new Notification(title, {
           body: thread.title,
