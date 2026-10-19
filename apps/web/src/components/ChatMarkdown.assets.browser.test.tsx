@@ -134,18 +134,21 @@ function renderedImage(container: HTMLElement) {
   return container.querySelector<HTMLImageElement>('img[alt="Diagram"]')?.getAttribute("src");
 }
 
-it("ordinary chat keeps its embedded asset URL across renders and reopening", async () => {
+it("ordinary chat caches embedded assets across renders and refreshes them on reopening", async () => {
   const { container, render } = createTestRoot();
   await render(markdown());
   expect(renderedImage(container)).toBe(imageUrl("updated"));
   mint.mockResolvedValue(assetResult("changed"));
 
   await render(markdown());
+  expect(renderedImage(container)).toBe(imageUrl("updated"));
+  expect(mint).toHaveBeenCalledTimes(1);
+
   await render(null);
   await render(markdown());
 
-  expect(renderedImage(container)).toBe(imageUrl("updated"));
-  expect(mint).toHaveBeenCalledTimes(1);
+  expect(renderedImage(container)).toBe(imageUrl("changed"));
+  expect(mint).toHaveBeenCalledTimes(2);
 });
 
 it.each(["URL", "failure"] as const)(
