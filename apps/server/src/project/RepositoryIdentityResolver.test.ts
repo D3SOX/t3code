@@ -196,9 +196,9 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       expect(identity).not.toBeNull();
       expect(identity?.canonicalKey).toBe("github.com/t3tools/t3code");
       expect(normalizeResolvedPath(resolvedIdentityRoot)).toBe(normalizeResolvedPath(resolvedCwd));
-      expect(identity?.displayName).toBe("t3tools/t3code");
+      expect(identity?.displayName).toBe("T3Tools/t3code");
       expect(identity?.provider).toBe("github");
-      expect(identity?.owner).toBe("t3tools");
+      expect(identity?.owner).toBe("T3Tools");
       expect(identity?.name).toBe("t3code");
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
@@ -248,6 +248,33 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
 
       expect(nonGitIdentity).toBeNull();
       expect(noRemoteIdentity).toBeNull();
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect("ignores local-path remotes such as GitButler's gb-local", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const localOnlyDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-local-remote-",
+      });
+      const mixedDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-mixed-remote-",
+      });
+
+      yield* git(localOnlyDir, ["init"]);
+      yield* git(localOnlyDir, ["remote", "add", "gb-local", "."]);
+      yield* git(localOnlyDir, ["remote", "add", "backup", "/srv/git/repo.git"]);
+      yield* git(localOnlyDir, ["remote", "add", "archive", "file:///srv/git/repo.git"]);
+      yield* git(mixedDir, ["init"]);
+      yield* git(mixedDir, ["remote", "add", "gb-local", "."]);
+      yield* git(mixedDir, ["remote", "add", "mirror", "git@github.com:T3Tools/t3code.git"]);
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      expect(yield* resolver.resolve(localOnlyDir)).toBeNull();
+
+      const mixedIdentity = yield* resolver.resolve(mixedDir);
+      expect(mixedIdentity?.locator.remoteName).toBe("mirror");
+      expect(mixedIdentity?.canonicalKey).toBe("github.com/t3tools/t3code");
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
 
@@ -323,8 +350,8 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
 
       expect(identity).not.toBeNull();
       expect(identity?.canonicalKey).toBe("gitlab.com/t3tools/platform/t3code");
-      expect(identity?.displayName).toBe("t3tools/platform/t3code");
-      expect(identity?.owner).toBe("t3tools");
+      expect(identity?.displayName).toBe("T3Tools/platform/t3code");
+      expect(identity?.owner).toBe("T3Tools");
       expect(identity?.name).toBe("t3code");
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
@@ -396,7 +423,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       const refreshedIdentity = yield* resolver.resolve(cwd);
       expect(refreshedIdentity).not.toBeNull();
       expect(refreshedIdentity?.canonicalKey).toBe("github.com/t3tools/t3code-next");
-      expect(refreshedIdentity?.displayName).toBe("t3tools/t3code-next");
+      expect(refreshedIdentity?.displayName).toBe("T3Tools/t3code-next");
       expect(refreshedIdentity?.name).toBe("t3code-next");
     }).pipe(
       Effect.provide(

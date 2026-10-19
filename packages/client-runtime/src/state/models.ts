@@ -44,6 +44,11 @@ export interface ThreadRunSummary {
   /** Background PR-watch updates and empty responses do not mark the thread Done. */
   readonly completionSilent?: boolean;
   readonly assistantMessageId: MessageId | null;
+  /**
+   * The run is still open, but its provider turn already ended, so nothing is
+   * generating while the server settles it.
+   */
+  readonly turnEnded?: boolean;
   readonly sourcePlanRef?: {
     readonly threadId: ThreadId;
     readonly planId: PlanId;

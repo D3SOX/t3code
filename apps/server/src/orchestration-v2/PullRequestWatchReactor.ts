@@ -309,6 +309,7 @@ export const make = Effect.gen(function* () {
     target: WatchTarget,
     next: ThreadPullRequestWatch | null,
     wake?: { readonly text: string; readonly notification: OrchestrationV2Notification },
+    endedWatch?: ThreadPullRequestWatch,
   ) =>
     Effect.gen(function* () {
       const uuid = yield* crypto.randomUUIDv4();
@@ -319,6 +320,7 @@ export const make = Effect.gen(function* () {
         ...identityOf(target.link),
         startedAt: target.watch.startedAt,
         watch: next,
+        ...(endedWatch === undefined ? {} : { endedWatch }),
         ...(wake === undefined
           ? {}
           : { wake: { ...wake, messageId: MessageId.make(`message:pr-watch:${uuid}`) } }),
@@ -563,16 +565,18 @@ export const make = Effect.gen(function* () {
     yield* eachTarget(group, (target) => {
       const report = evaluatePullRequestWatch(target.watch, detail, remarks);
       if (report.changes.length > 0) {
-        return record(
-          target,
-          report.exhausted ? null : report.next,
-          pullRequestWatchMessage({
-            ...identityOf(target.link),
-            url: target.link.url,
-            baseBranch: detail.baseBranch,
-            headSha: report.next.headSha,
-            report,
-          }),
+        const wake = pullRequestWatchMessage({
+          ...identityOf(target.link),
+          url: target.link.url,
+          baseBranch: detail.baseBranch,
+          headSha: report.next.headSha,
+          report,
+        });
+        // An ending watch keeps what this pass saw, so watching again starts from it.
+        return (
+          report.exhausted
+            ? record(target, null, wake, report.next)
+            : record(target, report.next, wake)
         ).pipe(
           Effect.tap(() => woke(target)),
           Effect.tap(() => (report.exhausted ? ended(target, "comment-limit") : Effect.void)),

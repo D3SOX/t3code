@@ -1,10 +1,12 @@
 # Product usage data
 
-Product usage collection is disabled by default. You can opt in by setting
-`T3CODE_TELEMETRY_ENABLED=true` in the server's environment before starting it. When enabled, the
-T3 Code server sends product usage events to PostHog, associated with a hashed account or
-installation identifier. Events include the provider, model, reasoning effort, permission mode,
-turn result, duration, and main-agent token totals when available.
+Product usage collection is disabled by default. To opt in, set
+`T3CODE_TELEMETRY_ENABLED=true` in the server's environment before starting it.
+When enabled, the server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
+associated with a hashed account or installation identifier. The endpoint keeps a copy of each
+event and forwards events to PostHog. Events include the provider, model, reasoning effort,
+permission mode, turn result, duration, release channel, and main-agent token totals when
+available.
 
 Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.

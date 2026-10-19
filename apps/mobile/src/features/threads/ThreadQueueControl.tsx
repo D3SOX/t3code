@@ -4,7 +4,7 @@ import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/co
 import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert, Animated, Platform, Pressable, ScrollView, View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable, {
@@ -13,7 +13,6 @@ import ReanimatedSwipeable, {
 import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
-
 import { Button } from "../../components/ui/Button";
 import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
 import { AppText as Text } from "../../components/ui/AppText";
@@ -52,28 +51,30 @@ import {
   resolveThreadQueueRowControls,
 } from "./threadQueueControlPresentation";
 import { threadDragGapOffset } from "./threadDragGap";
-
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 const REMOVE_ACTION_WIDTH = 76;
 const THUMBNAIL_LIMIT = 3;
 const EMPTY_QUEUED_COUNT_ATOM = Atom.make(0).pipe(
   Atom.withLabel("mobile-thread-queue-count:empty"),
 );
-
-type QueueTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+type QueueTarget = {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+};
 type QueueAction = "next-tool" | "after-turn" | "steer" | "edit" | "up" | "down" | "remove";
-type QueueRowLayout = { readonly id: RunId; readonly y?: number; readonly height?: number };
-
+type QueueRowLayout = {
+  readonly id: RunId;
+  readonly y?: number;
+  readonly height?: number;
+};
 export function useThreadQueueWorkflow(target: QueueTarget) {
   return useAtomValue(environmentThreadDetails.queueWorkflowAtom(target));
 }
-
 export function useThreadQueuedCount(target: QueueTarget | null) {
   return useAtomValue(
     target === null ? EMPTY_QUEUED_COUNT_ATOM : environmentThreadDetails.queuedCountAtom(target),
   );
 }
-
 export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const { layout } = useAdaptiveWorkspaceLayout();
   const target = route.params;
@@ -90,7 +91,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun, "remove queued message");
   const edit = useAtomCommand(threadEnvironment.editQueuedRun, "pause queue for editing");
   const connection = usePreparedConnection(target.environmentId);
-  const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, { refresh: true });
+  const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
+    refresh: true,
+  });
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue, "resume queue");
   const [resuming, setResuming] = useState(false);
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
@@ -98,7 +101,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const [draggedRunId, setDraggedRunId] = useState<RunId | null>(null);
   const [previewBeforeRunId, setPreviewBeforeRunId] = useState<RunId | null | undefined>();
   const [dragRows, setDragRows] = useState<ReadonlyArray<QueueRowLayout> | null>(null);
-  const rowLayouts = useRef(new Map<RunId, { y: number; height: number }>());
+  const rowLayouts = useRef(
+    new Map<
+      RunId,
+      {
+        y: number;
+        height: number;
+      }
+    >(),
+  );
   const drag = useRef<{
     runId: RunId;
     order: string;
@@ -108,7 +119,6 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const [translation] = useState(() => new Animated.Value(0));
   const queuedRuns = workflow?.queuedRuns ?? [];
   const order = queuedRuns.map(({ run }) => run.id).join(",");
-
   useEffect(() => {
     if (drag.current && drag.current.order !== order) {
       drag.current = null;
@@ -118,7 +128,6 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       translation.setValue(0);
     }
   }, [order, translation]);
-
   const hadQueuedRuns = useRef(queuedRuns.length > 0);
   useEffect(() => {
     if (queuedRuns.length > 0) {
@@ -127,20 +136,22 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     }
     if (hadQueuedRuns.current) navigation.goBack();
   }, [navigation, queuedRuns.length]);
-
   const move = async (runId: RunId, beforeRunId: RunId | null) => {
     if (busyRef.current || !workflow?.canReorder) return;
     busyRef.current = true;
     setBusyRunId(runId);
     void Haptics.selectionAsync();
-    try {
-      await reorder({ ...target, input: { threadId: target.threadId, runId, beforeRunId } });
-    } finally {
-      busyRef.current = false;
-      setBusyRunId(null);
-    }
+    await reorder({
+      ...target,
+      input: {
+        threadId: target.threadId,
+        runId,
+        beforeRunId,
+      },
+    });
+    busyRef.current = false;
+    setBusyRunId(null);
   };
-
   const act = async (runId: RunId, action: QueueAction) => {
     if (busyRef.current) return;
     const index = queuedRuns.findIndex(({ run }) => run.id === runId);
@@ -158,10 +169,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       const entry = queuedRuns[index]!;
       busyRef.current = true;
       setBusyRunId(runId);
-      try {
+      await (async () => {
         const result = await edit({
           ...target,
-          input: { threadId: target.threadId, runId, text: entry.text, editing: true },
+          input: {
+            threadId: target.threadId,
+            runId,
+            text: entry.text,
+            editing: true,
+          },
         });
         if (result._tag !== "Success") return;
         void Haptics.selectionAsync();
@@ -170,28 +186,42 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           messageId: entry.messageId,
           originalText: entry.text,
           existingAttachments: entry.attachments,
-          ...(entry.context ? { context: entry.context } : {}),
+          ...(entry.context
+            ? {
+                context: entry.context,
+              }
+            : {}),
         });
         navigation.goBack();
-      } finally {
+      })().finally(() => {
         busyRef.current = false;
         setBusyRunId(null);
-      }
+      });
       return;
     }
     if (!["steer", "remove", "next-tool", "after-turn"].includes(action)) return;
     busyRef.current = true;
     setBusyRunId(runId);
     void Haptics.selectionAsync();
-    try {
+    await (async () => {
       if (action === "remove") {
         if (editing !== null) return;
         const entry = queuedRuns[index]!;
-        const input = { threadId: target.threadId, runId, text: entry.text };
-        const paused = await edit({ ...target, input: { ...input, editing: true } });
+        const input = {
+          threadId: target.threadId,
+          runId,
+          text: entry.text,
+        };
+        const paused = await edit({
+          ...target,
+          input: {
+            ...input,
+            editing: true,
+          },
+        });
         if (paused._tag !== "Success") return;
         const attachments: DraftComposerAttachment[] = [];
-        try {
+        await (async () => {
           for (const attachment of entry.attachments) {
             if (attachment.type !== "image" && attachment.type !== "file")
               throw new Error("This attachment cannot be restored.");
@@ -200,7 +230,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             const url = assetUrlStateFromResult(
               await createAssetUrl({
                 environmentId: target.environmentId,
-                input: { resource: { _tag: "attachment", attachmentId: attachment.id } },
+                input: {
+                  resource: {
+                    _tag: "attachment",
+                    attachmentId: attachment.id,
+                  },
+                },
               }),
               connection.value.httpBaseUrl,
             );
@@ -211,7 +246,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               signal: AbortSignal.timeout(30_000),
             });
             if (!downloaded) throw new Error("Could not restore an attachment.");
-            try {
+            await (async () => {
               const fileUri = await persistComposerAttachmentFile(downloaded.uri, attachment.name);
               const common = {
                 id: attachment.id,
@@ -225,19 +260,32 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   ...common,
                   type: "image",
                   previewUri: fileUri,
-                  ...("source" in attachment ? { source: attachment.source } : {}),
+                  ...("source" in attachment
+                    ? {
+                        source: attachment.source,
+                      }
+                    : {}),
                 });
               else if (attachment.type === "file")
                 attachments.push({
                   ...common,
                   type: "file",
-                  ...("source" in attachment ? { source: attachment.source } : {}),
+                  ...("source" in attachment
+                    ? {
+                        source: attachment.source,
+                      }
+                    : {}),
                 });
-            } finally {
+            })().finally(() => {
               downloaded.dispose();
-            }
+            });
           }
-          const result = await cancel(buildCancelQueuedRunCommand({ ...target, runId }));
+          const result = await cancel(
+            buildCancelQueuedRunCommand({
+              ...target,
+              runId,
+            }),
+          );
           if (result._tag !== "Success") throw new Error("Could not remove the queued message.");
           restoreRemovedQueuedMessage(threadKey, {
             text: entry.text,
@@ -245,14 +293,20 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             attachments,
           });
           if (queuedRuns.length > 1) navigation.goBack();
-        } catch (error) {
+        })().catch(async (error: unknown) => {
           scheduleUnusedComposerAttachmentCleanup(attachments);
-          await edit({ ...target, input: { ...input, editing: false } });
+          await edit({
+            ...target,
+            input: {
+              ...input,
+              editing: false,
+            },
+          });
           Alert.alert(
             "Could not return the queued message",
             error instanceof Error ? error.message : "Try again after reconnecting.",
           );
-        }
+        });
       } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
         await promote({
           ...target,
@@ -261,17 +315,18 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             queuedRunId: runId,
             targetRunId: workflow.activeRun.id,
             ...(action === "next-tool" || action === "after-turn"
-              ? { afterNextTool: action === "next-tool" }
+              ? {
+                  afterNextTool: action === "next-tool",
+                }
               : {}),
           },
         });
       }
-    } finally {
+    })().finally(() => {
       busyRef.current = false;
       setBusyRunId(null);
-    }
+    });
   };
-
   const canReorder = workflow?.canReorder === true && queuedRuns.length > 1;
   const sourceLayout = dragRows?.find((row) => row.id === draggedRunId);
   const lastLayout = dragRows?.at(-1);
@@ -284,7 +339,10 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           : lastLayout.y + lastLayout.height
         : dragRows?.find((row) => row.id === previewBeforeRunId)?.y;
   const queueRows = () =>
-    queuedRuns.map(({ run }) => ({ id: run.id, ...rowLayouts.current.get(run.id) }));
+    queuedRuns.map(({ run }) => ({
+      id: run.id,
+      ...rowLayouts.current.get(run.id),
+    }));
   const content = (
     <ScrollView
       nestedScrollEnabled
@@ -294,7 +352,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       // inset the content or the first row sits underneath the title.
       contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
       contentContainerClassName="px-5 pb-6"
-      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
+      contentContainerStyle={{
+        paddingBottom: Math.max(insets.bottom, 16) + 8,
+      }}
     >
       {workflow?.isHeld && queuedRuns.length > 0 ? (
         <View className="gap-2 py-3">
@@ -308,12 +368,14 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               if (busyRef.current) return;
               busyRef.current = true;
               setResuming(true);
-              try {
-                await resume({ ...target, input: { threadId: target.threadId } });
-              } finally {
-                busyRef.current = false;
-                setResuming(false);
-              }
+              await resume({
+                ...target,
+                input: {
+                  threadId: target.threadId,
+                },
+              });
+              busyRef.current = false;
+              setResuming(false);
             }}
           />
         </View>
@@ -355,7 +417,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               className="flex-row items-center border-b border-border bg-sheet"
               style={
                 draggedRunId === run.id
-                  ? { transform: [{ translateY: translation }], zIndex: 1, opacity: 0.85 }
+                  ? {
+                      transform: [
+                        {
+                          translateY: translation,
+                        },
+                      ],
+                      zIndex: 1,
+                      opacity: 0.85,
+                    }
                   : undefined
               }
             >
@@ -371,7 +441,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   onStart={() => {
                     const rows = queueRows();
                     const beforeRunId = resolveQueueDragBeforeRunId(rows, run.id, 0);
-                    drag.current = { runId: run.id, order, beforeRunId, rows };
+                    drag.current = {
+                      runId: run.id,
+                      order,
+                      beforeRunId,
+                      rows,
+                    };
                     translation.setValue(0);
                     setDragRows(rows);
                     setPreviewBeforeRunId(beforeRunId);
@@ -449,14 +524,18 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                                   title: run.queueAfterNextTool
                                     ? "Run after current turn"
                                     : "Steer after next tool call",
-                                  attributes: { disabled: !controls.canSteer },
+                                  attributes: {
+                                    disabled: !controls.canSteer,
+                                  },
                                 },
                               ]
                             : []),
                           {
                             id: "steer",
                             title: "Steer now",
-                            attributes: { disabled: !controls.canSteer },
+                            attributes: {
+                              disabled: !controls.canSteer,
+                            },
                             image: Platform.OS === "ios" ? "arrow.turn.left.up" : "arrow_upward",
                           },
                         ]
@@ -464,19 +543,32 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                     {
                       id: "edit",
                       title: "Edit",
-                      attributes: { disabled: !controls.canEdit },
+                      attributes: {
+                        disabled: !controls.canEdit,
+                      },
                       image: Platform.OS === "ios" ? "pencil" : "edit",
                     },
-                    { id: "up", title: "Move up", attributes: { disabled: !controls.canMoveUp } },
+                    {
+                      id: "up",
+                      title: "Move up",
+                      attributes: {
+                        disabled: !controls.canMoveUp,
+                      },
+                    },
                     {
                       id: "down",
                       title: "Move down",
-                      attributes: { disabled: !controls.canMoveDown },
+                      attributes: {
+                        disabled: !controls.canMoveDown,
+                      },
                     },
                     {
                       id: "remove",
                       title: "Remove",
-                      attributes: { disabled: !controls.canDismiss, destructive: true },
+                      attributes: {
+                        disabled: !controls.canDismiss,
+                        destructive: true,
+                      },
                     },
                   ]}
                   onPressAction={({ nativeEvent }) =>
@@ -542,21 +634,31 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       })}
     </ScrollView>
   );
-
   if (Platform.OS === "ios") {
     // A plain formSheet screen never renders a stack header, so it comes from
     // a nested native stack inside the sheet (same shape as the git sheet).
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView
+        style={{
+          flex: 1,
+        }}
+      >
         <View collapsable={false} className="flex-1 bg-sheet">
-          <ScreenStack style={{ flex: 1 }}>
+          <ScreenStack
+            style={{
+              flex: 1,
+            }}
+          >
             <Screen
               activityState={2}
               enabled
               isNativeStack
               screenId="thread-queue-sheet-native"
               scrollEdgeEffects={HEADER_SCROLL_EDGE_EFFECTS}
-              style={{ backgroundColor: theme["--color-sheet"], flex: 1 }}
+              style={{
+                backgroundColor: theme["--color-sheet"],
+                flex: 1,
+              }}
             >
               {content}
               <ScreenStackHeaderConfig
@@ -576,18 +678,24 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       </GestureHandlerRootView>
     );
   }
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{
+        flex: 1,
+      }}
+    >
       <View collapsable={false} className="flex-1 bg-sheet">
-        <NativeStackScreenOptions options={{ sheetCornerRadius: 28 }} />
+        <NativeStackScreenOptions
+          options={{
+            sheetCornerRadius: 28,
+          }}
+        />
         <AndroidSheetHeader title="Queued" onBack={() => navigation.goBack()} />
         <ScreenContent insetHorizontal={layout.usesSplitView}>{content}</ScreenContent>
       </View>
     </GestureHandlerRootView>
   );
 }
-
 function QueueShiftedRow(props: {
   readonly offset: number;
   readonly dragging: boolean;
@@ -600,18 +708,28 @@ function QueueShiftedRow(props: {
     transform: [
       {
         translateY: dragging
-          ? withTiming(offset, { duration: 160, reduceMotion: ReduceMotion.System })
+          ? withTiming(offset, {
+              duration: 160,
+              reduceMotion: ReduceMotion.System,
+            })
           : offset,
       },
     ],
   }));
   return (
-    <Reanimated.View onLayout={props.onLayout} style={[style, { zIndex: props.lifted ? 1 : 0 }]}>
+    <Reanimated.View
+      onLayout={props.onLayout}
+      style={[
+        style,
+        {
+          zIndex: props.lifted ? 1 : 0,
+        },
+      ]}
+    >
       {props.children}
     </Reanimated.View>
   );
 }
-
 function QueueRowSwipeable(props: {
   readonly enabled: boolean;
   readonly background: string;
@@ -629,8 +747,13 @@ function QueueRowSwipeable(props: {
       // The sheet's own vertical scroll and the drag handle both move up and
       // down; a swipe has to be clearly sideways before it takes the gesture.
       failOffsetY={[-12, 12]}
-      containerStyle={{ backgroundColor: props.background, flex: 1 }}
-      childrenContainerStyle={{ backgroundColor: props.background }}
+      containerStyle={{
+        backgroundColor: props.background,
+        flex: 1,
+      }}
+      childrenContainerStyle={{
+        backgroundColor: props.background,
+      }}
       onSwipeableOpen={(direction) => {
         if (direction !== "right") return;
         swipeableRef.current?.close();
@@ -646,7 +769,9 @@ function QueueRowSwipeable(props: {
             props.onRemove();
           }}
           className="items-center justify-center bg-danger active:opacity-70 disabled:opacity-40"
-          style={{ width: REMOVE_ACTION_WIDTH }}
+          style={{
+            width: REMOVE_ACTION_WIDTH,
+          }}
         >
           <SymbolView name="trash" size={16} tintColorClassName="accent-danger-foreground" />
           <Text className="pt-1 text-2xs font-t3-medium text-danger-foreground">Remove</Text>
@@ -657,7 +782,6 @@ function QueueRowSwipeable(props: {
     </ReanimatedSwipeable>
   );
 }
-
 function QueueAttachmentThumbnails(props: {
   readonly environmentId: EnvironmentId;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -685,7 +809,6 @@ function QueueAttachmentThumbnails(props: {
     </View>
   );
 }
-
 function QueueAttachmentThumbnail(props: {
   readonly environmentId: EnvironmentId;
   readonly attachment: ChatAttachment;
@@ -706,12 +829,15 @@ function QueueAttachmentThumbnail(props: {
       source={assetImageSource(props.environmentId, resource, url)}
       cachePolicy="memory-disk"
       contentFit="cover"
-      style={{ width: 24, height: 24, borderRadius: 4 }}
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 4,
+      }}
       accessibilityIgnoresInvertColors
     />
   );
 }
-
 function QueueDragHandle(props: {
   disabled: boolean;
   title: string;
@@ -722,22 +848,19 @@ function QueueDragHandle(props: {
   onMove: (y: number) => void;
   onEnd: (y: number, success: boolean) => void;
 }) {
-  const latest = useRef(props);
-  useLayoutEffect(() => {
-    latest.current = props;
-  });
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(!props.disabled)
-        .minDistance(0)
-        .shouldCancelWhenOutside(false)
-        .runOnJS(true)
-        .onStart(() => latest.current.onStart())
-        .onUpdate((event) => latest.current.onMove(event.translationY))
-        .onFinalize((event, success) => latest.current.onEnd(event.translationY, success)),
-    [props.disabled],
-  );
+  // Gesture callbacks fire outside render, so effect events read the latest
+  // props without rebuilding the gesture.
+  const onStart = useEffectEvent(() => props.onStart());
+  const onMove = useEffectEvent((y: number) => props.onMove(y));
+  const onEnd = useEffectEvent((y: number, success: boolean) => props.onEnd(y, success));
+  const gesture = Gesture.Pan()
+    .enabled(!props.disabled)
+    .minDistance(0)
+    .shouldCancelWhenOutside(false)
+    .runOnJS(true)
+    .onStart(() => onStart())
+    .onUpdate((event) => onMove(event.translationY))
+    .onFinalize((event, success) => onEnd(event.translationY, success));
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -745,10 +868,26 @@ function QueueDragHandle(props: {
         accessible
         accessibilityRole="adjustable"
         accessibilityLabel={`Reorder ${props.title}`}
-        accessibilityState={{ disabled: props.disabled }}
+        accessibilityState={{
+          disabled: props.disabled,
+        }}
         accessibilityActions={[
-          ...(props.canMoveUp ? [{ name: "decrement", label: "Move up" }] : []),
-          ...(props.canMoveDown ? [{ name: "increment", label: "Move down" }] : []),
+          ...(props.canMoveUp
+            ? [
+                {
+                  name: "decrement",
+                  label: "Move up",
+                },
+              ]
+            : []),
+          ...(props.canMoveDown
+            ? [
+                {
+                  name: "increment",
+                  label: "Move down",
+                },
+              ]
+            : []),
         ]}
         onAccessibilityAction={({ nativeEvent }) => {
           if (props.disabled) return;
