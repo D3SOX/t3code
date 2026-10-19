@@ -13,6 +13,7 @@ import { resolveThreadProviderStack } from "@t3tools/client-runtime/state/models
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
   createInboxReturnTracker,
+  hasBackgroundCommand,
   isThreadWorking,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
@@ -69,17 +70,19 @@ export function resolveThreadListV2ProviderDrivers(
  * Thread List v2 model, ported from the web sidebar v2
  * (apps/web/src/components/Sidebar.logic.ts + SidebarV2.tsx).
  *
- * Six visual states. Color distinguishes approval, input, active work, and
+ * Color distinguishes approval, input, active work, and
  * failures. Ready is the unlabeled resting state; waiting (runtime status "idle") is the agent
  * parked on open background tasks, grey like working rather than a false Done.
  * The orchestrator v2 presentation bridge parks runtime at idle when the
  * post-settlement background roster holds the run's completion (subagents,
- * monitors); commands left running, such as a dev server, read as ready.
+ * monitors). Tracked background commands show ongoing work without changing
+ * the parent turn's runtime status.
  */
 export type ThreadListV2Status =
   | "approval"
   | "input"
   | "working"
+  | "background"
   | "waiting"
   | "failed"
   | "limited"
@@ -193,7 +196,8 @@ export function resolveThreadListV2Status(
   thread: Pick<
     EnvironmentThreadShell,
     "hasPendingApprovals" | "hasPendingUserInput" | "pendingSubagentRequest" | "runtime"
-  >,
+  > &
+    Partial<Pick<EnvironmentThreadShell, "pendingBackgroundTasks">>,
 ): ThreadListV2Status {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return "approval";
@@ -207,6 +211,7 @@ export function resolveThreadListV2Status(
   ) {
     return "working";
   }
+  if (hasBackgroundCommand(thread)) return "background";
   if (thread.runtime?.status === "idle") {
     return "waiting";
   }

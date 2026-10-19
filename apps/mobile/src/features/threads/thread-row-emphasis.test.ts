@@ -6,6 +6,7 @@ describe("shouldRecedeThreadRow", () => {
   it("recedes background work", () => {
     expect(shouldRecedeThreadRow({ status: "working", selected: false })).toBe(true);
     expect(shouldRecedeThreadRow({ status: "waiting", selected: false })).toBe(true);
+    expect(shouldRecedeThreadRow({ status: "background", selected: false })).toBe(true);
   });
 
   it("keeps rows that need a human at full strength", () => {

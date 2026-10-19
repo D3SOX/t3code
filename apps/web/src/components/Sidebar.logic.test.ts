@@ -2125,7 +2125,13 @@ describe("navigation after parking a thread", () => {
 
 describe("unseen completion with background work", () => {
   it.each([
-    { kind: "command", status: "ready", topStatus: "done", receded: false, pill: "Completed" },
+    {
+      kind: "command",
+      status: "background",
+      topStatus: "background",
+      receded: true,
+      pill: "Background",
+    },
     { kind: "monitor", status: "waiting", topStatus: "waiting", receded: true, pill: "Waiting" },
   ] as const)("presents a completed thread with a $kind roster", (expected) => {
     const thread = presentThreadShell(localEnvironmentId, {
@@ -2153,6 +2159,14 @@ describe("unseen completion with background work", () => {
     ).toBe(expected.receded);
     expect(isSidebarThreadWorking(thread)).toBe(expected.receded);
     expect(resolveThreadStatusPill({ thread })).toMatchObject({ label: expected.pill });
+    if (expected.kind === "command") {
+      expect(resolveThreadStatusPill({ thread })?.pulse).toBe(false);
+      expect(shouldShowSidebarV2Duration(status)).toBe(true);
+      expect(thread.runtime?.status).toBe("completed");
+      expect(resolveSidebarThreadStatus({ ...thread, pendingBackgroundTasks: [] })).toBe("ready");
+      expect(isSidebarThreadWorking({ ...thread, pendingBackgroundTasks: [] })).toBe(false);
+      expect(resolveSidebarThreadStatus({ ...thread, hasPendingApprovals: true })).toBe("approval");
+    }
   });
 });
 

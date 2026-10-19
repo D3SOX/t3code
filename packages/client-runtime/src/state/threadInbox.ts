@@ -13,7 +13,19 @@ type WorkingThreadInput = Pick<
   | "interactionMode"
   | "latestRun"
   | "runtime"
->;
+> &
+  Partial<Pick<EnvironmentThreadShell, "pendingBackgroundTasks">>;
+
+export function hasBackgroundCommand(
+  thread: Pick<EnvironmentThreadShell, "runtime"> & {
+    readonly pendingBackgroundTasks?: EnvironmentThreadShell["pendingBackgroundTasks"] | undefined;
+  },
+): boolean {
+  return (
+    (thread.runtime?.status === "completed" || thread.runtime?.status === "idle") &&
+    thread.pendingBackgroundTasks?.some((task) => task.kind === "command") === true
+  );
+}
 
 /** Threads busy with work that does not need the user fold into the Working
     section: a running run, or one stopped with background work that will wake
@@ -22,7 +34,12 @@ type WorkingThreadInput = Pick<
 export function isThreadWorking(thread: WorkingThreadInput): boolean {
   if (thread.hasPendingApprovals || thread.hasPendingUserInput) return false;
   if (thread.pendingSubagentRequest != null) return false;
-  if (!threadRuntimeIsActive(thread.runtime) && thread.runtime?.status !== "idle") return false;
+  if (
+    !threadRuntimeIsActive(thread.runtime) &&
+    thread.runtime?.status !== "idle" &&
+    !hasBackgroundCommand(thread)
+  )
+    return false;
   // A plan prompt outranks lingering background work: the user has to act on it.
   const run = thread.latestRun;
   const runSettled =

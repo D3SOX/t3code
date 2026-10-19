@@ -102,6 +102,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",
   },
+  background: {
+    label: "Background",
+    icon: "terminal",
+    className: "text-adaptive-teal-700-300",
+    iconTintClassName: "accent-adaptive-teal-700-300",
+  },
   failed: {
     label: "Failed",
     icon: "exclamationmark.circle",

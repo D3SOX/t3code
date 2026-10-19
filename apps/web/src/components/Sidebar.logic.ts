@@ -1,4 +1,5 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { hasBackgroundCommand } from "@t3tools/client-runtime/state/thread-inbox";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
@@ -620,6 +621,7 @@ export function buildBulkUnpinContextMenuItem(input: {
 export interface ThreadStatusPill {
   label:
     | "Working"
+    | "Background"
     | "Connecting"
     | "Completed"
     | "Pending Approval"
@@ -635,6 +637,7 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Pending Approval": 5,
   "Awaiting Input": 4,
   Working: 3,
+  Background: 2.75,
   Connecting: 3,
   Waiting: 2.5,
   "Plan Ready": 2,
@@ -936,20 +939,21 @@ export function resolveThreadRowClassName(input: {
 }
 
 // ── Sidebar v2 status model ─────────────────────────────────────────
-// Six visual states, three colors: color is reserved for "act now"
+// Color is reserved for "act now"
 // (approval), "in motion" (working), and "broken" (failed). Ready is the
 // unlabeled resting state — the agent stopped and is waiting on the user,
 // whether it finished, asked a question, or proposed a plan. Waiting
 // (runtime status "idle") is the agent stopped with background work that will
 // wake it (subagents, monitors): not the user's turn yet, so it renders grey
-// like working, not as a false Done. Commands it left running, such as a dev
-// server, do not hold the thread; it reads as ready.
+// like working, not as a false Done. Tracked background commands also show
+// ongoing work, even after the provider finishes the parent turn.
 // Unread completion is tracked separately: it describes whether a ready
 // thread needs attention, not what the thread is currently doing.
 export type SidebarThreadStatus =
   | "approval"
   | "input"
   | "working"
+  | "background"
   | "waiting"
   | "failed"
   | "limited"
@@ -971,7 +975,8 @@ export function shouldRecedeSidebarThread(input: {
   isSelected: boolean;
 }): boolean {
   if (input.isActive || input.isSelected || input.status === "input") return false;
-  if (input.status === "working" || input.status === "waiting") return true;
+  if (input.status === "working" || input.status === "background" || input.status === "waiting")
+    return true;
   if (input.status === "ready" || input.status === "approval") {
     return !input.isUnread && !input.isWoke;
   }
@@ -981,7 +986,8 @@ export function shouldRecedeSidebarThread(input: {
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
   "hasPendingApprovals" | "hasPendingUserInput" | "pendingSubagentRequest" | "runtime"
->;
+> &
+  Partial<Pick<SidebarThreadSummary, "pendingBackgroundTasks">>;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -996,6 +1002,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   ) {
     return "working";
   }
+  if (hasBackgroundCommand(thread)) return "background";
   if (thread.runtime?.status === "idle") {
     return "waiting";
   }
@@ -1013,15 +1020,16 @@ export type SidebarV2TopStatusKind =
   | "input"
   | "waiting"
   | "woke"
-  | "working";
+  | "working"
+  | "background";
 
 export function resolveSidebarV2TopStatus(input: {
   readonly status: SidebarThreadStatus;
   readonly isUnread: boolean;
   readonly isWoke: boolean;
 }): SidebarV2TopStatusKind | null {
-  if (input.status === "working") {
-    return "working";
+  if (input.status === "working" || input.status === "background") {
+    return input.status;
   }
   if (input.status === "waiting") {
     return "waiting";
@@ -1042,7 +1050,7 @@ export function resolveSidebarV2TopStatus(input: {
 }
 
 export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
-  return status === "working";
+  return status === "working" || status === "background";
 }
 
 /** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
@@ -1198,6 +1206,15 @@ export function resolveThreadStatusPill(input: {
       label: "Awaiting Input",
       colorClass: "text-indigo-600 dark:text-indigo-300/90",
       dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+      pulse: false,
+    };
+  }
+
+  if (hasBackgroundCommand(thread)) {
+    return {
+      label: "Background",
+      colorClass: "text-teal-700 dark:text-teal-300",
+      dotClass: "bg-teal-700 dark:bg-teal-300",
       pulse: false,
     };
   }

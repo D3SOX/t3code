@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   createInboxReturnTracker,
+  isThreadWorking,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "./threadInbox.ts";
@@ -33,6 +34,33 @@ function thread(id: string, working: boolean) {
       : null,
   };
 }
+
+describe("background commands", () => {
+  const running = thread("tests", true);
+  const waitingForTests = {
+    ...running,
+    runtime: { ...running.runtime!, status: "completed" as const },
+    pendingBackgroundTasks: [{ taskId: "gradle-tests", kind: "command" as const }],
+  };
+
+  it("keeps a finished turn working until its background command finishes", () => {
+    expect(isThreadWorking(waitingForTests)).toBe(true);
+    expect(isThreadWorking({ ...waitingForTests, pendingBackgroundTasks: [] })).toBe(false);
+    expect(waitingForTests.runtime.status).toBe("completed");
+  });
+
+  it("keeps approvals, questions, and failures in the inbox", () => {
+    expect(isThreadWorking({ ...waitingForTests, hasPendingApprovals: true })).toBe(false);
+    expect(isThreadWorking({ ...waitingForTests, hasPendingUserInput: true })).toBe(false);
+    expect(isThreadWorking({ ...waitingForTests, pendingSubagentRequest: "approval" })).toBe(false);
+    expect(
+      isThreadWorking({
+        ...waitingForTests,
+        runtime: { ...waitingForTests.runtime, status: "failed" },
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("createInboxReturnTracker", () => {
   it("stamps a thread when it stops working, but never on the first observation", () => {

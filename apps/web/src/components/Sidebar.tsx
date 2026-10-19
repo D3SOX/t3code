@@ -1717,55 +1717,61 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isSelected,
   });
   const topStatus =
-    status === "working"
+    status === "background"
       ? {
-          label: thread.goal?.status === "active" ? "Goal" : "Working",
-          icon: "working" as const,
-          className: "text-info",
+          label: "Background",
+          icon: "background" as const,
+          className: "text-teal-700 dark:text-teal-300",
         }
-      : status === "waiting"
+      : status === "working"
         ? {
-            label: "Waiting",
-            icon: "waiting" as const,
-            className: "text-muted-foreground",
+            label: thread.goal?.status === "active" ? "Goal" : "Working",
+            icon: "working" as const,
+            className: "text-info",
           }
-        : status === "approval"
+        : status === "waiting"
           ? {
-              label: "Approval",
-              icon: "approval" as const,
-              className: "text-warning-foreground",
+              label: "Waiting",
+              icon: "waiting" as const,
+              className: "text-muted-foreground",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: "Input",
-                icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: "Approval",
+                icon: "approval" as const,
+                className: "text-warning-foreground",
               }
-            : status === "limited"
+            : status === "input"
               ? {
-                  label: "Limited",
-                  icon: "failed" as const,
-                  className: "text-warning",
+                  label: "Input",
+                  icon: "input" as const,
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : status === "failed"
+              : status === "limited"
                 ? {
-                    label: "Failed",
+                    label: "Limited",
                     icon: "failed" as const,
-                    className: "text-error",
+                    className: "text-warning",
                   }
-                : isWoke
+                : status === "failed"
                   ? {
-                      label: "Woke",
-                      icon: "woke" as const,
-                      className: "text-warning",
+                      label: "Failed",
+                      icon: "failed" as const,
+                      className: "text-error",
                     }
-                  : isUnread
+                  : isWoke
                     ? {
-                        label: "Done",
-                        icon: "done" as const,
-                        className: "text-success",
+                        label: "Woke",
+                        icon: "woke" as const,
+                        className: "text-warning",
                       }
-                    : null;
+                    : isUnread
+                      ? {
+                          label: "Done",
+                          icon: "done" as const,
+                          className: "text-success",
+                        }
+                      : null;
   const isWokeStatus = topStatus?.icon === "woke";
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -2396,6 +2402,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         >
                           {topStatus.icon === "working" ? (
                             <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "background" ? (
+                            <TerminalIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "waiting" ? (
                             <CircleDotDashedIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "input" ? (
@@ -2415,7 +2423,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             <span aria-hidden>
                               <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
                             </span>
-                          ) : status === "waiting" ? (
+                          ) : status === "waiting" || status === "background" ? (
                             <span aria-hidden>
                               <WorkingDuration startedAt={thread.latestRun?.completedAt ?? null} />
                             </span>
