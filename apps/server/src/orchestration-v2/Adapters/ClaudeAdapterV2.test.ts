@@ -2924,6 +2924,62 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   const makeWakeHarness = makeWakeHarnessWithOptions();
 
   describe("Claude settings restrictions", () => {
+    it.effect("allows forwarded tool callbacks in Full access without requesting approval", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-full-access-callback"),
+            text: "Clean scratch logs.",
+            attachments: [],
+          }),
+        );
+        const options = harness.getOpenedOptions()!;
+        assert.equal(options.permissionMode, "bypassPermissions");
+        for (const [toolName, toolInput] of [
+          ["Bash", { command: "rm -f $TMPDIR/*.log; git worktree prune" }],
+          ["Edit", { file_path: "/workspace/file.txt", old_string: "before", new_string: "after" }],
+          ["mcp__example__update", { value: "after" }],
+        ] as const) {
+          const controller = new AbortController();
+          const decision = yield* Effect.promise(() =>
+            options.canUseTool!(toolName, toolInput, {
+              signal: controller.signal,
+              toolUseID: `full-access-${toolName}`,
+              requestId: `request-full-access-${toolName}`,
+            }),
+          ).pipe(Effect.forkScoped);
+          const first = yield* Effect.raceFirst(
+            Queue.take(harness.runtimeRequestReceipts).pipe(
+              Effect.map((event) => ({ type: "request", event }) as const),
+            ),
+            Fiber.join(decision).pipe(
+              Effect.map((result) => ({ type: "decision", result }) as const),
+            ),
+          );
+          if (first.type === "request") {
+            controller.abort();
+            yield* Fiber.join(decision);
+          }
+          assert.equal(first.type, "decision", `${toolName} requested approval in Full access`);
+          if (first.type !== "decision") return;
+          assert.deepEqual(first.result, {
+            behavior: "allow",
+            updatedInput: toolInput,
+            toolUseID: `full-access-${toolName}`,
+          });
+        }
+        assert.isFalse(harness.events.some((event) => event.type === "runtime_request.updated"));
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    );
+
     it.effect("resolves cached managed policy from the configured home through the real SDK", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -3117,8 +3173,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* start("/unrestricted");
         assert.equal(harness.getOpenedOptions()?.permissionMode, "bypassPermissions");
         assert.equal(harness.getOpenedOptions()?.allowDangerouslySkipPermissions, true);
-        // Forwarded asks (including ask rules and settings fallback) still need a decision
-        // before queued init/status frames arrive.
+        // Full access applies both before and after the CLI confirms bypass mode.
         for (const { phase, frame } of [
           {
             phase: "init",
@@ -3161,18 +3216,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               Effect.map((result) => ({ type: "decision", result }) as const),
             ),
           );
-          assert.equal(
-            forwardedFirst.type,
-            "request",
-            `CLI-forwarded Bash must ask before the queued ${phase} frame reaches the adapter`,
-          );
-          if (forwardedFirst.type !== "request") return;
-          assert.equal(forwardedFirst.event.runtimeRequest.kind, "command");
-          yield* harness.runtime.respondToRuntimeRequest({
-            requestId: forwardedFirst.event.runtimeRequest.id,
-            decision: "decline",
-          });
-          assert.equal((yield* Fiber.join(forwardedDecision))?.behavior, "deny");
+          if (forwardedFirst.type === "request") {
+            yield* harness.runtime.respondToRuntimeRequest({
+              requestId: forwardedFirst.event.runtimeRequest.id,
+              decision: "decline",
+            });
+            yield* Fiber.join(forwardedDecision);
+          }
+          assert.equal(forwardedFirst.type, "decision", `Full access asked before ${phase}`);
+          if (forwardedFirst.type !== "decision") return;
+          assert.equal(forwardedFirst.result?.behavior, "allow");
           yield* harness.offerAndWait(frame);
         }
         yield* finish;
@@ -3616,6 +3669,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           attemptId: RunAttemptId.make("mcp-presentation"),
           text: "Check the weather",
           attachments: [],
+          runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            ...CLAUDE_TEST_RUNTIME_POLICY,
+            runtimeMode: "approval-required",
+          }),
         }),
       );
       const toolName = "mcp__weather__get_weather";

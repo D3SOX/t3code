@@ -698,7 +698,7 @@ describe("sidebar drag projection", () => {
     expect(result.get(sidebarMarkerId("snoozed-header"))).toEqual({ ...stationary, y: -46 });
   });
 
-  it("previews a time-ordered inbox drop at its time slot, above the Working shelf", () => {
+  it("reorders Active threads at the pointer with the Working shelf enabled", () => {
     const items = [
       pinnedHeader,
       thread("p", "pinned"),
@@ -710,12 +710,15 @@ describe("sidebar drag projection", () => {
       settledHeader,
       marker("settled-placeholder"),
     ];
-    const input = { items, settledOrder: [], settledExpanded: false };
-    expect(preview(input, "p", "a1").get("a2")?.y).toBe(0);
-    const byTime = preview({ ...input, activeOrder: ["a1", "a2", "p"] }, "p", "a1");
-    expect(byTime.get("a2")?.y).toBe(-83);
-    expect(byTime.get(sidebarMarkerId("working-header"))).toEqual(stationary);
-    expect(byTime.get("w")).toEqual(stationary);
+    const input = {
+      items,
+      settledOrder: [],
+      settledExpanded: false,
+    };
+    const moved = preview(input, "a2", "a1");
+    expect(moved.get("a1")?.y).toBe(83);
+    expect(moved.get(sidebarMarkerId("working-header"))).toEqual(stationary);
+    expect(moved.get("w")).toEqual(stationary);
   });
 
   it("derives missing card geometry from the measured root scale", () => {
