@@ -77,11 +77,12 @@ jobs:
           tag_endpoint="repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG"
           # A later workflow edit on main can prevent GITHUB_TOKEN from tagging
           # this commit. Reserve the tag now, while it is still current.
-          if ! gh api "$tag_endpoint" >/dev/null 2>&1; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA" >/dev/null
+          if ! tag_sha=$(gh api "$tag_endpoint" --jq '.object.sha' 2>/dev/null); then
+            # A new ref can return 404 on reads briefly after creation.
+            tag_sha=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA" --jq '.object.sha')
           fi
-          test "$(gh api "$tag_endpoint" --jq '.object.sha')" = "$GITHUB_SHA"
+          test "$tag_sha" = "$GITHUB_SHA"
 
   arch:
     needs: plan
