@@ -1149,6 +1149,7 @@ interface ActiveCodexTurnContext {
   capacityRetryAttempt?: number;
   capacityRetryFiber?: Fiber.Fiber<void, never>;
   capacityRetryWaiting?: boolean;
+  closedCommandItemIds?: ReadonlySet<string>;
   latestProviderFailure?: {
     readonly nativeMessage: string;
     readonly failure: OrchestrationV2ProviderFailure;
@@ -4732,6 +4733,35 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           });
         });
 
+        // Unloading an idle thread kills its terminals without completing
+        // their command items, while the shared provider session stays alive.
+        yield* client.handleServerNotification("thread/closed", (payload) =>
+          Effect.gen(function* () {
+            const completedAt = yield* DateTime.now;
+            for (const context of (yield* Ref.get(settledTurns)).values()) {
+              if (context.providerThread.nativeThreadRef?.nativeId !== payload.threadId) continue;
+              const commands = (yield* Ref.get(runningCommandItemsByTurn)).get(
+                context.nativeTurnId,
+              );
+              if (commands !== undefined) {
+                context.closedCommandItemIds = new Set(commands.keys());
+              }
+              yield* terminalizeRunningCommandItems(
+                context,
+                context.nativeTurnId,
+                "interrupted",
+                completedAt,
+              );
+              yield* Ref.update(runningCommandItemsByTurn, (current) => {
+                const updated = new Map(current);
+                updated.delete(context.nativeTurnId);
+                return updated;
+              });
+              yield* releaseSettledTurnIfIdle(context.nativeTurnId);
+            }
+          }).pipe(Effect.orDie, turnTerminalizationPermit.withPermits(1)),
+        );
+
         yield* client.handleServerNotification("item/started", (payload) =>
           Effect.gen(function* () {
             const context = yield* awaitActiveTurn(payload.turnId);
@@ -4921,6 +4951,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "commandExecution") {
+              // Other tools can retain the context after thread closure.
+              if (context.closedCommandItemIds?.has(payload.item.id)) return;
               const turnDrained = yield* clearRunningCommandItem(payload.turnId, payload.item.id);
               const artifacts = yield* buildCommandExecutionArtifacts(context, payload.item);
               yield* emitProviderEvent({
@@ -6192,32 +6224,33 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     `terminal-failure:${context.providerTurnId}`,
                   )),
               };
-              const announce = (delay: number | null) =>
-                Effect.gen(function* () {
-                  const updatedAt = yield* DateTime.now;
-                  const updated = { ...state, retry: { ...state.retry, retryDelayMs: delay } };
-                  yield* Ref.update(providerRetries, (current) =>
-                    new Map(current).set(context.providerTurnId, updated),
-                  );
-                  yield* emitProviderEvent({
-                    type: "turn_item.updated",
+              const announce = Effect.fn("CodexAdapterV2.announceCapacityRetry")(function* (
+                delay: number | null,
+              ) {
+                const updatedAt = yield* DateTime.now;
+                const updated = { ...state, retry: { ...state.retry, retryDelayMs: delay } };
+                yield* Ref.update(providerRetries, (current) =>
+                  new Map(current).set(context.providerTurnId, updated),
+                );
+                yield* emitProviderEvent({
+                  type: "turn_item.updated",
+                  driver: CODEX_PROVIDER,
+                  turnItem: makeProviderRetryTurnItem({
                     driver: CODEX_PROVIDER,
-                    turnItem: makeProviderRetryTurnItem({
-                      driver: CODEX_PROVIDER,
-                      threadId: context.projectionThreadId,
-                      runId: context.projectionRunId,
-                      nodeId: context.providerNodeId,
-                      providerThreadId: context.providerThread.id,
-                      providerTurnId: context.providerTurnId,
-                      itemOrdinal: state.itemOrdinal,
-                      failure,
-                      retry: updated.retry,
-                      status: "running",
-                      startedAt: state.startedAt,
-                      updatedAt,
-                    }),
-                  });
+                    threadId: context.projectionThreadId,
+                    runId: context.projectionRunId,
+                    nodeId: context.providerNodeId,
+                    providerThreadId: context.providerThread.id,
+                    providerTurnId: context.providerTurnId,
+                    itemOrdinal: state.itemOrdinal,
+                    failure,
+                    retry: updated.retry,
+                    status: "running",
+                    startedAt: state.startedAt,
+                    updatedAt,
+                  }),
                 });
+              });
               yield* announce(retryDelayMs);
               context.capacityRetryFiber = yield* Effect.gen(function* () {
                 yield* Effect.sleep(retryDelayMs);

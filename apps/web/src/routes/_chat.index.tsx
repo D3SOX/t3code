@@ -44,15 +44,14 @@ function IndexDraftLanding() {
     failed: false,
     retryRequest: 0,
   });
-  const mostRecentProject = bootstrapped
-    ? (projects.find(
-        (project) =>
-          project.environmentId === lastNewThreadProjectRef?.environmentId &&
-          project.id === lastNewThreadProjectRef.projectId,
-      ) ??
-      sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
-      null)
-    : null;
+  const mostRecentProject =
+    projects.find(
+      (project) =>
+        project.environmentId === lastNewThreadProjectRef?.environmentId &&
+        project.id === lastNewThreadProjectRef.projectId,
+    ) ??
+    sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
+    null;
   const attempt = startState.retryRequest;
   useEffect(() => {
     // Starting a draft after the user has left would replace the page they picked.
@@ -82,9 +81,6 @@ function IndexDraftLanding() {
         }));
       });
   }, [attempt, handleNewThread, mostRecentProject]);
-  if (!bootstrapped) {
-    return null;
-  }
   if (mostRecentProject !== null) {
     return startState.failed ? (
       <DraftStartError

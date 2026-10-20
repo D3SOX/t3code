@@ -217,6 +217,7 @@ it("uses bounded tags across threads and environments, replaces repeat alerts, a
     latestTurn: { turnId: "turn", state: "completed", completedAt },
   });
   state.environmentIds = [environmentId, otherEnvironmentId];
+  state.route = { environmentId, threadId: otherThreadId };
   state.shells.set(environmentId, shell({ id: threadId }, { id: otherThreadId }));
   state.shells.set(otherEnvironmentId, shell({ id: threadId }));
   await render();

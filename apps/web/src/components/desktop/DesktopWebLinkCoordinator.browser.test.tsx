@@ -1,4 +1,5 @@
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import type { Atom } from "effect/reactivity";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -55,6 +56,7 @@ vi.mock(import("../../hooks/useScratchProject"), async (original) => ({
 import { AppAtomRegistryProvider, appAtomRegistry } from "../../rpc/atomRegistry";
 import { allReachableShellsLiveAtom } from "../../state/shell";
 import { DesktopWebLinkCoordinator } from "./DesktopWebLinkCoordinator";
+import { __setClientSettingsForTests } from "../../hooks/useSettings";
 
 const discoverySettled = allReachableShellsLiveAtom as Atom.Writable<boolean>;
 const environmentId = EnvironmentId.make("local");
@@ -91,6 +93,7 @@ let root: Root;
 
 /** Mounts the coordinator behind a desktop bridge that hands over `urls` once the renderer is ready. */
 async function mount(...urls: string[]) {
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, pullRequestLinkTarget: "app" });
   let deliver: ((url: string) => void) | undefined;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("desktopBridge", {
@@ -120,6 +123,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   state.projects = [];
+  __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
   appAtomRegistry.set(discoverySettled, false);
 });
 

@@ -56,7 +56,7 @@ describe("composer submission hints", () => {
   const input = {
     keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     platform: "Linux",
-    isMobileViewport: false,
+    isSoftwareKeyboardOpen: false,
     isDraftThread: false,
     followUpBehavior: "next-tool" as const,
   };
@@ -461,6 +461,14 @@ describe("composerSubmissionIntentForKey", () => {
       ).toBe("alternate");
       expect(
         composerSubmissionIntentForKey({ ...keyboardOpen, isDraftThread: true, event: modEnter }),
+      ).toBe("foreground");
+      expect(
+        composerSubmissionIntentForKey({
+          ...keyboardOpen,
+          isDraftThread: true,
+          startThreadsInBackground: false,
+          event: modEnter,
+        }),
       ).toBe("background");
     },
   );
@@ -479,7 +487,7 @@ describe("composer suggestion keyboard priority", () => {
   const input = {
     keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     platform: "Linux",
-    isMobileViewport: false,
+    isSoftwareKeyboardOpen: false,
     prompt: "$dependa",
   };
   const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };

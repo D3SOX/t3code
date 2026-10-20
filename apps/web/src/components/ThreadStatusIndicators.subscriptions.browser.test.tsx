@@ -215,6 +215,7 @@ it("keeps a long PR hover list in the viewport and lets the last row be selected
             status={null}
             onOpenList={() => {}}
             onOpenPullRequest={onOpenPullRequest}
+            onOpenPullRequestContextMenu={() => {}}
           />
         </div>,
       ),

@@ -56,6 +56,7 @@ import {
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
   shouldNavigateAfterThreadPark,
+  shouldCreateNewThreadInCurrentProject,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
   type SidebarListItem,
   type SidebarListMarker,
@@ -1043,20 +1044,31 @@ describe("resolveSidebarThreadStatus", () => {
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false, runtime: null };
 
   it("prioritizes approval over a running runtime", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, runtime })).toBe(
-      "approval",
-    );
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        hasPendingApprovals: true,
+        runtime,
+        blockedOnThreadWait: true,
+      }),
+    ).toBe("approval");
   });
 
   it("prioritizes awaiting input over a running runtime, below approval", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, hasPendingUserInput: true, runtime })).toBe(
-      "input",
-    );
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        hasPendingUserInput: true,
+        runtime,
+        blockedOnThreadWait: true,
+      }),
+    ).toBe("input");
     expect(
       resolveSidebarThreadStatus({
         ...idle,
         hasPendingApprovals: true,
         hasPendingUserInput: true,
+        blockedOnThreadWait: true,
         runtime,
       }),
     ).toBe("approval");
@@ -1068,6 +1080,7 @@ describe("resolveSidebarThreadStatus", () => {
       resolveSidebarThreadStatus({
         ...idle,
         runtime: { ...runtime, status: "starting" as const },
+        blockedOnThreadWait: true,
       }),
     ).toBe("working");
   });
@@ -1391,6 +1404,7 @@ describe("resolveThreadStatusPill", () => {
           ...baseThread,
           hasPendingApprovals: true,
           hasPendingUserInput: true,
+          blockedOnThreadWait: true,
         },
       }),
     ).toMatchObject({ label: "Pending Approval", pulse: false });
@@ -1402,6 +1416,7 @@ describe("resolveThreadStatusPill", () => {
         thread: {
           ...baseThread,
           hasPendingUserInput: true,
+          blockedOnThreadWait: true,
         },
       }),
     ).toMatchObject({ label: "Awaiting Input", pulse: false });
@@ -1413,6 +1428,22 @@ describe("resolveThreadStatusPill", () => {
         thread: baseThread,
       }),
     ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("shows an active thread wait without a pulse and resumes Working when it ends", () => {
+    const blocked = { ...baseThread, blockedOnThreadWait: true };
+    expect(resolveSidebarThreadStatus(blocked)).toBe("waiting");
+    expect(resolveThreadStatusPill({ thread: blocked })).toMatchObject({
+      label: "Waiting",
+      pulse: false,
+    });
+
+    const resumed = { ...blocked, blockedOnThreadWait: false };
+    expect(resolveSidebarThreadStatus(resumed)).toBe("working");
+    expect(resolveThreadStatusPill({ thread: resumed })).toMatchObject({
+      label: "Working",
+      pulse: true,
+    });
   });
 
   it("shows waiting for an idle thread with pending background tasks", () => {

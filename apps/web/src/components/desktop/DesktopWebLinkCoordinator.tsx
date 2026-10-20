@@ -73,7 +73,9 @@ function threadShowingBrowser(
 export function DesktopWebLinkCoordinator() {
   const router = useRouter();
   const primaryEnvironment = usePrimaryEnvironment();
-  const openPullRequestsInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
+  const openPullRequestsInApp = useClientSettings(
+    (settings) => settings.pullRequestLinkTarget === "app",
+  );
   const openChangeRequest = useOpenChangeRequestLink();
   const { scratchEnvironmentId, openScratchProject } = useScratchProject();
   const openThread = useNewThreadHandler();

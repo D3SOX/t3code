@@ -290,6 +290,7 @@ export type ClaudeCapabilitiesProbe = {
    * distinguishes unsupported accounts from missing subscription data.
    */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
+  readonly usageCheckedAt?: string;
 };
 
 function parseClaudeInitializationCommands(
@@ -417,6 +418,7 @@ const probeClaudeCapabilities = (
         // Usage has its own deadline so a slow optional request cannot discard initialization.
         // Only the rate limits are read, so skip the local transcript scan that fills
         // `behaviors`: with a few GB of transcripts it outlasts the deadline.
+        const usageCheckedAt = DateTime.formatIso(yield* DateTime.now);
         const usageResult = includeUsage
           ? yield* Effect.tryPromise(() =>
               q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
@@ -445,7 +447,7 @@ const probeClaudeCapabilities = (
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
-          ...(usage ? { usage } : {}),
+          ...(usage ? { usage, usageCheckedAt } : {}),
         } satisfies ClaudeCapabilitiesProbe;
       }),
     ),
@@ -700,14 +702,16 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const usage = capabilities.usage?.rate_limits
     ? capabilities.usage
     : (subscriptionUsage?.response ?? capabilities.usage);
+  const usageCheckedAt =
+    usage === subscriptionUsage?.response ? checkedAt : (capabilities.usageCheckedAt ?? checkedAt);
   const usageLimits = !usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
       ? yield* recordClaudeUsageResponse(scopedLimitNames, {
           response: usage,
-          checkedAt,
+          checkedAt: usageCheckedAt,
         })
-      : claudeUsageResponseToLimits({ response: usage, checkedAt }).limits;
+      : claudeUsageResponseToLimits({ response: usage, checkedAt: usageCheckedAt }).limits;
   const resetCredits = subscriptionUsage?.resetCredits;
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,

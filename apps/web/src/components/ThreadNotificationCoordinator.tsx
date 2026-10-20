@@ -5,7 +5,7 @@ import {
 import { pendingSubagentRequestsByThread } from "@t3tools/client-runtime/state/threads";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, type OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
 import * as Option from "effect/Option";
 import {
@@ -55,7 +55,10 @@ export function ThreadNotificationCoordinator() {
       !activeThreadId
     )
       return;
-    const tag = `${activeEnvironmentId}:${activeThreadId}`;
+    const tag = threadNotificationTag(
+      EnvironmentId.make(activeEnvironmentId),
+      ThreadId.make(activeThreadId),
+    );
     const entry = pending.current.get(tag);
     if (!entry) return;
     entry.notification.close();
@@ -347,6 +350,7 @@ function EnvironmentNotifications({
             void window.desktopBridge.focusWindow().catch(() => window.focus());
           } else {
             window.focus();
+            void window.desktopBridge?.revealWindow?.().catch(() => undefined);
           }
           void navigate({
             to: "/$environmentId/$threadId",

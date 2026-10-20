@@ -166,7 +166,7 @@ export function composerSubmissionHints(
     "Click",
   );
   if (input.isRunning) add("alternate", mac ? "⌘-click" : "Ctrl-click");
-  if (!input.isMobileViewport) {
+  if (!input.isSoftwareKeyboardOpen) {
     const enter = {
       key: "enter",
       metaKey: false,

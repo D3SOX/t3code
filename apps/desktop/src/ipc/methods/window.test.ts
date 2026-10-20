@@ -234,7 +234,7 @@ describe("getLocalEnvironmentBootstraps", () => {
 });
 
 describe("getRelayTelemetryEnabled", () => {
-  it.effect("reads the desktop host opt-out before returning the renderer policy", () =>
+  it.effect("requires the desktop host opt-in before enabling relay telemetry", () =>
     Effect.gen(function* () {
       assert.isFalse(
         yield* getRelayTelemetryEnabled.handler().pipe(
@@ -243,10 +243,17 @@ describe("getRelayTelemetryEnabled", () => {
           }),
         ),
       );
-      assert.isTrue(
+      assert.isFalse(
         yield* getRelayTelemetryEnabled
           .handler()
           .pipe(Effect.provideService(HostProcess.Environment, {})),
+      );
+      assert.isTrue(
+        yield* getRelayTelemetryEnabled
+          .handler()
+          .pipe(
+            Effect.provideService(HostProcess.Environment, { T3CODE_TELEMETRY_ENABLED: "true" }),
+          ),
       );
     }),
   );
