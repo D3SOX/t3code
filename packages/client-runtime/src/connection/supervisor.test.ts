@@ -1,5 +1,6 @@
 import { AuthStandardClientScopes, EnvironmentId, type ServerConfig } from "@t3tools/contracts";
 import { RelayClientTracer } from "@t3tools/shared/relayTracing";
+import { RelayEnvironmentConnectNotAuthorizedError } from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -43,6 +44,7 @@ import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 import { connectionRouteId, entryWithRoutes, isLearned, mergeLearnedRoutes } from "./routes.ts";
 import { NETWORK_BLOCKING_HINT } from "../errors/network.ts";
+import { mapManagedRelayError } from "./errors.ts";
 
 const TARGET = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
@@ -296,6 +298,53 @@ describe("retryDelayMs", () => {
 });
 
 describe("EnvironmentSupervisor", () => {
+  it.effect.each([
+    "managed_endpoint_allocation_not_found",
+    "managed_endpoint_allocation_not_ready",
+    "managed_endpoint_mismatch",
+  ] as const)("recovers after a server restart temporarily reports %s", (reason) =>
+    Effect.gen(function* () {
+      const relayError = new RelayEnvironmentConnectNotAuthorizedError({
+        code: "environment_connect_not_authorized",
+        reason,
+        traceId: "restart-allocation",
+      });
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          attempt === 2
+            ? Effect.fail(
+                mapManagedRelayError(
+                  new ManagedRelay.ManagedRelayRequestFailedError({
+                    action: "connect relay environment",
+                    cause: relayError,
+                    relayError,
+                  }),
+                ),
+              )
+            : Effect.succeed(preparedFor(RELAY_TARGET)),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.closeLatestSession();
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      yield* TestClock.adjust(2_000);
+      const unavailable = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "blocked" || state.phase === "backoff",
+      );
+      expect(presentConnectionState(unavailable).phase).toBe("reconnecting");
+      yield* TestClock.adjust(4_000);
+      const recovered = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+      expect(presentConnectionState(recovered).phase).toBe("connected");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(3);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("exports each relay setup as a standalone linked trace with its outcome", () =>
     Effect.gen(function* () {
       const spans: Array<Tracer.NativeSpan> = [];

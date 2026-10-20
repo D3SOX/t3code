@@ -58,9 +58,13 @@ function relayProtectedError(error: RelayProtectedError): ConnectionAttemptError
         hop: "relay",
       });
     case "RelayEnvironmentConnectNotAuthorizedError":
-      // A host swapping in a new tunnel leaves its allocation unready until
-      // the tunnel is up, and nothing on the client changes when it is.
-      if (error.reason === "managed_endpoint_allocation_not_ready") {
+      // Replacing a tunnel can temporarily remove or repoint its allocation.
+      // Waiting for client credentials to change would strand the connection.
+      if (
+        error.reason === "managed_endpoint_allocation_not_ready" ||
+        error.reason === "managed_endpoint_allocation_not_found" ||
+        error.reason === "managed_endpoint_mismatch"
+      ) {
         return new ConnectionTransientError({
           reason: "endpoint-unavailable",
           detail,

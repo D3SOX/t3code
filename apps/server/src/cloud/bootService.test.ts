@@ -18,6 +18,7 @@ import {
   SERVICE_ENV_FILE,
   SERVICE_LAUNCHER_PROTOCOL,
   SERVICE_RESTART_PENDING_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   serviceStateHasPendingUpdate,
 } from "./serviceProtocol.ts";
 
@@ -151,6 +152,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     enabled: boolean;
     active: boolean;
     executeLauncher?: boolean;
+    onStop?: Effect.Effect<void>;
   } = {
     failCommand: undefined,
     linger: "yes",
@@ -175,6 +177,9 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       if (!failed && command === "systemctl --user restart t3code.service") control.active = true;
       // A stop that fails (a timeout, say) has still stopped the service.
       if (command === "systemctl --user stop t3code.service") control.active = false;
+      if (command === "systemctl --user stop t3code.service" && control.onStop) {
+        yield* control.onStop;
+      }
       if (
         control.stateAfterStop !== undefined &&
         (command === "systemctl --user stop t3code.service" ||
@@ -298,6 +303,28 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
 });
 
 it.layer(NodeServices.layer)("boot service install", (it) => {
+  it.effect("keeps a restart intent visible during service repair and restart only", () =>
+    Effect.gen(function* () {
+      const { service, fs, baseDir, control } = yield* makeHarness();
+      yield* service.install();
+      const intentPath = `${baseDir}/runtime/${SERVICE_RESTART_INTENT_FILE}`;
+      let stops = 0;
+      control.onStop = Effect.gen(function* () {
+        expect(yield* fs.exists(intentPath).pipe(Effect.orDie)).toBe(true);
+        stops += 1;
+      });
+      yield* service.install();
+      expect(yield* fs.exists(intentPath)).toBe(false);
+      yield* service.restart;
+      expect(yield* fs.exists(intentPath)).toBe(false);
+      expect(stops).toBe(2);
+      control.onStop = Effect.gen(function* () {
+        expect(yield* fs.exists(intentPath).pipe(Effect.orDie)).toBe(false);
+      });
+      yield* service.uninstall;
+    }),
+  );
+
   it.effect("runs the installed launcher and follows its replacement on restart", () =>
     Effect.gen(function* () {
       const { makeService, fs, runtime, desktopLauncherPath, control } = yield* makeHarness();
@@ -956,6 +983,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         const plan = yield* service.install();
         const state = yield* fs.readFileString(statePath);
         const marker = `${plan.baseDir}/runtime/${SERVICE_RESTART_PENDING_FILE}`;
+        const intent = `${plan.baseDir}/runtime/${SERVICE_RESTART_INTENT_FILE}`;
         yield* fs.writeFileString(marker, "1.2.3\n");
         const inside = yield* makeService(undefined, "1.2.3", undefined, false, undefined, true);
         commands.length = 0;
@@ -965,6 +993,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         expect(error).toMatchObject({ _tag: "BootServiceCommandError", exitCode: 1 });
         expect(commands).toEqual(["systemctl --user daemon-reload"]);
         expect(control.active).toBe(true);
+        expect(yield* fs.exists(intent)).toBe(false);
 
         control.failCommand = undefined;
         commands.length = 0;
@@ -975,6 +1004,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
           "systemctl --user restart --no-block t3code.service",
         ]);
         expect(outcome).toBe("queued");
+        expect(yield* fs.exists(intent)).toBe(true);
         expect(yield* fs.readFileString(statePath)).toBe(state);
         expect(yield* fs.readFileString(marker)).toBe("1.2.3\n");
       }),

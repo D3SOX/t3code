@@ -24,6 +24,7 @@ import {
 import {
   SERVICE_LAUNCHER_PROTOCOL,
   SERVICE_RESTART_PENDING_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   SERVICE_STATE_FILE,
   compareExactServiceVersions,
   parseServiceState,
@@ -603,6 +604,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const logPath = path.join(input.logsDir, BOOT_SERVICE_LOG_FILE);
   const statePath = path.join(input.baseDir, "runtime", SERVICE_STATE_FILE);
   const restartPendingPath = path.join(input.baseDir, "runtime", SERVICE_RESTART_PENDING_FILE);
+  const restartIntentPath = path.join(input.baseDir, "runtime", SERVICE_RESTART_INTENT_FILE);
   const runtimePaths = pinnedRuntimePaths(path, input.baseDir, input.cliVersion, platform);
   const writeDurably = (filePath: string, contents: string) =>
     Effect.scoped(
@@ -854,11 +856,12 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       ]);
       return { ...plan, handedOff: true };
     }
-    if (installed && start) {
-      yield* runSteps(manager.stop);
-    }
-
     yield* Effect.gen(function* () {
+      if (installed && start) {
+        // Shutdown must know a replacement is coming before it releases the tunnel.
+        yield* writeDurably(restartIntentPath, "");
+        yield* runSteps(manager.stop);
+      }
       if (installed) {
         const previousStateText = yield* fs.readFileString(statePath).pipe(Effect.option);
         if (Option.isSome(previousStateText)) {
@@ -922,6 +925,11 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       Effect.tapError(() =>
         installed && start ? runSteps(manager.restart).pipe(Effect.ignore) : Effect.void,
       ),
+      Effect.ensuring(
+        installed && start
+          ? fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)
+          : Effect.void,
+      ),
     );
     return plan;
   });
@@ -937,16 +945,22 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     ) {
       return "skipped" as const;
     }
-    // Writes no state, and the launcher lets an update transition in flight
-    // finish before the queued stop tears it down.
+    // Leave launcher state unchanged so an update in flight can finish before
+    // the queued stop tears it down.
     if (runningInsideService && manager.handoff !== undefined) {
-      yield* runSteps(manager.handoff);
+      yield* writeDurably(restartIntentPath, "");
+      yield* runSteps(manager.handoff).pipe(
+        Effect.tapError(() => fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)),
+      );
       return "queued" as const;
     }
-    yield* runSteps(manager.stop);
-    yield* runSteps(manager.activate).pipe(
-      Effect.tapError(() => runSteps(manager.restart).pipe(Effect.ignore)),
-    );
+    yield* writeDurably(restartIntentPath, "");
+    yield* Effect.gen(function* () {
+      yield* runSteps(manager.stop);
+      yield* runSteps(manager.activate).pipe(
+        Effect.tapError(() => runSteps(manager.restart).pipe(Effect.ignore)),
+      );
+    }).pipe(Effect.ensuring(fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)));
     yield* fs.remove(restartPendingPath, { force: true });
     return "restarted" as const;
   }).pipe(

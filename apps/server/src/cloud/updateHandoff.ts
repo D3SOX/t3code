@@ -9,11 +9,12 @@ import * as Path from "effect/Path";
 import * as ServerConfig from "../config.ts";
 import {
   SERVICE_STATE_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   SERVICE_STOP_MARKER_FILE,
   serviceStateHasPendingUpdate,
 } from "./serviceProtocol.ts";
 
-const DESKTOP_UPDATE_RESTART_MARKER_TTL = Duration.minutes(1);
+const RESTART_INTENT_TTL = Duration.minutes(1);
 
 export const pendingServiceUpdateExists = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
@@ -46,11 +47,13 @@ export const pendingUpdateHandoffExists = Effect.gen(function* () {
 });
 
 // Reading consumes it, so shutdown checks it first.
-export const desktopUpdateRestartPending = Effect.gen(function* () {
+const consumeRestartIntent = Effect.fn("updateHandoff.consumeRestartIntent")(function* (
+  markerFile: string,
+) {
   const config = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const markerPath = path.join(config.baseDir, "runtime", DESKTOP_UPDATE_RESTART_MARKER_FILE);
+  const markerPath = path.join(config.baseDir, "runtime", markerFile);
   const marker = yield* fs.stat(markerPath).pipe(Effect.option);
   if (Option.isNone(marker)) {
     return false;
@@ -59,7 +62,9 @@ export const desktopUpdateRestartPending = Effect.gen(function* () {
   const now = yield* Clock.currentTimeMillis;
   return Option.match(marker.value.mtime, {
     onNone: () => false,
-    onSome: (writtenAt) =>
-      now - writtenAt.getTime() < Duration.toMillis(DESKTOP_UPDATE_RESTART_MARKER_TTL),
+    onSome: (writtenAt) => now - writtenAt.getTime() < Duration.toMillis(RESTART_INTENT_TTL),
   });
 });
+
+export const desktopUpdateRestartPending = consumeRestartIntent(DESKTOP_UPDATE_RESTART_MARKER_FILE);
+export const serviceRestartPending = consumeRestartIntent(SERVICE_RESTART_INTENT_FILE);

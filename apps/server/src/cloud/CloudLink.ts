@@ -116,7 +116,11 @@ import {
   parseManagedEndpointLocalOrigin,
   requestAbsoluteUrl,
 } from "./linkChecks.ts";
-import { desktopUpdateRestartPending, pendingUpdateHandoffExists } from "./updateHandoff.ts";
+import {
+  desktopUpdateRestartPending,
+  pendingUpdateHandoffExists,
+  serviceRestartPending,
+} from "./updateHandoff.ts";
 
 const CLOUD_MINT_NONCE_PREFIX = "cloud-mint-nonce-";
 const CLOUD_MINT_JTI_PREFIX = "cloud-mint-jti-";
@@ -1259,6 +1263,7 @@ const make = Effect.gen(function* () {
     // the dominant cost of an update restart.
     if (
       (yield* withRuntimeFiles(desktopUpdateRestartPending)) ||
+      (yield* withRuntimeFiles(serviceRestartPending)) ||
       (yield* withRuntimeFiles(pendingUpdateHandoffExists))
     ) {
       yield* Effect.logInfo("Keeping the managed tunnel across the update restart");
