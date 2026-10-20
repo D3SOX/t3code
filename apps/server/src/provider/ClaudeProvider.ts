@@ -207,6 +207,8 @@ function claudeAuthStatus(
 // account info. The previous 8s budget expired mid-init, so the probe returned
 // `undefined` and left the provider unverified and unselectable in the picker.
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+// Native CLI startup on Windows can exceed the shared probe deadline.
+const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
 
 /**
  * Keep workspace-scoped command discovery intact while isolating the periodic
@@ -550,7 +552,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     ["--version"],
     resolvedEnvironment,
     cwd,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  ).pipe(Effect.timeoutOption(CLAUDE_VERSION_CHECK_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
@@ -656,7 +658,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  if (claudeAuthStatus(capabilities) === "unauthenticated") {
+  // First-party account fields cannot verify custom endpoint credentials.
+  const endpoint = URL.parse(resolvedEnvironment.ANTHROPIC_BASE_URL?.trim() ?? "");
+  const customApiEndpoint =
+    endpoint !== null &&
+    (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
+    endpoint.hostname !== "" &&
+    endpoint.hostname !== "api.anthropic.com";
+  if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
       enabled: claudeSettings.enabled,
@@ -678,7 +687,9 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
-    }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
+    }) ??
+    apiProviderAuthMetadata(capabilities.apiProvider) ??
+    (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined);
   const subscriptionUsage =
     resolveSubscriptionUsage &&
     capabilities.subscriptionType &&
@@ -724,11 +735,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-export const makePendingClaudeProvider = (
-  claudeSettings: ClaudeSettings,
-  modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
-): Effect.Effect<ServerProviderDraft> =>
-  Effect.gen(function* () {
+export const makePendingClaudeProvider = Effect.fn("ClaudeProvider.makePendingClaudeProvider")(
+  function* (
+    claudeSettings: ClaudeSettings,
+    modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
+  ): Effect.fn.Return<ServerProviderDraft> {
     const checkedAt = yield* nowIso;
     const models = providerModelsFromSettings(
       modelCatalog.models.map((entry) => entry.model),
@@ -765,6 +776,7 @@ export const makePendingClaudeProvider = (
         message: "Claude provider status has not been checked in this session yet.",
       },
     });
-  });
+  },
+);
 
 export { probeClaudeCapabilities };

@@ -12,7 +12,11 @@ Events do not include prompts, responses, file contents, authentication tokens, 
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
 
 Unset the variable or set it to `false` to stop product events from being recorded or sent.
-The desktop app reads the variable from your shell profile (for example `~/.zshrc`) on macOS and
+Relay connection traces sent to Axiom also require this opt-in. Relay tracing stops when
+`T3CODE_OTEL_SDK_DISABLED` or `OTEL_SDK_DISABLED` disables OpenTelemetry export.
+The web app in a browser, including one the `t3` CLI opens, does not read these variables.
+
+The desktop app reads `T3CODE_TELEMETRY_ENABLED` from your shell profile, such as `~/.zshrc`, on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
 ## Export diagnostics to your own receiver

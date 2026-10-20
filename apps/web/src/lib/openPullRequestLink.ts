@@ -13,7 +13,7 @@ import { readLocalApi } from "../localApi";
 import { useRightPanelStore } from "../rightPanelStore";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import { useProjects } from "../state/entities";
+import { readProjects, useProjects } from "../state/entities";
 import { environmentServerConfigsAtom, serverEnvironment } from "../state/server";
 import { usePrimaryEnvironmentId } from "../state/environments";
 export {
@@ -112,13 +112,14 @@ export function useOpenChangeRequestLink(
   targetEnvironmentId?: EnvironmentId,
 ) => boolean {
   const navigate = useNavigate();
-  const allProjects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   return (event, targetUrl, targetThreadRef, targetEnvironmentId) => {
     if (shouldOpenPullRequestExternally(event)) return false;
     // Read at click time: every provider status push replaces the config map, and
-    // subscribing would hand every rendered link a new handler.
+    // subscribing would hand every rendered link a new handler. Projects likewise, so a
+    // link can resolve against a snapshot that arrived after this handler was built.
     const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
+    const allProjects = readProjects();
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;
     const parsed = parseChangeRequestUrl(targetUrl);

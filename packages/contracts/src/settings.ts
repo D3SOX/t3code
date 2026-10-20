@@ -543,6 +543,9 @@ export const ClientSettingsSchema = Schema.Struct({
   snapShotFlash: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snapShotAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Opt-in TeX typesetting in rendered Markdown. Off keeps math parsing and
+  // KaTeX out of the render path entirely.
+  mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -908,6 +911,26 @@ export const SourceControlWritingStyleSettings = Schema.Struct({
 });
 export type SourceControlWritingStyleSettings = typeof SourceControlWritingStyleSettings.Type;
 
+const SourceControlWritingStyleSetting = Schema.Union([
+  TrimmedString,
+  SourceControlWritingStyleSettings,
+]).pipe(
+  Schema.decodeTo(
+    Schema.toType(SourceControlWritingStyleSettings),
+    SchemaTransformation.transform({
+      decode: (value) =>
+        typeof value === "string"
+          ? {
+              mode: value.length > 0 ? ("custom" as const) : ("repo_conventions" as const),
+              customInstructions: value,
+              followChangeRequestTemplates: true,
+            }
+          : value,
+      encode: (value) => value,
+    }),
+  ),
+);
+
 export const BranchNamingMode = Schema.Literals(["static", "semantic", "custom"]);
 export type BranchNamingMode = typeof BranchNamingMode.Type;
 
@@ -1074,7 +1097,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sourceControlWriterModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   reviewGuideModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   reviewGuideInstructions: Schema.optionalKey(TrimmedString),
-  sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSettings),
+  sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSetting),
   autoGenerateThreadTitles: Schema.optionalKey(Schema.Boolean),
   autoGenerateBranchNames: Schema.optionalKey(Schema.Boolean),
   removeAgentCreditsOnMerge: Schema.optionalKey(Schema.Boolean),
@@ -1142,6 +1165,7 @@ export const StorageCleanupReportEntry = Schema.Struct({
   outcome: Schema.Literals(["removed", "kept", "failed"]),
   reason: Schema.String,
   path: Schema.NullOr(Schema.String),
+  projectPath: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   threadId: Schema.NullOr(ThreadId),
   threadTitle: Schema.NullOr(Schema.String),
   bytes: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1359,7 +1383,7 @@ export const ServerSettings = Schema.Struct({
   branchNamePrefix: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   branchNameInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   removeAgentCreditsOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  sourceControlWritingStyle: SourceControlWritingStyleSettings.pipe(
+  sourceControlWritingStyle: SourceControlWritingStyleSetting.pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   sourceControlWriterModelSelection: Schema.NullOr(ModelSelection).pipe(
@@ -1652,7 +1676,15 @@ export const ServerSettingsPatch = Schema.Struct({
    * provider override for a project means sending `providerInstances: {}`.
    */
   projectSettingsOverrides: Schema.optionalKey(
-    Schema.Record(ProjectId, Schema.NullOr(ProjectSettingsOverrides)),
+    Schema.Record(
+      ProjectId,
+      Schema.NullOr(
+        Schema.Struct({
+          ...ProjectSettingsOverrides.fields,
+          sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSettings),
+        }),
+      ),
+    ),
   ),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
@@ -1847,5 +1879,6 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotFlash: Schema.optionalKey(Schema.Boolean),
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
   wordWrap: Schema.optionalKey(Schema.Boolean),
+  mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
