@@ -128,7 +128,6 @@ import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
-  countSidebarProjectChoices,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
@@ -4873,9 +4872,8 @@ export default function Sidebar() {
     });
   };
 
-  const projectChoiceCount = countSidebarProjectChoices(projectGroups);
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectChoiceCount)) {
+    if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
       if (isMobile) setOpenMobile(false);
       void startNewThreadFromContext({
         activeDraftThread: newThreadContext.activeDraftThread,
@@ -4892,7 +4890,7 @@ export default function Sidebar() {
   // The primary button mirrors chat.newLocal. Shift+click opens the picker.
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.newLocal") ??
-    (projectChoiceCount <= 1 ? shortcutLabelForCommand(keybindings, "chat.new") : undefined);
+    (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.new") : undefined);
   const newThreadPickerShortcutLabel = shortcutLabelForCommand(keybindings, "chat.new");
   return (
     <>
@@ -5040,7 +5038,7 @@ export default function Sidebar() {
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadPickerShortcutLabel={newThreadPickerShortcutLabel}
-              showNewThreadPickerHint={projectChoiceCount > 1}
+              showNewThreadPickerHint={projectGroups.length > 1}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {
