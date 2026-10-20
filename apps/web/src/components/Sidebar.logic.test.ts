@@ -64,7 +64,14 @@ import {
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -2224,6 +2231,40 @@ describe("navigation after parking a thread", () => {
       ).toBe(expected);
     },
   );
+});
+
+describe("async questions during active work", () => {
+  it("shows Input in Active until the question is answered, then returns to Working", () => {
+    const source = {
+      ...makeThreadFixture().source,
+      latestRunId: RunId.make("run-async-question"),
+      activeRunId: RunId.make("run-async-question"),
+      status: "running" as const,
+      pendingRuntimeRequest: {
+        id: RuntimeRequestId.make("async-question"),
+        kind: "user_input" as const,
+        blocking: false,
+        createdAt: DateTime.makeUnsafe("2026-10-20T19:32:22.337Z"),
+      },
+    };
+    const thread = presentThreadShell(localEnvironmentId, source);
+    const status = resolveSidebarThreadStatus(thread);
+    expect(thread.runtime?.status).toBe("running");
+    expect(isSidebarThreadWorking(thread)).toBe(false);
+    expect(status).toBe("input");
+    expect(resolveSidebarV2TopStatus({ status, isUnread: false, isWoke: false })).toBe("input");
+    expect(shouldShowCollapsedSidebarThread({ status, isUnread: false, isActive: false })).toBe(
+      true,
+    );
+    expect(resolveThreadStatusPill({ thread })?.label).toBe("Awaiting Input");
+
+    const answered = presentThreadShell(localEnvironmentId, {
+      ...source,
+      pendingRuntimeRequest: null,
+    });
+    expect(isSidebarThreadWorking(answered)).toBe(true);
+    expect(resolveSidebarThreadStatus(answered)).toBe("working");
+  });
 });
 
 describe("unseen completion with background work", () => {

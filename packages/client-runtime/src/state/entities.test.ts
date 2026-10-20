@@ -113,7 +113,7 @@ describe("V2 client presentation", () => {
     });
   });
 
-  it("keeps async questions in Working until the run completes", () => {
+  it("brings async questions out of Working while the run continues", () => {
     const runId = RunId.make("run-async-question");
     const running = {
       ...v2ThreadShell,
@@ -130,9 +130,17 @@ describe("V2 client presentation", () => {
       },
     };
     const active = presentThreadShell(environmentId, running);
-    expect(active.hasPendingUserInput).toBe(false);
-    expect(isThreadWorking(active)).toBe(true);
+    expect(active.hasPendingUserInput).toBe(true);
+    expect(isThreadWorking(active)).toBe(false);
+    expect(active.runtime?.status).toBe("running");
     expect(canSnooze(active, { now: "2026-06-20T00:05:00.000Z" })).toBe(false);
+
+    const answered = presentThreadShell(environmentId, {
+      ...running,
+      pendingRuntimeRequest: null,
+    });
+    expect(answered.hasPendingUserInput).toBe(false);
+    expect(isThreadWorking(answered)).toBe(true);
 
     const completed = presentThreadShell(environmentId, {
       ...running,
