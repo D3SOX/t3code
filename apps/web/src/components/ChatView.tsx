@@ -7334,82 +7334,11 @@ export default function ChatView(props: ChatViewProps) {
             });
           return;
         }
-        const optimisticAttachments = composerAttachmentsSnapshot.map((attachment) =>
-          attachment.type === "image"
-            ? {
-                type: "image" as const,
-                id: attachment.id,
-                name: attachment.name,
-                mimeType: attachment.mimeType,
-                sizeBytes: attachment.sizeBytes,
-                previewUrl: attachment.previewUrl,
-                ...(attachment.source ? { source: attachment.source } : {}),
-              }
-            : {
-                type: "file" as const,
-                id: attachment.id,
-                name: attachment.name,
-                mimeType: attachment.mimeType,
-                sizeBytes: attachment.sizeBytes,
-                downloadable: false,
-                ...(attachment.source ? { source: attachment.source } : {}),
-              },
-        );
-        if (!shouldQueueBehindActiveRun) {
-          isAtEndRef.current = true;
-          timelineScrollModeRef.current = "anchoring-new-turn";
-          liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
-          setTimelineLiveFollowEnabled(true);
-          pendingTimelineAnchorRef.current = messageIdForSend;
-          activeTimelineAnchorIndexRef.current = null;
-          showScrollDebouncer.current.cancel();
-          setShowScrollToBottom(false);
-          setTimelineAnchor({
-            threadKey: scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
-            messageId: messageIdForSend,
-          });
-        }
-        setOptimisticUserMessages((existing) => [
-          ...existing,
-          {
-            id: messageIdForSend,
-            role: "user",
-            text: outgoingMessageText,
-            ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
-            ...(outgoingMessageContext !== undefined ? { context: outgoingMessageContext } : {}),
-            runId: null,
-            createdAt: messageCreatedAt,
-            updatedAt: messageCreatedAt,
-            streaming: false,
-            ...(shouldQueueBehindActiveRun
-              ? { inputIntent: "queued_turn" as const }
-              : phase === "running" && dispatchMode === "steer"
-                ? { inputIntent: "steer" as const }
-                : {}),
-          },
-        ]);
-        setThreadError(threadIdForSend, null);
-        if (expiredTerminalContextCount > 0) {
-          const toastCopy = buildExpiredTerminalContextToastCopy(
-            expiredTerminalContextCount,
-            "omitted",
-          );
-          toastManager.add(
-            stackedThreadToast({
-              type: "warning",
-              title: toastCopy.title,
-              description: toastCopy.description,
-            }),
-          );
-        }
         const sentDraftThreadRef = isLocalDraftThread
           ? scopeThreadRef(environmentId, threadIdForSend)
           : null;
         // Keep new-thread flows from reusing this draft while attachments and worktree setup settle.
         if (sentDraftThreadRef) markPromotedDraftThreadByRef(sentDraftThreadRef);
-        promptRef.current = "";
-        clearComposerDraftContent(composerDraftTarget);
-        composerRef.current?.resetCursorState();
 
         const title = deriveThreadTitleSeed({
           text: messageTextForSend,
