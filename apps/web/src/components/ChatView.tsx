@@ -7542,7 +7542,7 @@ export default function ChatView(props: ChatViewProps) {
             }
             if (backgroundThreadRef) {
               if (backgroundDraftOpened) {
-                toastManager.add(
+                const backgroundToastId = toastManager.add(
                   stackedThreadToast({
                     type: "success",
                     title: "Started in background",
@@ -7550,6 +7550,7 @@ export default function ChatView(props: ChatViewProps) {
                     actionProps: {
                       children: "Open",
                       onClick: () => {
+                        toastManager.close(backgroundToastId);
                         void navigate({
                           to: "/$environmentId/$threadId",
                           params: buildThreadRouteParams(backgroundThreadRef),
