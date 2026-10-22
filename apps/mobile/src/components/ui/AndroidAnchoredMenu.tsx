@@ -10,7 +10,7 @@ import { deriveMenuHorizontalPlacement } from "../../lib/menu-placement";
 import { WindowHingeContext } from "../../native/window-hinge-context";
 import { OverlayPortal } from "./OverlayPortal";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
-import { MenuPopup } from "./MenuPopup";
+import { MenuPopup, type MenuPopupProps } from "./MenuPopup";
 
 const SCREEN_MARGIN = 12;
 const ANCHOR_GAP = 6;
@@ -35,6 +35,7 @@ type OverlayFrame = {
 
 export type AndroidAnchoredMenuProps = {
   readonly actions: readonly MenuAction[];
+  readonly renderActionIcon?: MenuPopupProps["renderActionIcon"];
   readonly title?: string;
   readonly onPressAction?: MenuComponentProps["onPressAction"];
   readonly className?: string;
@@ -179,6 +180,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
                 anchor={windowHinge ? { ...local, x: left, width: menuWidth } : local}
                 menuWidth={menuWidth}
                 actions={levelActions}
+                renderActionIcon={props.renderActionIcon}
                 title={props.title}
                 parent={parent}
                 onPress={onPressItem}
@@ -216,6 +218,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
                     anchor={local}
                     menuWidth={menuWidth}
                     actions={levelActions}
+                    renderActionIcon={props.renderActionIcon}
                     title={props.title}
                     parent={parent}
                     onPress={onPressItem}

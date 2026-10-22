@@ -12,7 +12,10 @@ import {
 import type { MenuAction } from "@react-native-menu/menu";
 
 import { AndroidHeaderIconButton } from "../../components/ui/AndroidScreenHeader";
-import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
+import {
+  AndroidAnchoredMenu,
+  type AndroidAnchoredMenuProps,
+} from "../../components/ui/AndroidAnchoredMenu";
 import { Menu } from "../../components/ui/Menu";
 import { SearchField } from "../../components/ui/SearchField";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
@@ -27,6 +30,7 @@ export function ThreadListToolbar(props: {
   readonly searchQuery: string;
   readonly onSearchQueryChange: (query: string) => void;
   readonly filterActions: MenuAction[];
+  readonly renderFilterIcon?: AndroidAnchoredMenuProps["renderActionIcon"];
   readonly filterCustomized: boolean;
   readonly onFilterAction: NonNullable<ComponentProps<typeof Menu>["onPressAction"]>;
   readonly onOpenEnvironments: () => void;
@@ -94,7 +98,11 @@ export function ThreadListToolbar(props: {
     />
   );
   const filterButton = connectionState.hasConnections ? (
-    <AndroidAnchoredMenu actions={props.filterActions} onPressAction={props.onFilterAction}>
+    <AndroidAnchoredMenu
+      actions={props.filterActions}
+      onPressAction={props.onFilterAction}
+      renderActionIcon={props.renderFilterIcon}
+    >
       {(open) => (
         <AndroidHeaderIconButton
           accessibilityLabel="Filter threads"

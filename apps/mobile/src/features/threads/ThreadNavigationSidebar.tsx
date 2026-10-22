@@ -1,4 +1,5 @@
 import { useActiveNewTask } from "../../state/active-new-task";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
@@ -242,6 +243,7 @@ function ThreadNavigationSidebarPane(
   const projectFilterOptions = projectScopes.map((scope) => ({
     key: scope.key,
     label: scope.title,
+    project: scope.representative,
   }));
   const projectTitleByProjectKey = useMemo(
     () =>
@@ -982,6 +984,14 @@ function ThreadNavigationSidebarPane(
           searchQuery={props.searchQuery}
           onSearchQueryChange={props.onSearchQueryChange}
           filterActions={listMenuActions}
+          renderFilterIcon={(action, size) => {
+            const project = projectFilterOptions.find(
+              (item) => action.id === `project:${item.key}`,
+            )?.project;
+            return project ? (
+              <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+            ) : null;
+          }}
           filterCustomized={filterCustomized}
           onFilterAction={handleListMenuAction}
           onOpenEnvironments={props.onOpenEnvironmentSettings}

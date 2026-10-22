@@ -1,4 +1,5 @@
 import type { MenuAction } from "@react-native-menu/menu";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { ThreadListToolbar } from "./ThreadListToolbar";
@@ -96,6 +97,14 @@ export function HomeHeader(props: HomeHeaderProps) {
         searchQuery={props.searchQuery}
         onSearchQueryChange={props.onSearchQueryChange}
         filterActions={menuActions}
+        renderFilterIcon={(action, size) => {
+          const project = props.projects.find(
+            (item) => action.id === `project:${item.key}`,
+          )?.project;
+          return project ? (
+            <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+          ) : null;
+        }}
         filterCustomized={hasCustomListOptions}
         onFilterAction={handleMenuAction}
         onOpenEnvironments={props.onOpenEnvironments}
