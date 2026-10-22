@@ -25,10 +25,7 @@ import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import {
   getLocalEnvironmentBootstraps,
   getRelayTelemetryEnabled,
-  getWindowFullscreenState,
   focusWindow,
-  pasteAsText,
-  pickProjectFavicon,
   probeRemoteEditors,
 } from "./window.ts";
 

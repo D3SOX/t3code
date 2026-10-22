@@ -1,4 +1,3 @@
-import { composerFloatingLayerProps } from "./composerEventScope";
 import type {
   ModelSelection,
   ProviderInstanceId,

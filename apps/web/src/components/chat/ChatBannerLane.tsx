@@ -3,9 +3,11 @@ import type {
   ProviderInstanceId,
   ServerProvider,
   ThreadId,
+  ModelCapacityRetry,
 } from "@t3tools/contracts";
 import type { Dispatch, SetStateAction } from "react";
 import { ProviderStatusBanner } from "./ProviderStatusBanner";
+import { ModelCapacityRetryBanner } from "./ModelCapacityRetryBanner";
 import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadErrorBanner";
 
 /**
@@ -13,6 +15,8 @@ import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadE
  * values, so a ChatView render that changes neither banner leaves both cached.
  */
 export function ChatBannerLane(props: {
+  modelCapacityRetry: ModelCapacityRetry | null;
+  onCancelCapacityRetry: () => void;
   providerStatus: ServerProvider | null;
   providerStatusBannerKey: string | null;
   setDismissedProviderStatusBannerKey: Dispatch<SetStateAction<string | null>>;
@@ -44,6 +48,10 @@ export function ChatBannerLane(props: {
         status={providerStatus}
         onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
         onOpenProviderSetup={onOpenProviderSetup}
+      />
+      <ModelCapacityRetryBanner
+        retry={props.modelCapacityRetry}
+        onCancel={props.onCancelCapacityRetry}
       />
       <ThreadErrorBanner
         error={threadError}

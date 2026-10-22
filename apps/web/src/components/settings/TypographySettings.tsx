@@ -374,8 +374,6 @@ function FontFamilySettingsRow({
   const [draftSettled, setDraftSettled] = useState(true);
   // Each pending commit remembers the value it was typed against, so one that outlives
   // an external change (hydration, reset, picker selection) drops its stale draft.
-  // Each pending commit remembers the value it was typed against, so one that outlives
-  // an external change (hydration, reset, picker selection) drops its stale draft.
   const commitTimerRef = useRef<{
     readonly id: number;
     readonly value: string;
@@ -384,8 +382,6 @@ function FontFamilySettingsRow({
     if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current.id);
     commitTimerRef.current = null;
   };
-  // Bumped on every external value change, so a pending commit typed before one never lands,
-  // even if the value has since changed back to what it was typed against.
   // Bumped on every external value change, so a pending commit typed before one never lands,
   // even if the value has since changed back to what it was typed against.
   const [adopted, setAdopted] = useState({

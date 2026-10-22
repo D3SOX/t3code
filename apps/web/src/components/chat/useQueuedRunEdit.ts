@@ -2,13 +2,13 @@ import { readPreparedConnection } from "../../state/session";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { prepareRevertedMessageAttachments } from "../ChatView.logic";
 import { randomUUID } from "../../lib/utils";
+import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ChatAttachment,
   type EnvironmentId,
   type MessageId,
   type OrchestrationMessageContext,
-  type OrchestrationV2ThreadProjection,
   type PreviewAnnotationPayload,
   type RunId,
   type ScopedThreadRef,
@@ -178,7 +178,7 @@ export function useQueuedRunEdit(input: {
   readonly threadDraftTarget: ComposerThreadTarget;
   // Null while the route has no thread yet; an edit needs one to target.
   readonly activeThreadId: ThreadId | null;
-  readonly serverProjection: OrchestrationV2ThreadProjection | null;
+  readonly serverProjection: ThreadStructure | null;
   readonly promptRef: { current: string };
   readonly composerRef: RefObject<ChatComposerHandle | null>;
   readonly createAttachmentAssetUrl: Parameters<

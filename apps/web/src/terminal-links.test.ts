@@ -1,4 +1,3 @@
-import { isTerminalLinkActivation } from "./terminal-links";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -286,5 +285,3 @@ describe("terminalAppPathTarget", () => {
     });
   });
 });
-
-describe("isTerminalLinkActivation", () => {});

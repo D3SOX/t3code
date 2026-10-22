@@ -1122,6 +1122,11 @@ describe("planComposerTurn", () => {
     expect(planComposerTurn({ ...running, dispatchMode: "queue" }).shouldQueueBehindActiveRun).toBe(
       true,
     );
+    expect(planComposerTurn({ ...running, dispatchMode: "next-tool" })).toMatchObject({
+      shouldQueueBehindActiveRun: true,
+      turnDispatchMode: "next-tool",
+      baseBranchForWorktree: null,
+    });
     expect(planComposerTurn({ ...running, dispatchMode: "steer" })).toMatchObject({
       shouldQueueBehindActiveRun: false,
       baseBranchForWorktree: null,

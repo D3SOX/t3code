@@ -32,6 +32,7 @@ import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2Pend
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Data from "effect/Data";
 
 import { getInitialServerConfig, request } from "../rpc/client.ts";
 
@@ -271,14 +272,16 @@ const dispatch = (command: OrchestrationV2Command) =>
 const getProjection = (threadId: ThreadId) =>
   request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId });
 
+class NextToolQueueUnavailableError extends Data.TaggedError("NextToolQueueUnavailableError") {
+  override get message() {
+    return "This timing requires an updated D3SOX fork server. Use Queue or Steer on upstream servers.";
+  }
+}
+
 const requireNextToolQueue = Effect.gen(function* () {
   const config = yield* getInitialServerConfig();
   if (config.environment.capabilities.nextToolQueue !== true) {
-    return yield* Effect.fail(
-      new Error(
-        "This timing requires an updated D3SOX fork server. Use Queue or Steer on upstream servers.",
-      ),
-    );
+    return yield* new NextToolQueueUnavailableError();
   }
 });
 

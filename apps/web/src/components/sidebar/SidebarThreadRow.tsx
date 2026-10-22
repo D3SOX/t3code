@@ -858,9 +858,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   // The React Compiler caches render results on their inputs, so a clock read
   // here would stay frozen until `thread` changes and a queued-turn gate would
   // never reopen. The gate's clock is state, reset with the thread.
-  // The React Compiler caches render results on their inputs, so a clock read
-  // here would stay frozen until `thread` changes and a queued-turn gate would
-  // never reopen. The gate's clock is state, reset with the thread.
   const [snoozeGateClock, setSnoozeGateClock] = useState(() => ({
     thread,
     now: new Date().toISOString(),
@@ -899,7 +896,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     canSnooze(thread, {
       now: snoozeGateNow,
     });
-  // Closing here, not just masking, keeps the menu from reopening when the button returns.
   // Closing here, not just masking, keeps the menu from reopening when the button returns.
   if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
   const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;

@@ -1,3 +1,4 @@
+import { resolveThreadListV2WokeAt } from "./threadListV2";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
@@ -12,7 +13,6 @@ import {
   type ThreadMoveAvailability,
 } from "./threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import {
   CommandId,
@@ -33,11 +33,8 @@ import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
   getThreadListV2OrderedSection,
-  isThreadListV2ListItem,
   resolveThreadListV2SnoozeMenuSelection,
-  resolveThreadListV2SnoozeGateExpiryMs,
   resolveThreadListV2Status,
-  resolveThreadListV2SwipeActions,
   sortThreadsForListV2,
   threadListV2ListItemsAreEqual,
   threadHasUnseenCompletion,
@@ -160,10 +157,6 @@ describe("queued messages keep a settled thread active", () => {
     expect(layout.settledCount).toBe(1);
   });
 });
-
-describe("resolveThreadListV2SwipeActions", () => {});
-
-describe("resolveThreadListV2SnoozeGateExpiryMs", () => {});
 
 describe("sortThreadsForListV2", () => {
   it("honors a saved active order and leaves new threads above it", () => {
@@ -546,6 +539,100 @@ describe("buildThreadListV2Items settled paging", () => {
       "settled-3",
       "settled-2",
     ]);
+  });
+});
+
+describe("thread list Woke marker", () => {
+  const wokeAt = isoAt(BASE_MS - MINUTE_MS);
+  const thread = makeThread({
+    id: ThreadId.make("woke"),
+    title: "Woke",
+    latestUserMessageAt: isoAt(BASE_MS - 90 * MINUTE_MS),
+    snoozedAt: isoAt(BASE_MS - 60 * MINUTE_MS),
+    snoozedUntil: wokeAt,
+    lastVisitedAt: null,
+  });
+
+  it("keeps a timer wake through a plain visit until acknowledgement reaches its timestamp", () => {
+    expect(resolveThreadListV2WokeAt(thread, { now: NOW })).toBe(wokeAt);
+    expect(
+      resolveThreadListV2WokeAt(
+        { ...thread, lastVisitedAt: isoAt(BASE_MS - 30 * MINUTE_MS) },
+        { now: NOW },
+      ),
+    ).toBe(wokeAt);
+    expect(
+      resolveThreadListV2WokeAt({ ...thread, lastVisitedAt: wokeAt }, { now: NOW }),
+    ).toBeNull();
+    expect(resolveThreadListV2WokeAt({ ...thread, lastVisitedAt: "invalid" }, { now: NOW })).toBe(
+      wokeAt,
+    );
+  });
+
+  it("stays hidden while snoozed, after settling, and on servers without visited tracking", () => {
+    expect(resolveThreadListV2WokeAt(thread, { now: isoAt(BASE_MS - 2 * MINUTE_MS) })).toBeNull();
+    expect(
+      resolveThreadListV2WokeAt({ ...thread, settledOverride: "settled" }, { now: NOW }),
+    ).toBeNull();
+    expect(
+      resolveThreadListV2WokeAt({ ...thread, lastVisitedAt: undefined }, { now: NOW }),
+    ).toBeNull();
+    expect(resolveThreadListV2WokeAt({ ...thread, snoozedUntil: null }, { now: NOW })).toBeNull();
+  });
+
+  it("keeps an early failure wake acknowledged after the scheduled time passes", () => {
+    const completedAt = isoAt(BASE_MS - 2 * MINUTE_MS);
+    const failed = makeThread({
+      ...thread,
+      snoozedUntil: isoAt(BASE_MS + MINUTE_MS),
+      runtime: {
+        status: "failed",
+        activeRunId: null,
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        providerName: "Codex",
+        lastError: "Run failed",
+        updatedAt: completedAt,
+      },
+      latestRun: {
+        runId: RunId.make("woke-run"),
+        status: "failed",
+        requestedAt: isoAt(BASE_MS - 3 * MINUTE_MS),
+        startedAt: isoAt(BASE_MS - 3 * MINUTE_MS),
+        completedAt,
+        assistantMessageId: null,
+      },
+    });
+    expect(resolveThreadListV2WokeAt(failed, { now: NOW })).toBe(completedAt);
+    expect(
+      resolveThreadListV2WokeAt(
+        { ...failed, lastVisitedAt: completedAt },
+        { now: isoAt(BASE_MS + 2 * MINUTE_MS) },
+      ),
+    ).toBeNull();
+  });
+
+  it("updates a recycled row at the wake boundary even without a new shell or minute tick", () => {
+    const waking = { ...thread, snoozedUntil: isoAt(BASE_MS + 30_000) };
+    const layout = (now: string) =>
+      buildThreadListV2Items({
+        threads: [waking],
+        environmentId: null,
+        searchQuery: "",
+        now,
+        snoozeEnvironmentIds: new Set<EnvironmentId>(),
+      });
+    const list = (now: string) =>
+      buildThreadListV2ListItems({
+        items: layout(now).items,
+        pendingTasks: [],
+        snoozeLabelNow: isoAt(BASE_MS),
+      });
+    const before = list(NOW).find((item) => item.type === "v2-thread")!;
+    const after = list(isoAt(BASE_MS + 37_500)).find((item) => item.type === "v2-thread")!;
+    expect(before.type === "v2-thread" && before.item.wokeAt).toBeNull();
+    expect(after.type === "v2-thread" && after.item.wokeAt).toBe(waking.snoozedUntil);
+    expect(after.type === "v2-thread" && after.timeLabel).toBe("");
+    expect(threadListV2ListItemsAreEqual(before, after)).toBe(false);
   });
 });
 
@@ -1606,13 +1693,6 @@ describe("threadListV2ListItemsAreEqual", () => {
     expect(secondA.type === "v2-thread" && secondA.showTrailingDivider).toBe(false);
     expect(threadListV2ListItemsAreEqual(firstA, secondA)).toBe(false);
   });
-});
-
-describe("isThreadListV2ListItem", () => {});
-
-describe("buildThreadListV2ListItems clock scoping", () => {
-  const allEnvironments = new Set<EnvironmentId>([environmentId]);
-  const tickQueued = () => [makePendingTask("tick-queued")];
 });
 
 describe("thread list v2 minute tick invalidation", () => {

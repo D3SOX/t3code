@@ -1,13 +1,6 @@
-import {
-  AuthFilesystemReadScope,
-  EnvironmentAuthorizationError,
-  EnvironmentId,
-  ThreadId,
-  type AuthSessionState,
-} from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
+import { EnvironmentId, ThreadId, type AuthSessionState } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
-import { beforeEach, expect, it, vi } from "vite-plus/test";
+import { beforeEach, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   session: null as Pick<AuthSessionState, "authenticated" | "scopes"> | null,
@@ -48,8 +41,6 @@ vi.mock("~/state/assets", () => ({
   assetEnvironment: { createUrl: state.assetQuery },
 }));
 vi.mock("~/state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => state.mint }));
-
-import { useAssetUrlRefresh, useAssetUrlState } from "./assetUrls";
 
 const environmentId = EnvironmentId.make("asset-environment");
 const threadId = ThreadId.make("asset-thread");

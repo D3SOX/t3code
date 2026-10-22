@@ -1,7 +1,6 @@
 import { composerSubmissionHints } from "../../composer-logic";
 import { ACTIVE_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
-import { ContextWindowMeter } from "./ContextWindowMeter";
-import { Select } from "../ui/select";
+
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -75,7 +74,6 @@ import {
   isPathSuggestionCurrent,
   extendReplacementRangeForTrailingSpace,
   replaceTextRange,
-  shouldHandleComposerMenuKey,
 } from "../../composer-logic";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import {

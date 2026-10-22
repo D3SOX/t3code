@@ -1,7 +1,7 @@
 import { RunId, ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vitest";
-import { capacityRetryLabel, getModelCapacityRetry } from "./modelCapacityRetry";
+import { describe, expect, it } from "vite-plus/test";
+import { capacityRetryLabel, getModelCapacityRetry } from "./modelCapacityRetry.ts";
 
 const runId = RunId.make("run-1");
 const retry = { attempt: 1, retryAt: "2026-10-01T10:00:10.000Z" };

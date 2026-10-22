@@ -1,19 +1,11 @@
-import {
-  ProjectId,
-  ThreadId,
-  type ThreadPullRequestLink,
-  type VcsStatusResult,
-} from "@t3tools/contracts";
-import { act, type MouseEvent } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { type ThreadPullRequestLink, type VcsStatusResult } from "@t3tools/contracts";
+import type { MouseEvent } from "react";
+import { render } from "../../test/render";
+import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "../index.css";
 import { Button } from "./ui/button";
-
-import { AppAtomRegistryProvider } from "../rpc/atomRegistry";
-import { makeThreadFixture } from "../test-fixtures";
 
 const state = vi.hoisted(() => ({ queries: [] as string[] }));
 
@@ -84,11 +76,7 @@ vi.mock(import("../state/pullRequests"), async (importOriginal) => {
       summaries(input.number)) as never,
   };
 });
-import { ThreadPullRequestBadgeControl, ThreadRowLeadingStatus } from "./ThreadStatusIndicators";
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+import { ThreadPullRequestBadgeControl } from "./ThreadStatusIndicators";
 
 // The lease overscans 160px around a 20px viewport, a 340px band. With 45px rows the band
 // covers exactly 8 rows at each scroll position below.
@@ -96,7 +84,6 @@ const ROW_HEIGHT = 45;
 const SPACER = 1000;
 
 it("keeps a long PR hover list in the viewport and lets the last row be selected", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const previousViewport = { width: window.innerWidth, height: window.innerHeight };
   await page.viewport(800, 480);
   const pullRequests = Array.from({ length: 40 }, (_, index): ThreadPullRequestLink => ({
@@ -112,26 +99,25 @@ it("keeps a long PR hover list in the viewport and lets the last row be selected
   const onOpenPullRequest = vi.fn((event: MouseEvent<HTMLElement>) => event.preventDefault());
   const container = document.createElement("div");
   document.body.append(container);
-  const root = createRoot(container);
+
   try {
-    await act(async () =>
-      root.render(
-        <div style={{ position: "fixed", top: 220, left: 300 }}>
-          <ThreadPullRequestBadgeControl
-            render={<Button size="xs" />}
-            badge={{ kind: "pull-request", others: 39, state: "open" }}
-            pullRequests={pullRequests}
-            number={1}
-            url={pullRequests[0]!.url}
-            status={null}
-            onOpenList={() => {}}
-            onOpenPullRequest={onOpenPullRequest}
-            onOpenPullRequestContextMenu={() => {}}
-          />
-        </div>,
-      ),
+    await using screen = await render(
+      <div style={{ position: "fixed", top: 220, left: 300 }}>
+        <ThreadPullRequestBadgeControl
+          render={<Button size="xs" />}
+          badge={{ kind: "pull-request", others: 39, state: "open" }}
+          pullRequests={pullRequests}
+          number={1}
+          url={pullRequests[0]!.url}
+          status={null}
+          onOpenList={() => {}}
+          onOpenPullRequest={onOpenPullRequest}
+          onOpenPullRequestContextMenu={() => {}}
+        />
+      </div>,
+      { container },
     );
-    await act(() => userEvent.hover(container.querySelector("button")!));
+    await userEvent.hover(container.querySelector("button")!);
     const popup = () => document.querySelector<HTMLElement>('[data-slot="tooltip-popup"]')!;
     await expect.poll(() => popup()?.querySelectorAll("a").length).toBe(40);
     await expect.poll(() => popup().getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
@@ -143,17 +129,16 @@ it("keeps a long PR hover list in the viewport and lets the last row be selected
     expect(lastRow.getBoundingClientRect().top).toBeGreaterThan(
       popup().getBoundingClientRect().bottom,
     );
-    await act(() => userEvent.wheel(popup(), { delta: { y: 10_000 } }));
+    await userEvent.wheel(popup(), { delta: { y: 10_000 } });
     await expect
       .poll(() => lastRow.getBoundingClientRect().bottom)
       .toBeLessThanOrEqual(popup().getBoundingClientRect().bottom);
     expect(lastRow.getBoundingClientRect().top).toBeGreaterThanOrEqual(
       popup().getBoundingClientRect().top,
     );
-    await act(() => userEvent.click(lastRow));
+    await userEvent.click(lastRow);
     expect(onOpenPullRequest).toHaveBeenCalledExactlyOnceWith(expect.anything(), lastRow.href);
   } finally {
-    await act(async () => root.unmount());
     container.remove();
     await page.viewport(previousViewport.width, previousViewport.height);
   }

@@ -1,6 +1,3 @@
-import { type Root } from "react-dom/client";
-let root: Root;
-import { afterEach } from "vite-plus/test";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import type { Atom } from "effect/reactivity";
@@ -96,6 +93,15 @@ function setup() {
   vi.clearAllMocks();
   state.projects = [];
   appAtomRegistry.set(discoverySettled, false);
+  return {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+      state.projects = [];
+      __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+      appAtomRegistry.set(discoverySettled, false);
+    },
+  };
 }
 
 /** Mounts the coordinator behind a desktop bridge that hands over `urls` once the renderer is ready. */
@@ -127,16 +133,8 @@ async function mount(...urls: string[]) {
   return stack.move();
 }
 
-afterEach(async () => {
-  vi.unstubAllGlobals();
-  vi.clearAllMocks();
-  state.projects = [];
-  __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
-  appAtomRegistry.set(discoverySettled, false);
-});
-
 it("holds a launch PR link until project discovery settles, then opens the PR view", async () => {
-  setup();
+  using _env = setup();
   await using _coordinator = await mount(pullRequestUrl);
   expect(state.navigate).not.toHaveBeenCalled();
   expect(state.openScratchProject).not.toHaveBeenCalled();

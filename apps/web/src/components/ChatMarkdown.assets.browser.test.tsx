@@ -2,8 +2,6 @@ import { PrimaryConnectionTarget } from "@t3tools/client-runtime/connection";
 import { RegistryContext } from "@effect/atom-react";
 import {
   AssetAccessError,
-  AssetWorkspaceAssetNotFoundError,
-  AssetPreviewTypeValidationError,
   type AssetCreateUrlResult,
   EnvironmentId,
   ThreadId,
@@ -12,9 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AtomRegistry } from "effect/reactivity";
-import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { render } from "../../test/render";
+import { expect, it, vi } from "vite-plus/test";
 
 const mint = vi.hoisted(() => vi.fn<() => Promise<AssetCreateUrlResult>>());
 const remoteOpen = vi.hoisted(() => ({
@@ -85,10 +82,6 @@ vi.mock(import("../remoteOpen"), async (original) => ({
 }));
 
 import ChatMarkdown from "./ChatMarkdown";
-import { toastManager } from "./ui/toast";
-
-const roots: Root[] = [];
-let registry: AtomRegistry.AtomRegistry;
 
 const imageUrl = (version: string) =>
   `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>#${version}`;
@@ -97,48 +90,22 @@ const assetResult = (version: string): AssetCreateUrlResult => ({
   expiresAt: 1,
 });
 
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  registry = AtomRegistry.make();
+function setup() {
+  const registry = AtomRegistry.make();
   mint.mockReset().mockResolvedValue(assetResult("updated"));
-});
-afterEach(async () => {
-  for (const root of roots.splice(0)) await act(async () => root.unmount());
-  registry.dispose();
-  document.body.replaceChildren();
-  remoteOpen.isResolved = true;
-  remoteOpen.state.mode = "local-exec";
-  remoteOpen.label = "media-host";
-  remoteOpen.httpBaseUrl = "https://host.test";
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
-function createTestRoot() {
-  const container = document.body.appendChild(document.createElement("div"));
-  const root = createRoot(container);
-  roots.push(root);
   return {
-    container,
-    render: (children: ReactNode) =>
-      act(async () => {
-        root.render(
-          <RegistryContext.Provider value={registry}>{children}</RegistryContext.Provider>,
-        );
-      }),
+    registry,
+    [Symbol.dispose]() {
+      registry.dispose();
+      remoteOpen.isResolved = true;
+      remoteOpen.state.mode = "local-exec";
+      remoteOpen.label = "media-host";
+      remoteOpen.httpBaseUrl = "https://host.test";
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
   };
 }
-
 const threadRef = {
   environmentId: EnvironmentId.make("media-environment"),
   threadId: ThreadId.make("media-thread"),
@@ -161,17 +128,21 @@ function renderedImage(container: HTMLElement) {
 }
 
 it("ordinary chat caches embedded assets across renders and refreshes them on reopening", async () => {
-  const { container, render } = createTestRoot();
-  await render(markdown());
+  using env = setup();
+  const ui = () => (
+    <RegistryContext.Provider value={env.registry}>{markdown()}</RegistryContext.Provider>
+  );
+  await using screen = await render(ui());
+  const { container } = screen;
   expect(renderedImage(container)).toBe(imageUrl("updated"));
   mint.mockResolvedValue(assetResult("changed"));
 
-  await render(markdown());
+  await screen.rerender(ui());
   expect(renderedImage(container)).toBe(imageUrl("updated"));
   expect(mint).toHaveBeenCalledTimes(1);
 
-  await render(null);
-  await render(markdown());
+  await screen.rerender(null);
+  await screen.rerender(ui());
 
   expect(renderedImage(container)).toBe(imageUrl("changed"));
   expect(mint).toHaveBeenCalledTimes(2);

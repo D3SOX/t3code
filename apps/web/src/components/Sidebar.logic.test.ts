@@ -1,13 +1,4 @@
-import { afterEach, beforeEach } from "vite-plus/test";
-import { type AnimateLayoutChanges } from "@dnd-kit/sortable";
-import {
-  animateSidebarLayoutChanges,
-  isTrailingDoubleClick,
-  resolveSidebarThreadSection,
-  resolveSidebarRowAccessibility,
-  shouldClearThreadSelectionOnMouseDown,
-  shouldShowSidebarV2Duration,
-} from "./Sidebar.logic";
+import { shouldShowSidebarV2Duration } from "./Sidebar.logic";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import * as DateTime from "effect/DateTime";
 import { deriveActiveWorkStartedAt } from "../session-logic.ts";
@@ -17,16 +8,8 @@ import { AsyncResult } from "effect/reactivity";
 import {
   archiveSelectedThreadEntries,
   archiveSettledThreadEntries,
-  buildBulkTitleRegenerationContextMenuItem,
-  buildBulkUnpinContextMenuItem,
-  buildMultiSelectThreadContextMenuItems,
   deleteSelectedThreadEntries,
-  filterSidebarProjectScopeItems,
-  filterSidebarV2VisibleThreads,
-  getProjectSortTimestamp,
-  getSidebarThreadIdsToPrewarm,
   hasUnseenCompletion,
-  isContextMenuPointerDown,
   isSidebarNestedLinkClick,
   getFallbackThreadIdAfterDelete,
   resolveSidebarRowThreadId,
@@ -75,27 +58,6 @@ import {
 import { makeThreadFixture, type ThreadFixtureOverrides } from "../test-fixtures";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
-
-describe("resolveSidebarRowAccessibility", () => {});
-
-describe("animateSidebarLayoutChanges", () => {
-  const baseArgs: Parameters<AnimateLayoutChanges>[0] = {
-    active: null,
-    containerId: "pinned-threads",
-    isDragging: false,
-    isSorting: false,
-    id: "thread-a",
-    index: 1,
-    items: ["thread-b", "thread-a"],
-    newIndex: 0,
-    previousItems: ["thread-a", "thread-b"],
-    previousContainerId: "pinned-threads",
-    transition: { duration: 200, easing: "ease" },
-    wasDragging: true,
-  };
-});
-
-describe("resolveSidebarThreadSection", () => {});
 
 describe("archiveSettledThreadEntries", () => {
   it.each([false, true])(
@@ -340,24 +302,6 @@ describe("hasUnseenCompletion", () => {
     }
   });
 });
-
-describe("shouldRecedeSidebarThread", () => {});
-
-describe("createThreadJumpHintVisibilityController", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-});
-
-describe("getSidebarThreadIdsToPrewarm", () => {});
-
-describe("shouldClearThreadSelectionOnMouseDown", () => {});
-
-describe("isTrailingDoubleClick", () => {});
 
 describe("isSidebarNestedLinkClick", () => {
   const linkTarget = {

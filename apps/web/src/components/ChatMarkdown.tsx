@@ -1,5 +1,3 @@
-import { Check } from "lucide";
-import { MediaActions } from "./media/MediaActions";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
 import {
   isWindowsDrivePathHref,
@@ -462,7 +460,6 @@ function useChatMarkdownState({
   const markdownRef = useRef<HTMLElement>(null);
   const mediaRequestId = useRef(0);
   // A preview opened from another thread or workspace never carries over.
-  // A preview opened from another thread or workspace never carries over.
   const mediaScopeKey = [
     threadRef?.environmentId,
     threadRef?.threadId,
@@ -470,8 +467,6 @@ function useChatMarkdownState({
     cwd,
     imageBaseDir,
   ].join("\u0000");
-  // Tagged with the scope it was opened in: a request from the previous scope can
-  // resolve before the effect cleanup below invalidates it, and must stay hidden.
   // Tagged with the scope it was opened in: a request from the previous scope can
   // resolve before the effect cleanup below invalidates it, and must stay hidden.
   const [localMedia, setLocalMedia] = useState<{
@@ -492,8 +487,6 @@ function useChatMarkdownState({
     setMediaScope(mediaScopeKey);
     setLocalMedia(null);
   }
-  // A layout cleanup runs in the commit that changes scope, so a request resolving
-  // before paint cannot reach a parent onImageExpand either.
   // A layout cleanup runs in the commit that changes scope, so a request resolving
   // before paint cannot reach a parent onImageExpand either.
   useLayoutEffect(
@@ -690,9 +683,6 @@ function useChatMarkdownState({
   // Subscribed rather than read at click time: the anchor has to decide
   // synchronously whether to intercept its `_blank`, and a subscription is what
   // makes a persisted "app" apply once settings hydrate after launch.
-  // Subscribed rather than read at click time: the anchor has to decide
-  // synchronously whether to intercept its `_blank`, and a subscription is what
-  // makes a persisted "app" apply once settings hydrate after launch.
   const linkTargetPreference = useClientSettings((settings) => settings.browserLinkTarget);
   const pullRequestLinkTargetPreference = useClientSettings(
     (settings) => settings.pullRequestLinkTarget,
@@ -822,8 +812,6 @@ function useChatMarkdownState({
     if (match === null) return null;
     // Search can be truncated or still scanning, so it cannot rule out the
     // literal path. Check the host before redirecting to the stripped match.
-    // Search can be truncated or still scanning, so it cannot rule out the
-    // literal path. Check the host before redirecting to the stripped match.
     const metadata = await getFilesystemMetadata({
       environmentId,
       input: {
@@ -834,8 +822,6 @@ function useChatMarkdownState({
   };
   const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
     if (!threadRef) return;
-    // Claimed on every open so a synchronous one supersedes a lookup already
-    // in flight.
     // Claimed on every open so a synchronous one supersedes a lookup already
     // in flight.
     const isLatestLookup = claimWorkspaceBasenameLookup();
@@ -1073,9 +1059,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   li: function MarkdownListItem({ node, children, ...props }) {
     const { skills } = use(ChatMarkdownRendererContext);
-    // The checkbox finds its marker from this offset when toggled, so list items
-    // don't read the source text and re-render on every streamed token.
-    // remark-gfm marks task items with this class; plain items carry no offset.
     // The checkbox finds its marker from this offset when toggled, so list items
     // don't read the source text and re-render on every streamed token.
     // remark-gfm marks task items with this class; plain items carry no offset.

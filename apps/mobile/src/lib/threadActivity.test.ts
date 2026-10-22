@@ -938,42 +938,6 @@ describe("buildThreadFeed", () => {
     ).toEqual([]);
   });
 
-  describe("a lone call", () => {
-    const wait = (overrides: Partial<OrchestrationV2TurnItem> = {}) =>
-      ({
-        ...base("wait", "2026-06-20T00:00:02.000Z", 1),
-        type: "dynamic_tool",
-        toolName: "t3-code.t3_thread_wait",
-        input: { threadId: "thread-child", timeoutMs: 50_000 },
-        output: { threadId: "thread-child", status: "timeout" },
-        ...overrides,
-      }) as OrchestrationV2TurnItem;
-    const read = (overrides: Partial<OrchestrationV2TurnItem> = {}) =>
-      ({
-        ...base("read", "2026-06-20T00:00:03.000Z", 2),
-        type: "dynamic_tool",
-        toolName: "t3-code.t3_thread_read",
-        input: { threadId: "thread-child" },
-        output: { messages: [] },
-        ...overrides,
-      }) as OrchestrationV2TurnItem;
-    const running = { status: "running", completedAt: null, output: null } as const;
-    const startedAt = "2026-06-20T00:00:01.000Z";
-    const liveRows = (items: ReadonlyArray<OrchestrationV2TurnItem>, groupIds: string[] = []) =>
-      deriveThreadFeedPresentation(
-        buildThreadFeed(items.map((item, position) => projected(item, position))),
-        { runId, status: "running", startedAt, completedAt: null },
-        new Set(),
-        new Set(groupIds),
-        startedAt,
-      );
-    const standIn = (rows: ReadonlyArray<ThreadFeedEntry>) => {
-      const row = rows.find((entry) => entry.type === "activity-group");
-      if (row?.type !== "activity-group") throw new Error("Expected the call's own row");
-      return row.activities[0]?.groupStandIn;
-    };
-  });
-
   it("retains Claude Read image previews without tool output", () => {
     const item = {
       ...base("image-read", "2026-06-20T00:00:04.000Z", 3),

@@ -157,8 +157,6 @@ const LEGACY_MENU_ACTIONS: MenuAction[] = [
   { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
 ];
 
-const SIDEBAR_V2_ROW_RADIUS = 12;
-
 function ThreadListV2Section(props: {
   readonly label: string;
   readonly pane?: "screen" | "sidebar";
@@ -349,6 +347,7 @@ const DRAFT_TASK_MENU_ACTIONS: MenuAction[] = [
 
 export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props: {
   readonly pendingTask: PendingNewTask;
+  readonly selected?: boolean;
   readonly project: EnvironmentProject | null;
   readonly projectTitle?: string;
   readonly environmentLabel: string | null;
@@ -375,7 +374,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
   const dormant = useSwipeRowDormant(props.activationKey);
   const theme = useUniwindTheme();
   const sidebarPane = props.pane === "sidebar";
-  const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, false);
+  const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, props.selected ?? false);
   const isDraft = pendingTask.kind === "draft";
   const deleteLabel = isDraft ? "Discard" : "Delete";
   const handleDelete = useCallback(
@@ -542,19 +541,13 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
               }
               accessibilityLabel={pendingTask.title}
               accessibilityRole="button"
+              accessibilityState={{ selected: props.selected ?? false }}
               key={pendingTask.key}
-              className={sidebarPane ? "bg-drawer" : "bg-screen"}
-              interactionClassName={sidebarPane ? "bg-thread-hover" : "bg-row-hover"}
+              className={rowAppearance.className}
+              interactionClassName={rowAppearance.interactionClassName}
+              interactionOpacity={rowAppearance.interactionOpacity}
               onPress={() => onSelectPendingTask(pendingTask)}
-              style={
-                sidebarPane
-                  ? {
-                      borderRadius: SIDEBAR_V2_ROW_RADIUS,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                    }
-                  : undefined
-              }
+              style={rowAppearance.cardStyle}
             >
               {sidebarPane ? (
                 rowContent
@@ -761,9 +754,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // "Done" marks a completion the user has not opened yet — same emerald
   // label as the web sidebar, sourced from the server-side visited watermark
   // so checking a thread on any device clears it everywhere.
-  // "Done" marks a completion the user has not opened yet — same emerald
-  // label as the web sidebar, sourced from the server-side visited watermark
-  // so checking a thread on any device clears it everywhere.
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
   const showsWoke = status === "ready" && props.wokeAt !== null;
@@ -780,8 +770,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   });
   // The timestamp is precomputed on the list item (same stamps the settled
   // tail sorts by) so a minute tick only re-renders rows that draw it.
-  // The timestamp is precomputed on the list item (same stamps the settled
-  // tail sorts by) so a minute tick only re-renders rows that draw it.
   const timeLabel = props.timeLabel;
   const visitThread = useAtomCommand(threadEnvironment.visit, {
     reportFailure: false,
@@ -796,7 +784,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       },
     });
   }, [props.wokeAt, thread.environmentId, thread.id, visitThread]);
-  // VoiceOver cannot focus buttons inside the accessible row.
   // VoiceOver cannot focus buttons inside the accessible row.
   const rowAccessibilityActions = useMemo(
     () => [
@@ -832,13 +819,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // opened for one thread survives the thread's removal/reorder and its
   // submit snoozes whichever thread the cell was reassigned to. (ThreadSwipeable
   // enforces the same contract on the swipe layer with its resetKey.)
-  // A recycled cell reassigns this mounted row to a different thread without
-  // remounting it, and the render closure stops running while list equality
-  // says the item is unchanged — so any row-local UI state must be dismissed
-  // when the identity under it changes. Without this, a custom snooze sheet
-  // opened for one thread survives the thread's removal/reorder and its
-  // submit snoozes whichever thread the cell was reassigned to. (ThreadSwipeable
-  // enforces the same contract on the swipe layer with its resetKey.)
   const rowIdentity = `${thread.environmentId}:${thread.id}`;
   const [boundIdentity, setBoundIdentity] = useState(rowIdentity);
   if (boundIdentity !== rowIdentity) {
@@ -857,12 +837,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 
   // Swipe: the v2 primary action is the lifecycle transition. Un-settling a
   // settled row keeps it active until new activity clears the user override.
-  // Swipe: the v2 primary action is the lifecycle transition. Un-settling a
-  // settled row keeps it active until new activity clears the user override.
   const canUnsettle = variant === "slim";
-  // The React Compiler caches render results on props and state, so a clock read
-  // in render would stay frozen until `thread` changes: the gate could never
-  // expire and its timer would re-fire every 50ms. The gate's clock is state.
   // The React Compiler caches render results on props and state, so a clock read
   // in render would stay frozen until `thread` changes: the gate could never
   // expire and its timer would re-fire every 50ms. The gate's clock is state.
@@ -921,9 +896,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // Pinned cards keep the full lifecycle menu; only the pin item flips to
   // Unpin. (Settling a pinned thread clears the pin server-side; snoozing
   // hides the card until wake with the pin intact.)
-  // Pinned cards keep the full lifecycle menu; only the pin item flips to
-  // Unpin. (Settling a pinned thread clears the pin server-side; snoozing
-  // hides the card until wake with the pin intact.)
   const arrangementMenuItems = [
     ...(props.reorderSupported === true
       ? [
@@ -966,8 +938,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ]
       : []),
   ];
-  // A submenu with the current option checked, matching web. This is a
-  // per-thread setting, not a lifecycle verb.
   // A submenu with the current option checked, matching web. This is a
   // per-thread setting, not a lifecycle verb.
   const autoSettleMenuItems = props.autoSettleOptOutSupported
@@ -1215,14 +1185,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         <Pressable
           // Padding cancelled by negative margin grows the touch target into
           // the row padding without moving the badge.
-          // Padding cancelled by negative margin grows the touch target into
-          // the row padding without moving the badge.
           className="-m-2.5 flex-row items-center gap-1 p-2.5"
           accessibilityRole="button"
           accessibilityLabel={prBadgeLabel ?? undefined}
           onPress={handleOpenPullRequests}
-          // Without a long-press handler a hold that opens the row's iOS
-          // context menu would also open the pull request on release.
           // Without a long-press handler a hold that opens the row's iOS
           // context menu would also open the pull request on release.
           onLongPress={() => undefined}
@@ -1287,7 +1253,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </>
   );
 
-  // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   const cardContent = (
     <>
@@ -1502,8 +1467,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </>
   );
 
-  // Background work fades as a whole, status label included, so it takes
-  // less attention than rows that need a human (input, approval, done).
   // Background work fades as a whole, status label included, so it takes
   // less attention than rows that need a human (input, approval, done).
   const fadedCardContent = recede ? (

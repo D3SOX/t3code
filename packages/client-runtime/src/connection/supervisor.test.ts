@@ -1,5 +1,4 @@
 import { AuthStandardClientScopes, EnvironmentId, type ServerConfig } from "@t3tools/contracts";
-import { RelayClientTracer } from "@t3tools/shared/relayTracing";
 import { RelayEnvironmentConnectNotAuthorizedError } from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -40,7 +39,6 @@ import { presentConnectionState } from "./presentation.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 import { connectionRouteId, entryWithRoutes, isLearned, mergeLearnedRoutes } from "./routes.ts";
-import { NETWORK_BLOCKING_HINT } from "../errors/network.ts";
 import { mapManagedRelayError } from "./errors.ts";
 
 const TARGET = new PrimaryConnectionTarget({

@@ -1,9 +1,8 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, render as renderClient, type Screen } from "../../test/render";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   mode: "off" as ClientSettings["notificationMode"],
@@ -183,18 +182,16 @@ vi.mock(import("./ui/toast"), async (original) => {
 
 import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
 
-let root: Root;
-
-async function render() {
-  await act(() => root.render(<ThreadNotificationCoordinator />));
-}
-
-async function complete() {
-  state.completedAt = "2026-09-13T10:00:00.000Z";
-  await render();
-}
-
-beforeEach(() => {
+function setup() {
+  let screen: Screen | null = null;
+  const render = async () => {
+    if (screen) await screen.rerender(<ThreadNotificationCoordinator />);
+    else screen = await renderClient(<ThreadNotificationCoordinator />);
+  };
+  const complete = async () => {
+    state.completedAt = "2026-09-13T10:00:00.000Z";
+    await render();
+  };
   vi.clearAllMocks();
   Object.assign(state, {
     mode: "off",
@@ -222,23 +219,27 @@ beforeEach(() => {
     delegatedChild: null,
   });
   stableParent = null;
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(document, "visibilityState", "get").mockImplementation(
     () => state.visible as DocumentVisibilityState,
   );
   vi.spyOn(document, "hasFocus").mockImplementation(() => state.focused);
   vi.stubGlobal("Notification", Object.assign(state.notification, { permission: "granted" }));
-  root = createRoot(document.createElement("div"));
-});
-
-afterEach(async () => {
-  await act(() => root.unmount());
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
+  return {
+    render,
+    complete,
+    unmount: async () => screen?.unmount(),
+    async [Symbol.asyncDispose]() {
+      await screen?.[Symbol.asyncDispose]();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+}
 
 describe("thread notifications", () => {
   it.each([false, true])("alerts only once for the same limit when focused=%s", async (focused) => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = focused;
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -257,6 +258,8 @@ describe("thread notifications", () => {
   });
 
   it("allows a different reset window but suppresses retries within the same window", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -280,6 +283,8 @@ describe("thread notifications", () => {
   });
 
   it("keeps separate provider instances and environments eligible for alerts", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.environmentIds = ["env-1", "env-2"];
@@ -294,6 +299,8 @@ describe("thread notifications", () => {
   });
 
   it("allows a new limit without a reset time after a later successful turn", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.extraThreads = [{ id: "thread-2", limited: false }];
@@ -317,6 +324,8 @@ describe("thread notifications", () => {
   });
 
   it("does not consume the shared alert when the first thread cannot notify", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications";
     state.active = { environmentId: "env-1", threadId: "thread-1" };
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -333,6 +342,8 @@ describe("thread notifications", () => {
   });
 
   it("dismisses the toast when its thread is opened through normal navigation", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     await complete();
     expect(state.add).toHaveBeenCalledTimes(1);
@@ -345,6 +356,8 @@ describe("thread notifications", () => {
   });
 
   it("dismisses the viewed thread's toast on focus with system notifications off", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     await complete();
     state.focused = false;
@@ -357,6 +370,8 @@ describe("thread notifications", () => {
   });
 
   it("dismisses the viewed thread's toast when the document becomes visible", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     await complete();
     state.visible = "hidden";
@@ -369,6 +384,8 @@ describe("thread notifications", () => {
   });
 
   it("replaces an earlier toast for the same thread and clears the replacement on entry", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.add.mockReturnValueOnce("first").mockReturnValueOnce("second");
     await render();
     await complete();
@@ -384,6 +401,8 @@ describe("thread notifications", () => {
   });
 
   it("clears retained toasts when in-app notifications are disabled", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications";
     await render();
     await complete();
@@ -393,14 +412,17 @@ describe("thread notifications", () => {
   });
 
   it("clears retained toasts when the environment coordinator unmounts", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     await complete();
-    await act(() => root.unmount());
-    root = createRoot(document.createElement("div"));
+    await harness.unmount();
     expect(state.close).toHaveBeenCalledWith("toast-1");
   });
 
   it("waits for queued follow-up turns before notifying completion", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     await render();
@@ -417,6 +439,8 @@ describe("thread notifications", () => {
   });
 
   it.each([true, false])("keeps empty responses silent with focus=%s", async (focused) => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = focused;
     await render();
@@ -437,6 +461,8 @@ describe("thread notifications", () => {
   });
 
   it("keeps PR-watch completions silent and still notifies the next user turn", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.prWatch = true;
@@ -460,6 +486,8 @@ describe("thread notifications", () => {
   it.each(["input", "approval", "turnError", "limited"] as const)(
     "still alerts for PR-watch %s",
     async (event) => {
+      await using harness = setup();
+      const { render } = harness;
       state.mode = "notifications-and-sound";
       state.focused = false;
       state.prWatch = true;
@@ -472,6 +500,8 @@ describe("thread notifications", () => {
   );
 
   it("alerts once with system alerts off and opens the completed thread", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     await complete();
     await render();
@@ -496,6 +526,8 @@ describe("thread notifications", () => {
     ["turnError", "Thread failed"],
     ["limited", "Usage limit reached"],
   ] as const)("uses the same %s event for in-app and desktop alerts", async (event, title) => {
+    await using harness = setup();
+    const { render, complete } = harness;
     state.mode = "notifications-and-sound";
     await render();
     state[event] = true;
@@ -523,6 +555,8 @@ describe("thread notifications", () => {
   });
 
   it("waits for background work to finish before alerting completion", async () => {
+    await using harness = setup();
+    const { render, complete } = harness;
     await render();
     state.background = [{ taskId: "watch", kind: "monitor" }];
     await complete();

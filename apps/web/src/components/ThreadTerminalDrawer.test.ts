@@ -1,4 +1,3 @@
-import { afterEach } from "vite-plus/test";
 import { terminalContextMenuItems } from "./ThreadTerminalDrawer";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -13,13 +12,8 @@ import {
   shouldClearTerminalSelectionAction,
   shouldHandleTerminalExit,
   synchronizeTerminalOutput,
-  terminalSelectionLineRange,
-  terminalSelectionMenuItems,
-  terminalThemeFromApp,
   terminalPathOpenTarget,
 } from "./ThreadTerminalDrawer";
-
-describe("terminal drawer height", () => {});
 
 describe("terminal selection menus", () => {
   it("labels the copy action for the link under the pointer", () => {
@@ -41,12 +35,6 @@ describe("terminal selection menus", () => {
     expect(
       terminalContextMenuItems({ hasSelection: false, link: null }).map(({ id }) => id),
     ).toEqual(["add-to-chat", "copy", "paste", "select-all", "scroll-to-bottom"]);
-  });
-});
-
-describe("terminalThemeFromApp", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 });
 

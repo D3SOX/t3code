@@ -7,9 +7,8 @@ import {
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { nextTerminalAttachSeedState } from "@t3tools/client-runtime/state/terminal";
 import { AsyncResult } from "effect/reactivity";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { render } from "../../test/render";
+import { expect, it, vi } from "vite-plus/test";
 import type {
   GhosttyTerminalSurface,
   GhosttyTerminalSurfaceOptions,
@@ -89,17 +88,14 @@ vi.mock(import("../state/session"), async (original) => {
   };
 });
 
-import ThreadTerminalDrawer, { TerminalViewport } from "./ThreadTerminalDrawer";
+import { TerminalViewport } from "./ThreadTerminalDrawer";
 
 const threadRef = {
   environmentId: EnvironmentId.make("secondary-terminal"),
   threadId: ThreadId.make("thread"),
 };
 const session = { ...nextTerminalAttachSeedState(), status: "running" as const, version: 1 };
-let root: Root;
-let container: HTMLDivElement;
-
-beforeEach(() => {
+function setup(): Disposable {
   state.allowed = true;
   state.listeners.clear();
   state.resize.mockReset().mockResolvedValue(AsyncResult.success(undefined));
@@ -107,39 +103,33 @@ beforeEach(() => {
   // A surface can report its initial grid while asynchronous WASM setup is
   // pending. Keep that unrelated setup pending while exercising its callback.
   state.createSurface.mockReset().mockReturnValue(new Promise(() => undefined));
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
+  return {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    },
+  };
+}
 
 it("rechecks the target terminal grant when a retained surface callback reports a resize", async () => {
-  await act(async () =>
-    root.render(
-      <TerminalViewport
-        advancedTypography={false}
-        threadRef={threadRef}
-        threadId={threadRef.threadId}
-        terminalId="terminal-1"
-        terminalLabel="Terminal 1"
-        cwd="/repo"
-        panelWorkspaceRoot="/repo"
-        onSessionExited={state.otherCommand}
-        focusRequestId={0}
-        autoFocus={false}
-        visible={true}
-        resizeEpoch={0}
-        drawerHeight={200}
-        keybindings={[]}
-      />,
-    ),
+  using _env = setup();
+  await using screen = await render(
+    <TerminalViewport
+      advancedTypography={false}
+      threadRef={threadRef}
+      threadId={threadRef.threadId}
+      terminalId="terminal-1"
+      terminalLabel="Terminal 1"
+      cwd="/repo"
+      panelWorkspaceRoot="/repo"
+      onSessionExited={state.otherCommand}
+      focusRequestId={0}
+      autoFocus={false}
+      visible={true}
+      resizeEpoch={0}
+      drawerHeight={200}
+      keybindings={[]}
+    />,
   );
   expect(state.createSurface).toHaveBeenCalledOnce();
   const onResize = state.createSurface.mock.calls[0]![1].onResize;

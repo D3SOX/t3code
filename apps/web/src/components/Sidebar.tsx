@@ -1,4 +1,3 @@
-import { CSS } from "@dnd-kit/utilities";
 import {
   hasUnseenCompletion,
   resolveSidebarThreadStatus,

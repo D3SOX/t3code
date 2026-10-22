@@ -52,7 +52,6 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   type ComposerSubmissionIntent,
-  collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
@@ -115,7 +114,6 @@ import {
   type MultipleModelTarget,
   resolveMultipleModelTargets,
   prepareTurnAttachments,
-  restoreComposerDraft,
 } from "./chatViewSend";
 import type {
   EnvironmentProject,
@@ -399,8 +397,6 @@ export function useComposerSend(input: ComposerSendInput) {
     e?.preventDefault();
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
-    // What the user pressed send on; uploads below can take a while, and a redirect must not
-    // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
     if (
       usageLimitsOffered &&
@@ -532,8 +528,6 @@ export function useComposerSend(input: ComposerSendInput) {
         previewAnnotations: sendContextPreviewAnnotations,
         direct: directAnnotation,
       });
-    // A direct "send annotation" writes the draft and sends in the same tick; the reference
-    // must be in the text now, not after the next render.
     // A direct "send annotation" writes the draft and sends in the same tick; the reference
     // must be in the text now, not after the next render.
     const promptForSend = directAnnotation
@@ -812,9 +806,6 @@ export function useComposerSend(input: ComposerSendInput) {
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
     // rebinds them to the persisted id.
-    // Records bind attachments by the id each side knows: the local id for the optimistic
-    // row, the upload id (or local id on the data-URL path) on the wire; the server
-    // rebinds them to the persisted id.
     const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
       buildMessageContext({
         terminalContexts: composerTerminalContextsSnapshot,
@@ -1055,8 +1046,8 @@ export function useComposerSend(input: ComposerSendInput) {
             .getState()
             .getComposerDraft(composerDraftTarget);
           const changedBeforeDecline = draftChangedSinceSend();
-          const pendingIdsBeforeDecline = pendingApprovalsRef.current.map(
-            (approval) => approval.requestId,
+          const pendingIdsBeforeDecline = new Set(
+            pendingApprovalsRef.current.map((approval) => approval.requestId),
           );
           const approvalResponding = approvalsToDecline.some((approval) =>
             respondingRequestIdsRef.current.includes(approval.requestId),
@@ -1075,7 +1066,7 @@ export function useComposerSend(input: ComposerSendInput) {
           // An approval that arrived during the decline would block the redirect; keep the draft so
           // the next send declines it too.
           const approvalArrived = pendingApprovalsRef.current.some(
-            (approval) => !pendingIdsBeforeDecline.includes(approval.requestId),
+            (approval) => !pendingIdsBeforeDecline.has(approval.requestId),
           );
           if (
             !declined ||
@@ -1148,7 +1139,6 @@ export function useComposerSend(input: ComposerSendInput) {
         const sentDraftThreadRef = createsThread
           ? scopeThreadRef(environmentId, threadIdForSend)
           : null;
-        // Keep new-thread flows from reusing this draft while attachments and worktree setup settle.
         // Keep new-thread flows from reusing this draft while attachments and worktree setup settle.
         if (sentDraftThreadRef) markPromotedDraftThreadByRef(sentDraftThreadRef);
         const title = deriveThreadTitleSeed({
@@ -1315,7 +1305,6 @@ export function useComposerSend(input: ComposerSendInput) {
               releaseDraftAttachments(composerAttachmentsSnapshot);
             }
             acknowledgeActiveThreadWoke();
-            // A draft still on screen finalizes once its thread route takes over.
             // A draft still on screen finalizes once its thread route takes over.
             if (sentDraftThreadRef) {
               if (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey) {
