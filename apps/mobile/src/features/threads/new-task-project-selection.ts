@@ -1,5 +1,9 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { repositoryGroupingKeyOf, type EnvironmentId } from "@t3tools/contracts";
+import {
+  repositoryGroupingKeyOf,
+  type EnvironmentId,
+  type ScopedProjectRef,
+} from "@t3tools/contracts";
 
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import type { HomeProjectScope } from "../home/homeThreadList";
@@ -111,13 +115,20 @@ export function newTaskDestination(
   projects: ReadonlyArray<EnvironmentProject>,
   currentProject: Pick<EnvironmentProject, "environmentId" | "id"> | undefined,
   requestId: string,
+  lastNewThreadProjectRef?: ScopedProjectRef,
 ) {
   const project =
     projects.find(
       (candidate) =>
+        candidate.environmentId === lastNewThreadProjectRef?.environmentId &&
+        candidate.id === lastNewThreadProjectRef.projectId,
+    ) ??
+    projects.find(
+      (candidate) =>
         candidate.environmentId === currentProject?.environmentId &&
         candidate.id === currentProject.id,
-    ) ?? projects[0];
+    ) ??
+    projects[0];
   return project
     ? {
         draft: {

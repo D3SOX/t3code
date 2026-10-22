@@ -20,6 +20,7 @@ import {
   type ModelSelection,
   type ProviderInteractionMode,
   type RuntimeMode,
+  type ScopedThreadRef,
   type ServerConfig as T3ServerConfig,
   type UsageLimitsReport,
 } from "@t3tools/contracts";
@@ -220,7 +221,8 @@ export function useCompactComposerEditor(text: ScaledTextRole, value: string) {
       }
     },
     editorProps: {
-      singleLineCentered: false,
+      // Android has no text inset, so short drafts need centering within the minimum height.
+      singleLineCentered: Platform.OS === "android",
       scrollEnabled: Platform.OS === "android" || contentHeight >= text.lineHeight * 4,
       contentInsetVertical: inset,
       onContentSizeChange: (size: { width: number; height: number }) => {
@@ -246,6 +248,7 @@ export interface ThreadComposerProps {
    */
   readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: EnvironmentThreadShell;
+  readonly selectedThreadDetailRef: ScopedThreadRef | null;
   readonly reportedModelSelection?: ModelSelection | null;
   readonly hasCompactableConversation: boolean;
   readonly serverConfig: T3ServerConfig | null;
@@ -969,7 +972,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         style={{ maxWidth: props.contentMaxWidth }}
       >
         <ModelCapacityRetryNotice
-          environmentId={props.environmentId}
+          threadRef={props.selectedThreadDetailRef}
           thread={props.selectedThread}
           onCancel={handleStopThread}
         />

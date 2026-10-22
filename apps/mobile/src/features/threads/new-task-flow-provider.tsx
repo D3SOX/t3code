@@ -3,6 +3,8 @@ import * as Dialog from "../../components/ui/Dialog";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { environmentSession } from "../../state/session";
+import { useAtomSet } from "@effect/atom-react";
+import { updateMobilePreferencesAtom } from "../../state/preferences";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
@@ -265,6 +267,7 @@ export function NewTaskFlowProvider(
   }>,
 ) {
   const projects = useProjects();
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const threads = useThreadShells();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const groupingSettings = useMobileProjectGroupingSettings();
@@ -729,6 +732,11 @@ export function NewTaskFlowProvider(
     carryDraftContentTo(project);
     setSelectedEnvironmentId(project.environmentId);
     setSelectedProjectKey(scopedProjectKey(project.environmentId, project.id));
+    if (!editingPendingTaskRef.current) {
+      savePreferences({
+        lastNewThreadProjectRef: { environmentId: project.environmentId, projectId: project.id },
+      });
+    }
   };
 
   const openDraft = (draftKey: string): boolean => {
@@ -749,6 +757,7 @@ export function NewTaskFlowProvider(
     setActiveDraftKey(draftKey);
     setSelectedEnvironmentId(stamp.environmentId);
     setSelectedProjectKey(scopedProjectKey(stamp.environmentId, stamp.projectId));
+    savePreferences({ lastNewThreadProjectRef: stamp });
     return true;
   };
 
@@ -758,10 +767,11 @@ export function NewTaskFlowProvider(
       selectedProject,
     );
     if (match) {
-      carryDraftContentTo(match);
+      setProject(match);
+      return;
     }
     setSelectedEnvironmentId(environmentId);
-    setSelectedProjectKey(match ? scopedProjectKey(match.environmentId, match.id) : null);
+    setSelectedProjectKey(null);
   };
 
   const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });

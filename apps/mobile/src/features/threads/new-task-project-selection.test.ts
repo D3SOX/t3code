@@ -115,6 +115,37 @@ describe("resolveDraftProjectSelection", () => {
 });
 
 describe("newTaskDestination", () => {
+  it.each([true, false])("reuses the last selected project in split view %s", (splitView) => {
+    const projects = [makeProject("first"), makeProject("remembered", "other-environment")];
+    expect(
+      newTaskDestination(splitView, projects, projects[0], "request", {
+        environmentId: projects[1]!.environmentId,
+        projectId: projects[1]!.id,
+      }),
+    ).toEqual({
+      draft: { requestId: "request", environmentId: "other-environment", projectId: "remembered" },
+    });
+  });
+  it("falls back to the current project when the remembered project was removed", () => {
+    const projects = [makeProject("first"), makeProject("current")];
+    expect(
+      newTaskDestination(false, projects, projects[1], "request", {
+        environmentId: EnvironmentId.make("environment"),
+        projectId: ProjectId.make("removed"),
+      }),
+    ).toEqual({
+      draft: { requestId: "request", environmentId: "environment", projectId: "current" },
+    });
+  });
+  it("matches the remembered environment as well as the project id", () => {
+    const projects = [makeProject("shared", "one"), makeProject("shared", "two")];
+    expect(
+      newTaskDestination(false, projects, undefined, "request", {
+        environmentId: EnvironmentId.make("two"),
+        projectId: ProjectId.make("shared"),
+      }),
+    ).toEqual({ draft: { requestId: "request", environmentId: "two", projectId: "shared" } });
+  });
   it("opens the current thread's project directly in split view", () => {
     const projects = [makeProject("first"), makeProject("current", "other-environment")];
     expect(newTaskDestination(true, projects, projects[1], "request")).toEqual({

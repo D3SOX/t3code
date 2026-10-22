@@ -5,6 +5,22 @@ vi.mock("expo-secure-store", () => ({}));
 import { sanitizePreferences } from "./mobile-preferences";
 
 describe("environment identification preferences", () => {
+  it("retains the last project selected for a new thread", () => {
+    const preferences = JSON.parse(
+      '{"lastNewThreadProjectRef":{"environmentId":"environment","projectId":"project"}}',
+    );
+    expect(sanitizePreferences(preferences)).toEqual(preferences);
+  });
+  it.each([
+    null,
+    {},
+    { environmentId: "", projectId: "project" },
+    { environmentId: "environment", projectId: 123 },
+  ])("drops an invalid remembered project %j", (lastNewThreadProjectRef) => {
+    expect(sanitizePreferences(JSON.parse(JSON.stringify({ lastNewThreadProjectRef })))).toEqual(
+      {},
+    );
+  });
   it.each([true, false])("retains thread branch visibility %s", (sidebarShowThreadBranches) => {
     expect(sanitizePreferences({ sidebarShowThreadBranches })).toEqual({
       sidebarShowThreadBranches,

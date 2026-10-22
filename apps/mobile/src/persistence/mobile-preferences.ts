@@ -10,6 +10,7 @@ import {
   PullRequestInvolvement,
   PullRequestListFilters,
   PullRequestListState,
+  ScopedProjectRef,
   type ProviderInstanceId,
   type PullRequestMergeMethod,
   type SidebarProjectGroupingMode,
@@ -52,6 +53,7 @@ export type PullRequestListPreferences = typeof PullRequestListPreferences.Type;
 
 const isThreadListFilters = Schema.is(ThreadListFilters);
 const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
+const isScopedProjectRef = Schema.is(ScopedProjectRef);
 
 export interface Preferences {
   readonly pullRequestHideTestFiles?: boolean;
@@ -102,6 +104,7 @@ export interface Preferences {
   readonly threadListActiveShelfExpanded?: boolean;
   /** Home list filters, restored on the next launch. */
   readonly threadListFilters?: ThreadListFilters;
+  readonly lastNewThreadProjectRef?: ScopedProjectRef;
   readonly pullRequestListFilters?: PullRequestListPreferences;
 }
 
@@ -176,6 +179,7 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
     threadListPinnedShelfExpanded?: boolean;
     threadListActiveShelfExpanded?: boolean;
     threadListFilters?: ThreadListFilters;
+    lastNewThreadProjectRef?: ScopedProjectRef;
     pullRequestListFilters?: PullRequestListPreferences;
   } = {};
 
@@ -320,6 +324,9 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (isThreadListFilters(parsed.threadListFilters)) {
     preferences.threadListFilters = parsed.threadListFilters;
+  }
+  if (isScopedProjectRef(parsed.lastNewThreadProjectRef)) {
+    preferences.lastNewThreadProjectRef = parsed.lastNewThreadProjectRef;
   }
   if (isPullRequestListPreferences(parsed.pullRequestListFilters)) {
     preferences.pullRequestListFilters = parsed.pullRequestListFilters;

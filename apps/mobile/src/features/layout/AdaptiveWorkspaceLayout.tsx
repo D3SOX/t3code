@@ -4,7 +4,12 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type ScopedProjectRef,
+  type SidebarProjectGroupingMode,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -244,6 +249,7 @@ export function AdaptiveWorkspaceLayout(props: {
       {...props}
       projectGroupingMode={groupingSettings.sidebarProjectGroupingMode}
       savedThreadListFilters={preferencesResult.value.threadListFilters}
+      lastNewThreadProjectRef={preferencesResult.value.lastNewThreadProjectRef}
     />
   );
 }
@@ -257,6 +263,7 @@ function AdaptiveWorkspaceLayoutContent(
   } & {
     readonly projectGroupingMode: SidebarProjectGroupingMode;
     readonly savedThreadListFilters?: ThreadListFilters | undefined;
+    readonly lastNewThreadProjectRef?: ScopedProjectRef | undefined;
   },
 ) {
   const projectGroupingMode = props.projectGroupingMode;
@@ -576,7 +583,13 @@ function AdaptiveWorkspaceLayoutContent(
             project.environmentId === draftEnvironmentId && project.id === draftProjectId,
         );
     handleSelectThreadRoute(
-      newTaskDestination(layout.usesSplitView, projects, currentProject, uuidv4()),
+      newTaskDestination(
+        layout.usesSplitView,
+        projects,
+        currentProject,
+        uuidv4(),
+        props.lastNewThreadProjectRef,
+      ),
     );
   };
 

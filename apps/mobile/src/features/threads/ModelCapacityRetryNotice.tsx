@@ -1,4 +1,4 @@
-import type { EnvironmentId, ModelCapacityRetry } from "@t3tools/contracts";
+import type { ScopedThreadRef, ModelCapacityRetry } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { capacityRetryLabel, getModelCapacityRetry } from "@t3tools/shared/modelCapacityRetry";
 import * as Option from "effect/Option";
@@ -8,15 +8,20 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { useThreadDetail } from "../../state/use-thread-detail";
 
 export function ModelCapacityRetryNotice({
-  environmentId,
+  threadRef,
   thread,
   onCancel,
 }: {
-  environmentId: EnvironmentId;
+  threadRef: ScopedThreadRef | null;
   thread: EnvironmentThreadShell;
   onCancel: () => void;
 }) {
-  const detail = Option.getOrNull(useThreadDetail({ environmentId, threadId: thread.id }).data);
+  const detail = Option.getOrNull(
+    useThreadDetail({
+      environmentId: threadRef?.environmentId ?? null,
+      threadId: threadRef?.threadId ?? null,
+    }).data,
+  );
   const retry = useMemo(
     () => getModelCapacityRetry(detail?.turnItems ?? [], thread.runtime?.activeRunId),
     [detail?.turnItems, thread.runtime?.activeRunId],
