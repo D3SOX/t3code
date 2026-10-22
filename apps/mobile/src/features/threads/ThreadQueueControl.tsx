@@ -307,6 +307,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             error instanceof Error ? error.message : "Try again after reconnecting.",
           );
         });
+      } else if (workflow?.canSendNow) {
+        await resume({ ...target, input: { threadId: target.threadId } });
       } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
         await promote({
           ...target,
@@ -397,6 +399,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         const controls = resolveThreadQueueRowControls({
           busy: busyRunId !== null || draggedRunId !== null || editing !== null,
           canPromoteToSteer: workflow?.canPromoteToSteer ?? false,
+          canSendNow: workflow?.canSendNow ?? false,
           canReorder: workflow?.canReorder ?? false,
           index,
           isEditing: editing?.runId === run.id,
@@ -515,7 +518,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   accessibilityLabel={`Actions for queued message ${index + 1}`}
                   shouldOpenOnLongPress
                   actions={[
-                    ...(workflow?.canPromoteToSteer
+                    ...(workflow?.canPromoteToSteer || workflow?.canSendNow
                       ? [
                           ...(supportsNextToolQueue
                             ? [
@@ -525,17 +528,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                                     ? "Run after current turn"
                                     : "Steer after next tool call",
                                   attributes: {
-                                    disabled: !controls.canSteer,
+                                    disabled: !controls.canSend,
                                   },
                                 },
                               ]
                             : []),
                           {
                             id: "steer",
-                            title: "Steer now",
-                            attributes: {
-                              disabled: !controls.canSteer,
-                            },
+                            title: workflow?.canSendNow ? "Send now" : "Steer now",
+                            attributes: { disabled: !controls.canSend },
                             image: Platform.OS === "ios" ? "arrow.turn.left.up" : "arrow_upward",
                           },
                         ]
@@ -612,16 +613,20 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         Editing
                       </Text>
                     ) : null}
-                    {workflow?.canPromoteToSteer ? (
+                    {workflow?.canPromoteToSteer || workflow?.canSendNow ? (
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel={`Steer with message ${index + 1} now`}
-                        disabled={!controls.canSteer}
+                        accessibilityLabel={
+                          workflow?.canSendNow
+                            ? `Send message ${index + 1} now`
+                            : `Steer with message ${index + 1} now`
+                        }
+                        disabled={!controls.canSend}
                         onPress={() => void act(run.id, "steer")}
                         className="h-8 shrink-0 justify-center rounded-full bg-primary px-3 active:opacity-70 disabled:opacity-40"
                       >
                         <Text className="font-t3-medium text-xs text-primary-foreground">
-                          Steer
+                          {workflow?.canSendNow ? "Send now" : "Steer"}
                         </Text>
                       </Pressable>
                     ) : null}

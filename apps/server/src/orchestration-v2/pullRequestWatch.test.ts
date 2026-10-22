@@ -1,3 +1,4 @@
+import { pullRequestWatchMessage } from "./pullRequestWatch.ts";
 import type {
   PullRequestCheck,
   PullRequestComment,
@@ -5,11 +6,7 @@ import type {
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 
-import {
-  PULL_REQUEST_WATCH_WAKE_LIMIT,
-  evaluatePullRequestWatch,
-  pullRequestWatchMessage,
-} from "./pullRequestWatch.ts";
+import { PULL_REQUEST_WATCH_WAKE_LIMIT, evaluatePullRequestWatch } from "./pullRequestWatch.ts";
 
 const STARTED = "2026-10-02T12:00:00.000Z";
 

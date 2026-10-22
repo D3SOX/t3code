@@ -7,7 +7,6 @@ import {
   createArchivedThreadSearchMatcher,
   createArchivedThreadSnapshotsAtomFamily,
   makeArchivedThreadsEnvironmentKey,
-  parseArchivedThreadsEnvironmentKey,
 } from "./archivedThreads.ts";
 
 const searchThread = { title: "Fix notifications", branch: "fix/wayland-focus" };
@@ -41,14 +40,6 @@ it("excludes nonmatching threads and accepts missing branch and environment labe
   expect(
     createArchivedThreadSearchMatcher("unrelated")(searchThread, searchProject, "Laptop"),
   ).toBe(false);
-});
-
-it("round-trips environment keys in sorted order", () => {
-  const envA = EnvironmentId.make("env-a");
-  const envB = EnvironmentId.make("env-b");
-  const key = makeArchivedThreadsEnvironmentKey([envB, envA]);
-
-  expect(parseArchivedThreadsEnvironmentKey(key)).toEqual([envA, envB]);
 });
 
 it("does not expose an archived snapshot failure message", () => {

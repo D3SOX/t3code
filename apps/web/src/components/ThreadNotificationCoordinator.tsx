@@ -246,6 +246,7 @@ function EnvironmentNotifications({
         attention && attention !== prior.attention
           ? "input"
           : !isThreadCompletionSilent(rawThread) &&
+              !rawThread.latestRunStopRequested &&
               completion !== null &&
               (prior.completion === null || completion > prior.completion)
             ? "completion"

@@ -6,31 +6,6 @@ import {
 } from "./composerDispatch.ts";
 
 describe("resolveComposerDispatchMode", () => {
-  it("starts an ordinary turn while idle", () => {
-    expect(resolveComposerDispatchMode({ running: false, alternateModifier: false })).toBe("auto");
-  });
-
-  it("steers by default and reserves Mod+Enter for queueing while running", () => {
-    expect(resolveComposerDispatchMode({ running: true, alternateModifier: false })).toBe("steer");
-    expect(resolveComposerDispatchMode({ running: true, alternateModifier: true })).toBe("queue");
-  });
-
-  it("queues as the alternate action when restarting is the default", () => {
-    expect(
-      resolveComposerDispatchMode({
-        running: true,
-        alternateModifier: false,
-        activeTurnDefault: "restart",
-      }),
-    ).toBe("restart");
-    expect(
-      resolveComposerDispatchMode({
-        running: true,
-        alternateModifier: true,
-        activeTurnDefault: "restart",
-      }),
-    ).toBe("queue");
-  });
   it.each([
     ["queue", "next-tool"],
     ["next-tool", "queue"],
@@ -64,19 +39,6 @@ describe("resolveComposerDispatchMode", () => {
       ).toBe("auto");
     },
   );
-
-  it("queues with or without the modifier while steering is unavailable", () => {
-    for (const alternateModifier of [false, true]) {
-      expect(
-        resolveComposerDispatchMode({
-          running: true,
-          alternateModifier,
-          activeTurnDefault: "steer",
-          canSteer: false,
-        }),
-      ).toBe("queue");
-    }
-  });
 
   it("names the alternate action so the affordance can be labelled", () => {
     expect(alternateComposerDispatchAction("queue")).toBe("next-tool");

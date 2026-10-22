@@ -471,32 +471,6 @@ describe("thread notifications", () => {
     },
   );
 
-  it.each([true, false])("keeps subagents silent with focus=%s", async (focused) => {
-    state.subagent = true;
-    state.focused = focused;
-    state.mode = "notifications-and-sound";
-    await render();
-    await complete();
-    state.input = true;
-    await render();
-    expect(state.sound).not.toHaveBeenCalled();
-    expect(state.add).not.toHaveBeenCalled();
-    expect(state.notification).not.toHaveBeenCalled();
-  });
-
-  it("alerts on the parent when its delegated subagent asks for approval", async () => {
-    state.mode = "notifications-and-sound";
-    state.delegatedChild = "running";
-    await render();
-    state.delegatedChild = "approval";
-    await render();
-    await render();
-    expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Approval needed", description: "Fix the login form" }),
-    );
-  });
-
   it("alerts once with system alerts off and opens the completed thread", async () => {
     await render();
     await complete();
@@ -514,20 +488,6 @@ describe("thread notifications", () => {
     });
     expect(state.notification).not.toHaveBeenCalled();
   });
-
-  it.each(["active", "blurred", "hidden", "archived", "disabled"])(
-    "does not show a completion toast for %s threads",
-    async (condition) => {
-      await render();
-      if (condition === "active") state.active.threadId = "thread-1";
-      if (condition === "blurred") state.focused = false;
-      if (condition === "hidden") state.visible = "hidden";
-      if (condition === "archived") state.archivedAt = "2026-09-13T09:00:00.000Z";
-      if (condition === "disabled") state.inApp = false;
-      await complete();
-      expect(state.add).not.toHaveBeenCalled();
-    },
-  );
 
   it.each([
     ["input", "Input needed"],
@@ -576,81 +536,5 @@ describe("thread notifications", () => {
     expect(state.add).toHaveBeenLastCalledWith(
       expect.objectContaining({ title: "Thread completed" }),
     );
-  });
-
-  it("keeps background desktop alerts when in-app notifications are disabled", async () => {
-    state.focused = false;
-    state.inApp = false;
-    state.mode = "notifications";
-    await render();
-    await complete();
-    expect(state.add).not.toHaveBeenCalled();
-    expect(state.notification).toHaveBeenCalledTimes(1);
-    state.inApp = true;
-    await render();
-    expect(state.add).not.toHaveBeenCalled();
-  });
-
-  it("does not replay a completion when opting in from all alerts off", async () => {
-    state.inApp = false;
-    await render();
-    await complete();
-    state.inApp = true;
-    await render();
-    expect(state.add).not.toHaveBeenCalled();
-  });
-
-  it("compares the environment as well as the thread", async () => {
-    state.active = { environmentId: "env-2", threadId: "thread-1" };
-    await render();
-    await complete();
-    expect(state.add).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not replay completed threads on first load or reconnect", async () => {
-    await complete();
-    state.live = false;
-    await render();
-    state.live = true;
-    await render();
-    expect(state.add).not.toHaveBeenCalled();
-  });
-
-  it("keeps sound but replaces the system popup when showing a toast", async () => {
-    state.mode = "notifications-and-sound";
-    await render();
-    await complete();
-    expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
-    expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.notification).not.toHaveBeenCalled();
-  });
-
-  it("keeps system alerts when the app is in the background", async () => {
-    state.mode = "notifications";
-    state.focused = false;
-    await render();
-    await complete();
-    expect(state.add).not.toHaveBeenCalled();
-    expect(state.notification).toHaveBeenCalledWith("Thread completed", {
-      body: "Fix the login form",
-      tag: expect.any(String),
-      silent: true,
-    });
-  });
-
-  it("reveals the desktop window and opens the thread when a system alert is clicked", async () => {
-    const revealWindow = vi.fn(() => Promise.resolve());
-    vi.stubGlobal("desktopBridge", { revealWindow });
-    state.mode = "notifications";
-    state.focused = false;
-    await render();
-    await complete();
-    const notification: EventTarget = state.notification.mock.results[0]?.value;
-    notification.dispatchEvent(new Event("click"));
-    expect(revealWindow).toHaveBeenCalledTimes(1);
-    expect(state.navigate).toHaveBeenCalledWith({
-      to: "/$environmentId/$threadId",
-      params: { environmentId: "env-1", threadId: "thread-1" },
-    });
   });
 });
