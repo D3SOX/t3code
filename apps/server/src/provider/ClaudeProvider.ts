@@ -214,7 +214,7 @@ const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
  * Keep workspace-scoped command discovery intact while isolating the periodic
  * health check from configured MCP servers.
  */
-export const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
+const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
   "user",
   "project",
   "local",

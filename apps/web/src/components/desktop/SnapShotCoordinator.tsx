@@ -110,7 +110,7 @@ export function dismissFailedSnapShot(
     dismissAllSnapShotAnimations();
   }
 }
-export function resolveSnapShotTargetOnce(
+function resolveSnapShotTargetOnce(
   resolutionRef: {
     current: Promise<CaptureTarget | null> | null;
   },

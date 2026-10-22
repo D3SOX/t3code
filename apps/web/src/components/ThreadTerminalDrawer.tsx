@@ -384,7 +384,7 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
     selectionBackground: terminalSelection,
   };
 }
-export function terminalSelectionLineRange(position: {
+function terminalSelectionLineRange(position: {
   start: {
     y: number;
   };
@@ -408,7 +408,7 @@ export type TerminalContextMenuAction =
   | "paste"
   | "select-all"
   | "scroll-to-bottom";
-export function terminalSelectionMenuItems(options?: {
+function terminalSelectionMenuItems(options?: {
   canAddToChat?: boolean;
 }): ContextMenuItem<"add-to-chat" | "copy">[] {
   return [
