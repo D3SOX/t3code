@@ -12,7 +12,7 @@ import { videoMimeType } from "@t3tools/shared/video";
 import { createContext, useContext, useCallback, useMemo, useState } from "react";
 import { githubMarkdownLinks } from "@t3tools/shared/githubMarkdownLinks";
 
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+import { useOpenPullRequest, pullRequestLinkContextMenu } from "../../native/useOpenPullRequest";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
 import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
 import { markdownImageSources } from "../../lib/markdownImageSources";
@@ -110,6 +110,7 @@ function PullRequestMarkdownContent(props: {
     [props.markdown, repositoryUrl],
   );
   const openPullRequest = useOpenPullRequest();
+  const pullRequestLinkMenu = pullRequestLinkContextMenu(openPullRequest);
   const openLink = useCallback(
     (href: string) => {
       void openPullRequest(href);
@@ -139,6 +140,7 @@ function PullRequestMarkdownContent(props: {
         markdown={markdown}
         textStyle={styles.nativeTextStyle}
         onLinkPress={openLink}
+        {...pullRequestLinkMenu}
         renderImage={renderImage}
         onImagePress={(href) => setPreview(pullRequestImageSource(href, mediaContext))}
       />

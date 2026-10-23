@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import {
   EnvironmentId,
+  type BrowserLinkTarget,
   PullRequestInvolvement,
   PullRequestListFilters,
   PullRequestListState,
@@ -56,6 +57,7 @@ const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
 const isScopedProjectRef = Schema.is(ScopedProjectRef);
 
 export interface Preferences {
+  readonly pullRequestLinkTarget?: BrowserLinkTarget;
   readonly pullRequestHideTestFiles?: boolean;
   readonly pullRequestMergeMethod?: PullRequestMergeMethod;
   readonly liveActivitiesEnabled?: boolean;
@@ -147,6 +149,7 @@ export class MobilePreferencesStore extends Context.Service<
 
 export function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
+    pullRequestLinkTarget?: BrowserLinkTarget;
     pullRequestHideTestFiles?: boolean;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
@@ -182,6 +185,10 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
     lastNewThreadProjectRef?: ScopedProjectRef;
     pullRequestListFilters?: PullRequestListPreferences;
   } = {};
+
+  if (parsed.pullRequestLinkTarget === "system" || parsed.pullRequestLinkTarget === "app") {
+    preferences.pullRequestLinkTarget = parsed.pullRequestLinkTarget;
+  }
 
   if (typeof parsed.pullRequestHideTestFiles === "boolean") {
     preferences.pullRequestHideTestFiles = parsed.pullRequestHideTestFiles;

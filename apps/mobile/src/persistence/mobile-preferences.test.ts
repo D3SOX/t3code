@@ -5,6 +5,17 @@ vi.mock("expo-secure-store", () => ({}));
 import { sanitizePreferences } from "./mobile-preferences";
 
 describe("environment identification preferences", () => {
+  it.each(["system", "app"] as const)("retains the %s PR link destination", (target) => {
+    const preferences = JSON.parse(JSON.stringify({ pullRequestLinkTarget: target }));
+    expect(sanitizePreferences(preferences)).toEqual(preferences);
+  });
+
+  it("drops an invalid PR link destination without losing other preferences", () => {
+    expect(
+      sanitizePreferences(JSON.parse('{"pullRequestLinkTarget":"invalid","baseFontSize":17}')),
+    ).toEqual({ baseFontSize: 17 });
+  });
+
   it("retains the last project selected for a new thread", () => {
     const preferences = JSON.parse(
       '{"lastNewThreadProjectRef":{"environmentId":"environment","projectId":"project"}}',

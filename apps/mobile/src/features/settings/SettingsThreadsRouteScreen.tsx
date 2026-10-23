@@ -9,13 +9,14 @@ import { useRef, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, DEFAULT_PULL_REQUEST_LINK_TARGET } from "@t3tools/contracts";
 import { supportsSharedSettingsSync } from "@t3tools/client-runtime/state/shared-settings";
 import { AppText as Text } from "../../components/ui/AppText";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsProjectOverridesSection } from "./components/SettingsProjectOverridesSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
+import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import {
   AndroidSettingsEnvironmentFilter,
@@ -47,6 +48,7 @@ export function SettingsThreadsRouteScreen() {
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
           <AutoSettleSettingsRows />
+          <PullRequestLinkSettings />
           <BetaSettingsSection />
           <LegacySettingsSection />
         </ScrollView>
@@ -56,6 +58,34 @@ export function SettingsThreadsRouteScreen() {
 }
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_SERVER_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
+
+function PullRequestLinkSettings() {
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const save = useAtomSet(updateMobilePreferencesAtom);
+  const ready = AsyncResult.isSuccess(preferences) && !preferences.waiting;
+  const target = AsyncResult.isSuccess(preferences)
+    ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)
+    : null;
+  return (
+    <SettingsSection title="Open pull requests in">
+      <SettingsChoiceRow
+        label="System browser"
+        description="Open links with your device's default app."
+        selected={target === "system"}
+        disabled={!ready}
+        onPress={() => save({ pullRequestLinkTarget: "system" })}
+      />
+      <SettingsChoiceRow
+        label="T3 Code"
+        description="View pull requests inside T3 Code."
+        selected={target === "app"}
+        disabled={!ready}
+        separated
+        onPress={() => save({ pullRequestLinkTarget: "app" })}
+      />
+    </SettingsSection>
+  );
+}
 
 function AutoSettleSettingsRows() {
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();

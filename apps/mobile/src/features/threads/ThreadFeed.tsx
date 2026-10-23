@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+import { useOpenPullRequest, pullRequestLinkContextMenu } from "../../native/useOpenPullRequest";
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
 import { ThreadMarkdownVideo, ThreadMediaVisibleContext } from "./ThreadMarkdownVideo";
 import { useMarkdownImageSource } from "../../native/useMarkdownImageSource";
@@ -2031,6 +2031,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
+  const pullRequestLinkMenu = pullRequestLinkContextMenu(openPullRequest);
   const navigation = useNavigation();
   const onOpenTurnDiff = useCallback(
     (checkpoint: ThreadCheckpointSummary) => {
@@ -2418,7 +2419,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         };
       }
       const target = resolveFileChipTarget(href, props.workspaceRoot);
-      return target ? fileChipMenu(target) : undefined;
+      return target ? fileChipMenu(target) : pullRequestLinkMenu.fileContextMenu(href);
     },
     onFileContextMenuAction: (href, actionId) => {
       const skill = enrichedSkillReference(href, props.skills);
@@ -2434,7 +2435,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         return;
       }
       const target = resolveFileChipTarget(href, props.workspaceRoot);
-      if (!target) return;
+      if (!target) {
+        pullRequestLinkMenu.onFileContextMenuAction(href, actionId);
+        return;
+      }
       switch (actionId) {
         case "copy-full-path":
         case "copy-relative-path": {
