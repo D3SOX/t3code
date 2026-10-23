@@ -3032,6 +3032,28 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         prWatchMessageId,
       );
       assert.isNull(shell?.activeRunId);
+      yield* projectionStore.apply({
+        id: EventId.make("event:projection-shell-question:resolved"),
+        type: "runtime-request.updated",
+        threadId,
+        nodeId: rootNodeId,
+        driver,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId: rootNodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "resolved",
+          responseCapability: {
+            type: "live",
+            providerSessionId: ProviderSessionId.make("session:question"),
+          },
+          createdAt: now,
+          resolvedAt: now,
+        },
+      });
       for (const completionSilent of [true, false]) {
         yield* projectionStore.apply({
           id: EventId.make(`event:shell:completion-silent:${completionSilent}`),

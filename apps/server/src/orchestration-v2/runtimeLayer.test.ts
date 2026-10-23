@@ -3147,7 +3147,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
-  it.effect("finishes owed checks once after pending sweeps, a restart, and a re-watch", () =>
+  it.effect("reports remaining checks once after pending sweeps, a restart, and a re-watch", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
@@ -3231,10 +3231,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       assert.deepEqual(yield* summaries, ["#12: checks passed"]);
 
       assert.deepEqual(
-        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.owedChecks,
-        ["test"],
+        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.allPassedChecks,
+        [],
       );
-      // The fresh reactor reloads the nonempty obligation from the persisted watch.
+      // The fresh reactor reloads the incomplete CI set from the persisted watch.
       const restarted = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
       yield* restarted.sweep;
       yield* worker.drain();
@@ -3248,8 +3248,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       assert.deepEqual(yield* summaries, ["#12: checks passed"]);
 
       assert.deepEqual(
-        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.owedChecks,
-        ["test"],
+        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.allPassedChecks,
+        [],
       );
       remainingStatus = "success";
       yield* TestClock.adjust("10 minutes");
@@ -3261,8 +3261,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       yield* worker.drain();
       assert.deepEqual(yield* summaries, ["#12: checks passed", "#12: checks passed"]);
       assert.deepEqual(
-        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.owedChecks,
-        [],
+        (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch?.allPassedChecks,
+        ["lint", "test"],
       );
       yield* watch(false, "end");
     }),
@@ -3731,7 +3731,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
                 Effect.sync(() => ({
                   ...watchedPullRequestDetail({ projectId, number: key.number, at: "2026-10-02" }),
                   headSha,
-                  checks: [],
+                  checks: [{ name: "lint", status: "pending", description: null, url: null }],
                 })),
               activity: () =>
                 Effect.succeed({

@@ -1,6 +1,7 @@
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
+import { SourceControlProviderKind } from "@t3tools/contracts";
 
 import { evaluatePullRequestWatch } from "../../../../apps/server/src/orchestration-v2/pullRequestWatch.ts";
 
@@ -653,23 +654,26 @@ describe("pull request detail decoding", () => {
           wakes: 0,
         },
         {
+          provider: SourceControlProviderKind.make("github"),
           headSha: "head",
           checks: decode([newer, older]).checks,
           mergeability: "mergeable",
           author: null,
         },
         [],
+        0,
       );
       expect(waiting.changes).toEqual([]);
       const ready = {
+        provider: SourceControlProviderKind.make("github"),
         headSha: "head",
         checks: finished.checks,
         mergeability: "mergeable" as const,
         author: null,
       };
-      const notified = evaluatePullRequestWatch(waiting.next, ready, []);
+      const notified = evaluatePullRequestWatch(waiting.next, ready, [], 0);
       expect(notified.changes).toEqual([{ kind: "checks-passed", count: 1, required: false }]);
-      expect(evaluatePullRequestWatch(notified.next, ready, []).changes).toEqual([]);
+      expect(evaluatePullRequestWatch(notified.next, ready, [], 0).changes).toEqual([]);
     },
   );
   it("keeps a check pending while another run of it on the same commit is still going", () => {
