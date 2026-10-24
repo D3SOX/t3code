@@ -36,12 +36,16 @@ it("updates remaining credits independently of usage windows and does not turn a
     ]);
   await using screen = await render(
     <UsageLimitsPooled
-      presentations={presentations({ balance: "123.45", hasCredits: true, unlimited: false })}
+      presentations={presentations({
+        balance: "17524.1215355000",
+        hasCredits: true,
+        unlimited: false,
+      })}
       now={0}
     />,
   );
   await expect.element(screen.getByText("Credits remaining")).toBeVisible();
-  await expect.element(screen.getByText("123.45", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("17,525", { exact: true })).toBeVisible();
   await screen.rerender(
     <UsageLimitsPooled
       presentations={presentations({ balance: "0", hasCredits: false, unlimited: false })}

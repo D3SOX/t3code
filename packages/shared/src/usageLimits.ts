@@ -544,10 +544,15 @@ export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   return limits.windows.length === 0 && !limits.credits ? "No limits reported." : null;
 }
 
+const creditBalanceFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
 export function formatCreditBalance(credits: ServerProviderCredits): string {
-  return credits.unlimited
-    ? "Unlimited"
-    : (credits.balance ?? (credits.hasCredits ? "Unavailable" : "0"));
+  if (credits.unlimited) return "Unlimited";
+  if (credits.balance === undefined) return credits.hasCredits ? "Unavailable" : "0";
+  const balance = credits.balance.trim() ? Number(credits.balance) : Number.NaN;
+  return Number.isFinite(balance)
+    ? creditBalanceFormatter.format(Math.ceil(balance))
+    : "Unavailable";
 }
 
 export function remainingPercent(window: ServerProviderUsageWindow): number {
