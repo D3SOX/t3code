@@ -31,6 +31,7 @@ import { SubscriptionUsageCoordinator } from "./widgets/SubscriptionUsageCoordin
 import { VoiceInputProvider } from "./features/voice-input/VoiceInputProvider";
 import { GlobalVoiceInputControl } from "./features/voice-input/GlobalVoiceInputControl";
 import { NativeLayoutMetricsProvider } from "./native/native-layout-metrics";
+import { AndroidNotificationCoordinator } from "./features/agent-awareness/AndroidNotificationCoordinator";
 
 import "../global.css";
 
@@ -92,6 +93,7 @@ function AppContent() {
     <>
       <SplashScreenCoordinator />
       <SubscriptionUsageCoordinator />
+      <AndroidNotificationCoordinator />
       <PermissionUpdateNotice />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>

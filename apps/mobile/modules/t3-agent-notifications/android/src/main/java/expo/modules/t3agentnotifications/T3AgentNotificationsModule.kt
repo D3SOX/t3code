@@ -6,10 +6,61 @@ import android.os.Build
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 class T3AgentNotificationsModule : Module() {
+  private fun ModuleDefinitionBuilder.pushFunctions() {
+    Events("unifiedPushChanged")
+    OnCreate {
+      UnifiedPushNotifications.onChange =
+        { sendEvent("unifiedPushChanged", emptyMap<String, Any>()) }
+    }
+    OnDestroy { UnifiedPushNotifications.onChange = null }
+    Function("getUnifiedPushState") {
+      UnifiedPushNotifications.state(requireNotNull(appContext.reactContext))
+    }
+    Function("setPushTransport") { transport: String ->
+      UnifiedPushNotifications.setTransport(requireNotNull(appContext.reactContext), transport)
+    }
+    Function("enableUnifiedPush") { distributor: String, deviceId: String, scheme: String ->
+      UnifiedPushNotifications.enable(
+        requireNotNull(appContext.reactContext),
+        distributor,
+        deviceId,
+        scheme
+      )
+    }
+    Function("disableUnifiedPush") {
+      UnifiedPushNotifications.disable(requireNotNull(appContext.reactContext))
+    }
+    Function("enableLocalNotifications") { deviceId: String, scheme: String ->
+      UnifiedPushNotifications.enableLocal(
+        requireNotNull(appContext.reactContext),
+        deviceId,
+        scheme
+      )
+    }
+    Function("disableLocalNotifications") {
+      UnifiedPushNotifications.disableLocal(requireNotNull(appContext.reactContext))
+    }
+    Function("notifyLocal") { data: Map<String, String> ->
+      UnifiedPushNotifications.notifyLocal(requireNotNull(appContext.reactContext), data)
+    }
+    Function("registerUnifiedPush") { environmentId: String, vapid: String ->
+      UnifiedPushNotifications.register(
+        requireNotNull(appContext.reactContext),
+        environmentId,
+        vapid
+      )
+    }
+    Function("forgetUnifiedPushHost") { environmentId: String ->
+      UnifiedPushNotifications.forgetHost(requireNotNull(appContext.reactContext), environmentId)
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("T3AgentNotifications")
+    pushFunctions()
 
     Function("configure") {
         deviceId: String,
@@ -18,12 +69,18 @@ class T3AgentNotificationsModule : Module() {
         ongoingEnabled: Boolean
       ->
       appContext.reactContext?.let {
-        AgentNotifications.configure(it, deviceId, userId, scheme, ongoingEnabled)
+        if (UnifiedPushNotifications.transport(it) == "fcm") {
+          AgentNotifications.configure(it, deviceId, userId, scheme, ongoingEnabled)
+        }
       }
     }
 
     Function("clear") {
-      appContext.reactContext?.let { AgentNotifications.clear(it) }
+      appContext.reactContext?.let {
+        if (UnifiedPushNotifications.transport(it) == "fcm") {
+          AgentNotifications.clear(it)
+        }
+      }
     }
 
     Function("showShowcaseActivity") { scheme: String, data: Map<String, String> ->

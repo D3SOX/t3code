@@ -278,7 +278,7 @@ export const make = Effect.gen(function* () {
     getDescriptor: readAgentActivityPublishingActive(secrets).pipe(
       Effect.map((agentActivityPublishing) => ({
         ...descriptor,
-        capabilities: { ...descriptor.capabilities, agentActivityPublishing },
+        capabilities: { ...descriptor.capabilities, agentActivityPublishing, unifiedPush: true },
       })),
     ),
   });

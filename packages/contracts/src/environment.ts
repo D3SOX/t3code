@@ -142,6 +142,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       servers, which may still publish, so only an explicit false skips.
    */
   agentActivityPublishing: Schema.optionalKey(Schema.Boolean),
+  unifiedPush: Schema.optionalKey(Schema.Boolean),
   projectCloneTracking: Schema.optionalKey(Schema.Boolean),
   /** Server answers projects.listIgnoredFiles. */
   ignoredFileListing: Schema.optionalKey(Schema.Boolean),

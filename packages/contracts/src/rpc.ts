@@ -22,6 +22,7 @@ import {
   ChatGptHandoffState,
 } from "./providerSetup.ts";
 import * as Schema from "effect/Schema";
+import { PushSubscriptionInput, PushNotificationError } from "./notifications.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -505,6 +506,9 @@ export const WS_METHODS = {
   serverCheckOtlpEndpoint: "server.checkOtlpEndpoint",
   serverSignalProcess: "server.signalProcess",
   serverReportClientActivity: "server.reportClientActivity",
+  notificationsGetConfig: "notifications.getConfig",
+  notificationsSubscribe: "notifications.subscribe",
+  notificationsUnsubscribe: "notifications.unsubscribe",
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
@@ -927,6 +931,21 @@ const WsCloudInstallRelayClientRpc = Rpc.make(WS_METHODS.cloudInstallRelayClient
 const WsServerReportClientActivityRpc = Rpc.make(WS_METHODS.serverReportClientActivity, {
   payload: ClientActivityReportInput,
   error: EnvironmentAuthorizationError,
+});
+
+const PushRpcError = Schema.Union([PushNotificationError, EnvironmentAuthorizationError]);
+const WsNotificationsGetConfigRpc = Rpc.make(WS_METHODS.notificationsGetConfig, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ publicKey: Schema.String }),
+  error: PushRpcError,
+});
+const WsNotificationsSubscribeRpc = Rpc.make(WS_METHODS.notificationsSubscribe, {
+  payload: PushSubscriptionInput,
+  error: PushRpcError,
+});
+const WsNotificationsUnsubscribeRpc = Rpc.make(WS_METHODS.notificationsUnsubscribe, {
+  payload: Schema.Struct({ deviceId: TrimmedNonEmptyString }),
+  error: PushRpcError,
 });
 
 const WsServerReportHostPowerStateRpc = Rpc.make(WS_METHODS.serverReportHostPowerState, {
@@ -1942,6 +1961,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
   WsServerReportClientActivityRpc,
+  WsNotificationsGetConfigRpc,
+  WsNotificationsSubscribeRpc,
+  WsNotificationsUnsubscribeRpc,
   WsServerReportHostPowerStateRpc,
   WsServerGetBackgroundPolicyRpc,
   WsCloudGetRelayClientStatusRpc,

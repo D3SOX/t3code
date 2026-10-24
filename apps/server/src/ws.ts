@@ -1,5 +1,6 @@
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as UnifiedPushNotifications from "./relay/UnifiedPushNotifications.ts";
 import * as Crypto from "effect/Crypto";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 
@@ -1222,6 +1223,7 @@ export const layerWsRpc = (
   Layer.effectContext(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
+      const pushNotifications = yield* UnifiedPushNotifications.UnifiedPushNotifications;
       const sql = yield* SqlClient.SqlClient;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
       const intakeContext = yield* Effect.context<
@@ -2460,6 +2462,11 @@ export const layerWsRpc = (
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverSignalProcess]: (input) => processDiagnostics.signal(input),
+        [WS_METHODS.notificationsGetConfig]: () => pushNotifications.getConfig(),
+        [WS_METHODS.notificationsSubscribe]: (input) =>
+          pushNotifications.subscribe(currentSessionId, input),
+        [WS_METHODS.notificationsUnsubscribe]: (input) =>
+          pushNotifications.unsubscribe(currentSessionId, input.deviceId),
         [WS_METHODS.serverReportClientActivity]: (input, metadata) =>
           Ref.update(rpcClientIds, (clientIds) => {
             const next = new Set(clientIds);

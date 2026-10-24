@@ -38,9 +38,10 @@ import {
 } from "./remoteRegistration";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { configureAndroidAgentNotifications } from "./androidNotifications";
+import { configureAndroidAgentNotifications, getAndroidPushState } from "./androidNotifications";
 
 vi.mock("./androidNotifications", () => ({
+  getAndroidPushState: vi.fn(() => ({ transport: "fcm" })),
   supportsAndroidAgentNotifications: vi.fn(() => true),
   configureAndroidAgentNotifications: vi.fn(),
   clearAndroidAgentNotifications: vi.fn(),
@@ -244,6 +245,14 @@ const runBackgroundOperations = Effect.fn("TestRemoteRegistration.runBackgroundO
 describe("makeRelayDeviceRegistrationRequest", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(getAndroidPushState).mockReturnValue({
+      transport: "fcm",
+      enabled: false,
+      localEnabled: false,
+      distributor: null,
+      distributors: [],
+      subscriptions: {},
+    });
     vi.mocked(Notifications.getDevicePushTokenAsync).mockResolvedValue({
       type: "ios",
       data: "apns-token",
@@ -554,6 +563,51 @@ describe("makeRelayDeviceRegistrationRequest", () => {
         }),
       ).toMatchObject({ ok: true });
       expect(getAgentAwarenessRegistrationStatus()).toBe("registered");
+    }).pipe(Effect.provide(layerRelayTest));
+  });
+
+  it.effect.each(["local", "unifiedpush"] as const)(
+    "does not request a Google token for %s notifications",
+    (transport) => {
+      vi.spyOn(Platform, "OS", "get").mockReturnValue("android");
+      vi.mocked(getAndroidPushState).mockReturnValue({ ...getAndroidPushState(), transport });
+      vi.mocked(Notifications.getDevicePushTokenAsync).mockClear();
+      Constants.expoConfig!.extra = { relay: { url: "https://relay.example.test/" } };
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      return Effect.gen(function* () {
+        yield* runBackgroundOperations();
+        expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+        expect(saveAgentAwarenessRegistrationRecord).not.toHaveBeenCalled();
+      }).pipe(Effect.provide(layerRelayTest));
+    },
+  );
+
+  it.effect("does not report Android push as registered when obtaining a token fails", () => {
+    vi.stubGlobal("fetch", async (request: RequestInfo | URL) => {
+      const url = request instanceof Request ? request.url : String(request);
+      return Response.json(
+        url.endsWith("/v1/client/dpop-token")
+          ? {
+              access_token: "relay-dpop-token",
+              issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+              token_type: "DPoP",
+              expires_in: 300,
+              scope: "mobile:registration",
+            }
+          : { ok: true },
+      );
+    });
+    vi.spyOn(Platform, "OS", "get").mockReturnValue("android");
+    vi.spyOn(Platform, "Version", "get").mockReturnValue(35);
+    Constants.expoConfig!.extra = { relay: { url: "https://relay.example.test/" } };
+    vi.mocked(Notifications.getDevicePushTokenAsync).mockRejectedValue(
+      new Error("Default FirebaseApp is not initialized"),
+    );
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      expect(getAgentAwarenessRegistrationStatus()).toBe("failed");
+      expect(saveAgentAwarenessRegistrationRecord).not.toHaveBeenCalled();
     }).pipe(Effect.provide(layerRelayTest));
   });
 

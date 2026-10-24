@@ -8,7 +8,8 @@ import * as Notifications from "expo-notifications";
 import { useNavigation } from "@react-navigation/native";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { AndroidNotificationsSettings } from "./AndroidNotificationsSettings";
 import { AppState, Linking, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -56,6 +57,8 @@ function useDeviceRegistered(): boolean {
 }
 
 export function SettingsNotificationsRouteScreen() {
+  if (Platform.OS === "android")
+    return <AndroidNotificationsSettings fcmSettings={renderFcmSettings} />;
   if (!hasCloudPublicConfig()) {
     return (
       <SettingsScreen title="Notifications">
@@ -74,7 +77,23 @@ export function SettingsNotificationsRouteScreen() {
   return <ConfiguredSettingsNotificationsRouteScreen />;
 }
 
-function ConfiguredSettingsNotificationsRouteScreen() {
+function renderFcmSettings(header: ReactNode) {
+  if (!hasCloudPublicConfig())
+    return (
+      <SettingsScreen title="Notifications">
+        <ScrollView contentContainerClassName="gap-6 px-5 pt-4">
+          {header}
+          <Text className="text-foreground-muted">
+            FCM requires a build with Firebase and T3 Connect configured. Choose Local or
+            UnifiedPush to receive notifications without Google services.
+          </Text>
+        </ScrollView>
+      </SettingsScreen>
+    );
+  return <ConfiguredSettingsNotificationsRouteScreen header={header} />;
+}
+
+function ConfiguredSettingsNotificationsRouteScreen({ header }: { header?: ReactNode }) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const agentAwarenessPushAvailable = supportsAgentAwarenessPush();
@@ -402,6 +421,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
+        {header}
         <SettingsSection title="Agent activity">
           <SettingsSwitchRow
             icon="bell.badge"

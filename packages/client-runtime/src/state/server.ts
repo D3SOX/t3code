@@ -1086,6 +1086,18 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:trace-diagnostics",
       tag: WS_METHODS.serverGetTraceDiagnostics,
     }),
+    pushConfig: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:notifications:config",
+      tag: WS_METHODS.notificationsGetConfig,
+    }),
+    subscribePush: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:notifications:subscribe",
+      tag: WS_METHODS.notificationsSubscribe,
+    }),
+    unsubscribePush: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:notifications:unsubscribe",
+      tag: WS_METHODS.notificationsUnsubscribe,
+    }),
     processDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:process-diagnostics",
       tag: WS_METHODS.serverGetProcessDiagnostics,
