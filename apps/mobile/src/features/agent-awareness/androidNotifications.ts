@@ -11,6 +11,9 @@ interface AndroidAgentNotifications {
   forgetUnifiedPushHost?(environmentId: string): void;
   enableLocalNotifications?(deviceId: string, scheme: string): void;
   disableLocalNotifications?(): void;
+  setLocalBackgroundEnabled?(enabled: boolean): void;
+  setLocalActivityEnabled?(enabled: boolean): void;
+  resumeLocalNotifications?(deviceId: string, scheme: string): void;
   notifyLocal?(data: Record<string, string>): void;
   addListener?(event: "unifiedPushChanged", listener: () => void): { remove(): void };
   configure(deviceId: string, userId: string, scheme: string, ongoingEnabled: boolean): void;
@@ -25,6 +28,9 @@ interface AndroidPushState {
   transport: AndroidPushTransport;
   enabled: boolean;
   localEnabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundRunning: boolean;
+  localActivityEnabled: boolean;
   distributor: string | null;
   distributors: readonly { id: string; label: string }[];
   subscriptions: Record<
@@ -38,6 +44,9 @@ export function getAndroidPushState(): AndroidPushState {
       transport: "fcm",
       enabled: false,
       localEnabled: false,
+      backgroundEnabled: false,
+      backgroundRunning: false,
+      localActivityEnabled: true,
       distributor: null,
       distributors: [],
       subscriptions: {},
@@ -68,6 +77,31 @@ export function enableAndroidLocalNotifications(deviceId: string): void {
 }
 export function disableAndroidLocalNotifications(): void {
   native?.disableLocalNotifications?.();
+}
+export function setAndroidLocalBackgroundEnabled(enabled: boolean): void {
+  native?.setLocalBackgroundEnabled?.(enabled);
+}
+export function setAndroidLocalActivityEnabled(enabled: boolean): void {
+  native?.setLocalActivityEnabled?.(enabled);
+}
+export function resumeAndroidLocalNotifications(deviceId: string): void {
+  native?.resumeLocalNotifications?.(deviceId, appScheme());
+}
+
+/** React Native keeps background timers active for the lifetime of this native service. */
+export function androidLocalConnectionTask(): Promise<void> {
+  return new Promise((resolve) => {
+    const unsubscribe = subscribeAndroidPushState(() => {
+      if (!getAndroidPushState().backgroundRunning) {
+        unsubscribe();
+        resolve();
+      }
+    });
+    if (!getAndroidPushState().backgroundRunning) {
+      unsubscribe();
+      resolve();
+    }
+  });
 }
 export function notifyAndroidLocal(data: Record<string, string>): void {
   native?.notifyLocal?.(data);

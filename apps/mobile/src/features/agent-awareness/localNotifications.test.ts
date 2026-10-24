@@ -9,7 +9,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { createLocalNotificationTracker } from "./localNotifications";
+import { createLocalNotificationTracker, localAgentActivity } from "./localNotifications";
 
 const environmentId = EnvironmentId.make("host");
 const threadId = ThreadId.make("thread");
@@ -36,6 +36,54 @@ const snapshot = {
 };
 
 describe("local agent notifications", () => {
+  it("aggregates live progress across hosts, prioritizes input, and clears after completion", () => {
+    const otherHost = EnvironmentId.make("other");
+    const waiting = {
+      ...snapshot,
+      threads: snapshot.threads.map((thread) => ({
+        ...thread,
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("question"),
+          kind: "user_input" as const,
+          createdAt: now,
+          blocking: true,
+        },
+      })),
+    };
+    expect(
+      localAgentActivity(
+        [
+          { environmentId, snapshot },
+          { environmentId: otherHost, snapshot: waiting },
+        ],
+        1000,
+      ),
+    ).toMatchObject({
+      active: "true",
+      activity_active_count: "2",
+      activity_attention_count: "1",
+      activity_phase: "waiting_for_input",
+      activity_path: "/threads/other/thread",
+      activity_line_0: "Input\tTask\tProject",
+      activity_line_1: "Working\tTask\tProject",
+    });
+    expect(
+      localAgentActivity(
+        [
+          {
+            environmentId,
+            snapshot: {
+              ...snapshot,
+              threads: snapshot.threads.map((t) => ({ ...t, status: "completed" as const })),
+            },
+          },
+        ],
+        1000,
+      ),
+    ).toMatchObject({ active: "false", activity_expires_at: "0" });
+    expect(localAgentActivity([], 1000)).toMatchObject({ active: "false" });
+  });
+
   it("notifies for a new completion, suppresses history and renames, then notifies for the next run", () => {
     const track = createLocalNotificationTracker();
     const completed = {

@@ -297,6 +297,8 @@ object AgentNotifications {
     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
   )
 
+  fun stopActivity(context: Context) = cancelActivity(context)
+
   private fun cancelActivity(context: Context) {
     manager(context).cancel(ACTIVITY_TAG, ACTIVITY_ID)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {

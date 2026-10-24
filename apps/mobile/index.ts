@@ -2,10 +2,11 @@
 import "./src/features/development/render-counter-entry";
 import { registerRootComponent } from "expo";
 import "react-native-gesture-handler";
-import { LogBox } from "react-native";
+import { AppRegistry, LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
 import App from "./src/App";
+import { androidLocalConnectionTask } from "./src/features/agent-awareness/androidNotifications";
 
 // Required for react-native-screens' iOS FormSheet sizing fix when a nested
 // native stack is rendered inside a non-fitToContents formSheet.
@@ -16,3 +17,4 @@ if (process.env.EXPO_PUBLIC_SHOWCASE === "1") {
 }
 
 registerRootComponent(App);
+AppRegistry.registerHeadlessTask("T3LocalConnection", () => androidLocalConnectionTask);

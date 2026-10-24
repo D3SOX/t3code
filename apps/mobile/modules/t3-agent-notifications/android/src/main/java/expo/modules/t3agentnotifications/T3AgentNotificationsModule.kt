@@ -15,7 +15,10 @@ class T3AgentNotificationsModule : Module() {
       UnifiedPushNotifications.onChange =
         { sendEvent("unifiedPushChanged", emptyMap<String, Any>()) }
     }
-    OnDestroy { UnifiedPushNotifications.onChange = null }
+    OnDestroy {
+      appContext.reactContext?.let { LocalConnectionService.stop(it) }
+      UnifiedPushNotifications.onChange = null
+    }
     Function("getUnifiedPushState") {
       UnifiedPushNotifications.state(requireNotNull(appContext.reactContext))
     }
@@ -42,6 +45,22 @@ class T3AgentNotificationsModule : Module() {
     }
     Function("disableLocalNotifications") {
       UnifiedPushNotifications.disableLocal(requireNotNull(appContext.reactContext))
+    }
+    Function("setLocalBackgroundEnabled") { enabled: Boolean ->
+      val context = requireNotNull(appContext.reactContext)
+      UnifiedPushNotifications.setBackgroundEnabled(context, enabled)
+      if (enabled) LocalConnectionService.resume(context)
+    }
+    Function("setLocalActivityEnabled") { enabled: Boolean ->
+      UnifiedPushNotifications.setLocalActivityEnabled(
+        requireNotNull(appContext.reactContext),
+        enabled
+      )
+    }
+    Function("resumeLocalNotifications") { deviceId: String, scheme: String ->
+      val context = requireNotNull(appContext.reactContext)
+      UnifiedPushNotifications.configureLocal(context, deviceId, scheme)
+      LocalConnectionService.resume(context)
     }
     Function("notifyLocal") { data: Map<String, String> ->
       UnifiedPushNotifications.notifyLocal(requireNotNull(appContext.reactContext), data)

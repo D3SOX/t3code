@@ -7,6 +7,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ProcessLifecycleOwner
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -14,6 +17,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -30,6 +34,8 @@ class UnifiedPushNotificationsTest {
     context = RuntimeEnvironment.getApplication()
     manager = context.getSystemService(NotificationManager::class.java)
     shadowOf(manager).setNotificationsEnabled(true)
+    (ProcessLifecycleOwner.get().lifecycle as LifecycleRegistry).currentState =
+      Lifecycle.State.CREATED
     val launcher = ComponentName(context, Activity::class.java)
     shadowOf(context.packageManager).addActivityIfNotPresent(launcher)
     shadowOf(context.packageManager).addIntentFilterForActivity(
@@ -50,6 +56,7 @@ class UnifiedPushNotificationsTest {
       false
     )
     AgentNotifications.setThreadOnScreen(null)
+    LocalConnectionService.resume(context)
   }
 
   private fun message(
@@ -89,6 +96,86 @@ class UnifiedPushNotificationsTest {
     UnifiedPushNotifications.receive(context, "other", message())
     UnifiedPushNotifications.receive(context, "host", message(path = "/threads/other/thread"))
     assertTrue(manager.activeNotifications.isEmpty())
+  }
+
+  @Test
+  fun localModeShowsLiveAgentProgressWithoutFirebaseRegistration() {
+    UnifiedPushNotifications.setTransport(context, "local")
+    UnifiedPushNotifications.enableLocal(context, "device", "t3code-dev")
+    UnifiedPushNotifications.notifyLocal(
+      context,
+      mapOf(
+        "device_id" to "device",
+        "user_id" to "local",
+        "updated_at" to System.currentTimeMillis().toString(),
+        "active" to "true",
+        "activity_phase" to "running",
+        "activity_active_count" to "1",
+        "activity_line_0" to "Working\tTask\tProject",
+        "activity_path" to "/threads/host/thread"
+      )
+    )
+    assertEquals("t3-agent-activity", manager.activeNotifications.single().tag)
+    assertEquals(
+      "Task",
+      manager.activeNotifications.single().notification.extras
+        .getCharSequence(android.app.Notification.EXTRA_TITLE).toString()
+    )
+    Robolectric.buildService(LocalConnectionService::class.java).create().destroy()
+    assertTrue(manager.activeNotifications.isEmpty())
+  }
+
+  @Test
+  fun backgroundConnectionIsOptInAndRemovalFromRecentsStopsLocalDelivery() {
+    UnifiedPushNotifications.setTransport(context, "local")
+    UnifiedPushNotifications.enableLocal(context, "device", "t3code-dev")
+    assertEquals(false, UnifiedPushNotifications.backgroundEnabled(context))
+    UnifiedPushNotifications.setBackgroundEnabled(context, true)
+    assertEquals(true, UnifiedPushNotifications.backgroundEnabled(context))
+    UnifiedPushNotifications.disableLocal(context)
+    assertEquals(false, UnifiedPushNotifications.backgroundEnabled(context))
+    UnifiedPushNotifications.enableLocal(context, "device", "t3code-dev")
+    val service = Robolectric.buildService(LocalConnectionService::class.java).create()
+    service.get().onTaskRemoved(null)
+    assertTrue(LocalConnectionService.sessionStopped)
+    val data = mapOf(
+      "device_id" to "device",
+      "user_id" to "local",
+      "updated_at" to System.currentTimeMillis().toString(),
+      "alert_id" to "after-removal",
+      "alert_title" to "Agent finished",
+      "alert_path" to "/threads/host/thread"
+    )
+    UnifiedPushNotifications.notifyLocal(context, data)
+    assertTrue(manager.activeNotifications.isEmpty())
+    UnifiedPushNotifications.setBackgroundEnabled(context, false)
+    LocalConnectionService.resume(context)
+    UnifiedPushNotifications.notifyLocal(context, data)
+    assertEquals(1, manager.activeNotifications.size)
+    UnifiedPushNotifications.setTransport(context, "unifiedpush")
+    assertEquals(false, UnifiedPushNotifications.backgroundEnabled(context))
+    service.destroy()
+  }
+
+  @Test
+  fun resumingLocalModeRepairsIdentityForExistingInstalls() {
+    UnifiedPushNotifications.setTransport(context, "local")
+    context.getSharedPreferences("t3-unified-push", Context.MODE_PRIVATE).edit()
+      .putBoolean("localEnabled", true).remove("deviceId").remove("scheme").apply()
+    AgentNotifications.configure(context, "device", "local", "t3code-dev", false)
+    UnifiedPushNotifications.configureLocal(context, "device", "t3code-dev")
+    UnifiedPushNotifications.notifyLocal(
+      context,
+      mapOf(
+        "device_id" to "device",
+        "user_id" to "local",
+        "updated_at" to System.currentTimeMillis().toString(),
+        "alert_id" to "after-update",
+        "alert_title" to "Agent finished",
+        "alert_path" to "/threads/host/thread"
+      )
+    )
+    assertEquals(1, manager.activeNotifications.size)
   }
 
   @Test

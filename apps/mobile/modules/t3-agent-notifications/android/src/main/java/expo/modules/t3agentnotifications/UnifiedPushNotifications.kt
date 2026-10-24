@@ -24,6 +24,37 @@ internal object UnifiedPushNotifications {
   fun enabled(context: Context) =
     usesUnifiedPush(context) && prefs(context).getBoolean("enabled", false)
 
+  fun backgroundEnabled(context: Context) = transport(context) == "local" &&
+    prefs(context).getBoolean("localEnabled", false) &&
+    prefs(context).getBoolean("backgroundEnabled", false)
+
+  fun setBackgroundEnabled(context: Context, enabled: Boolean) {
+    prefs(context).edit().putBoolean("backgroundEnabled", enabled).apply()
+    if (!enabled) LocalConnectionService.stop(context)
+    onChange?.invoke()
+  }
+
+  fun setLocalActivityEnabled(context: Context, enabled: Boolean) {
+    prefs(context).edit().putBoolean("localActivityEnabled", enabled).apply()
+    configureLocal(context)
+    onChange?.invoke()
+  }
+
+  fun configureLocal(context: Context, deviceId: String? = null, scheme: String? = null) {
+    if (transport(context) != "local" || !prefs(context).getBoolean("localEnabled", false)) return
+    val prefs = prefs(context)
+    if (deviceId != null && scheme != null) {
+      prefs.edit().putString("deviceId", deviceId).putString("scheme", scheme).apply()
+    }
+    AgentNotifications.configure(
+      context,
+      prefs.getString("deviceId", "") ?: "",
+      "local",
+      prefs.getString("scheme", "t3code") ?: "t3code",
+      prefs.getBoolean("localActivityEnabled", true)
+    )
+  }
+
   fun state(context: Context): Map<String, Any?> {
     val prefs = prefs(context)
     val subscriptions = JSONObject(prefs.getString("subscriptions", "{}") ?: "{}")
@@ -31,6 +62,9 @@ internal object UnifiedPushNotifications {
       "transport" to transport(context),
       "enabled" to enabled(context),
       "localEnabled" to prefs.getBoolean("localEnabled", false),
+      "backgroundEnabled" to prefs.getBoolean("backgroundEnabled", false),
+      "backgroundRunning" to LocalConnectionService.running,
+      "localActivityEnabled" to prefs.getBoolean("localActivityEnabled", true),
       "distributor" to UnifiedPush.getSavedDistributor(context),
       "distributors" to UnifiedPush.getDistributors(context).map { pkg ->
         mapOf(
@@ -52,6 +86,7 @@ internal object UnifiedPushNotifications {
   fun setTransport(context: Context, transport: String) {
     require(transport in listOf("unifiedpush", "fcm", "local"))
     disable(context)
+    LocalConnectionService.stop(context)
     prefs(
       context
     ).edit().putString("transport", transport).putBoolean("localEnabled", false).apply()
@@ -59,20 +94,22 @@ internal object UnifiedPushNotifications {
   }
 
   fun enableLocal(context: Context, deviceId: String, scheme: String) {
-    prefs(context).edit().putBoolean("localEnabled", true).apply()
-    AgentNotifications.configure(context, deviceId, "local", scheme, false)
+    prefs(context).edit().putBoolean("localEnabled", true)
+      .putString("deviceId", deviceId).putString("scheme", scheme).apply()
+    configureLocal(context)
     onChange?.invoke()
   }
 
   fun disableLocal(context: Context) {
     prefs(context).edit().putBoolean("localEnabled", false).apply()
+    LocalConnectionService.stop(context)
     AgentNotifications.clear(context)
     onChange?.invoke()
   }
 
   fun notifyLocal(context: Context, data: Map<String, String>) {
     if (transport(context) == "local" &&
-      prefs(context).getBoolean("localEnabled", false)
+      prefs(context).getBoolean("localEnabled", false) && !LocalConnectionService.sessionStopped
     ) {
       AgentNotifications.receive(context, data)
     }

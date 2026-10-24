@@ -1,9 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { AuthOrchestrationReadScope, type EnvironmentId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import * as Option from "effect/Option";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentShell } from "../../state/shell";
@@ -18,9 +18,10 @@ import {
   getAndroidPushState,
   notifyAndroidLocal,
   registerAndroidUnifiedPush,
+  resumeAndroidLocalNotifications,
   subscribeAndroidPushState,
 } from "./androidNotifications";
-import { createLocalNotificationTracker } from "./localNotifications";
+import { createLocalNotificationTracker, localAgentActivity } from "./localNotifications";
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { forgetAndroidUnifiedPushHost } from "./androidNotifications";
 
@@ -70,8 +71,6 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
   const credential = connection.bearerToken ?? connection.dpopAccessToken;
   const state = useAndroidPushState();
   const host = useRemoteEnvironmentRuntime(environmentId);
-  const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
-  const tracker = useRef(createLocalNotificationTracker());
   const endpoint = state.subscriptions[environmentId];
   const connectionState = host?.connectionState;
   const supported = host?.serverConfig?.environment.capabilities.unifiedPush === true;
@@ -157,24 +156,84 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
     credential,
     state.foregroundRefresh,
   ]);
+  return null;
+}
+
+function LocalNotifications({ connections }: { connections: readonly SavedRemoteConnection[] }) {
+  const state = useAndroidPushState();
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const trackers = useRef(
+    new Map<EnvironmentId, ReturnType<typeof createLocalNotificationTracker>>(),
+  );
+  const lastActivity = useRef<string | null>(null);
+  const snapshotsAtom = useMemo(
+    () =>
+      Atom.make((get) =>
+        connections.flatMap(({ environmentId }) => {
+          const shell = get(environmentShell.stateValueAtom(environmentId));
+          return shell.status === "live" &&
+            Option.isSome(shell.snapshot) &&
+            readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
+            ? [{ environmentId, snapshot: shell.snapshot.value }]
+            : [];
+        }),
+      ),
+    [connections],
+  );
+  const snapshots = useAtomValue(snapshotsAtom);
   useEffect(() => {
-    if (Option.isNone(shell.snapshot)) return;
-    const alerts = tracker.current(environmentId, shell.snapshot.value);
-    if (
-      state.transport !== "local" ||
-      !state.localEnabled ||
-      !deviceId ||
-      !readEnvironmentScope(environmentId, AuthOrchestrationReadScope)
-    )
+    void loadOrCreateAgentAwarenessDeviceId()
+      .then(setDeviceId)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (state.transport !== "local" || !state.localEnabled || !deviceId) return;
+    const resume = () => {
+      if (AppState.currentState === "active") resumeAndroidLocalNotifications(deviceId);
+    };
+    resume();
+    const listener = AppState.addEventListener("change", resume);
+    return () => listener.remove();
+  }, [state.transport, state.localEnabled, deviceId]);
+  useEffect(() => {
+    const now = Date.now();
+    const activity = localAgentActivity(snapshots, now);
+    const alerts = snapshots.flatMap(({ environmentId, snapshot }) => {
+      let track = trackers.current.get(environmentId);
+      if (!track) {
+        track = createLocalNotificationTracker();
+        trackers.current.set(environmentId, track);
+      }
+      return track(environmentId, snapshot);
+    });
+    for (const environmentId of trackers.current.keys()) {
+      if (!connections.some((c) => c.environmentId === environmentId))
+        trackers.current.delete(environmentId);
+    }
+    if (state.transport !== "local" || !state.localEnabled || !deviceId) {
+      lastActivity.current = null;
       return;
-    for (const alert of alerts)
-      notifyAndroidLocal({
-        ...alert,
-        device_id: deviceId,
-        user_id: "local",
-        updated_at: String(Date.now()),
-      });
-  }, [environmentId, shell.snapshot, state.transport, state.localEnabled, deviceId]);
+    }
+    const data = { ...activity, device_id: deviceId, user_id: "local", updated_at: String(now) };
+    const signature = JSON.stringify({
+      ...activity,
+      activity_expires_at: "",
+      enabled: state.localActivityEnabled,
+      foregroundRefresh: state.foregroundRefresh,
+      deviceId,
+    });
+    if (!alerts.length && signature !== lastActivity.current) notifyAndroidLocal(data);
+    lastActivity.current = signature;
+    for (const alert of alerts) notifyAndroidLocal({ ...data, ...alert });
+  }, [
+    snapshots,
+    connections,
+    state.transport,
+    state.localEnabled,
+    state.localActivityEnabled,
+    state.foregroundRefresh,
+    deviceId,
+  ]);
   return null;
 }
 
@@ -187,9 +246,15 @@ function ConnectedAndroidNotifications() {
       if (!(environmentId in savedConnectionsById)) forgetAndroidUnifiedPushHost(environmentId);
     }
   }, [savedConnectionsById, isLoadingSavedConnection, state.subscriptions]);
-  return Object.values(savedConnectionsById).map((connection) => (
-    <HostNotifications key={connection.environmentId} connection={connection} />
-  ));
+  const connections = useMemo(() => Object.values(savedConnectionsById), [savedConnectionsById]);
+  return (
+    <>
+      <LocalNotifications connections={connections} />
+      {connections.map((connection) => (
+        <HostNotifications key={connection.environmentId} connection={connection} />
+      ))}
+    </>
+  );
 }
 
 export function AndroidNotificationCoordinator() {

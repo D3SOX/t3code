@@ -21,6 +21,8 @@ import {
   enableAndroidLocalNotifications,
   enableAndroidUnifiedPush,
   setAndroidPushTransport,
+  setAndroidLocalBackgroundEnabled,
+  setAndroidLocalActivityEnabled,
   type AndroidPushTransport,
 } from "../agent-awareness/androidNotifications";
 import {
@@ -193,7 +195,7 @@ export function AndroidNotificationsSettings({
             subtitle={
               state.transport === "unifiedpush"
                 ? "Encrypted delivery through your distributor. No Google services or T3 Connect account required."
-                : "Alerts while T3 is running and connected. Android may suspend delivery in the background."
+                : "Alerts through the app's connection. Enable Background connection to keep receiving them after switching apps."
             }
             onValueChange={(enabled) => {
               if (!enabled) run(disable);
@@ -201,6 +203,26 @@ export function AndroidNotificationsSettings({
               else run(() => enable());
             }}
           />
+          {state.transport === "local" ? (
+            <>
+              <SettingsSwitchRow
+                icon="arrow.clockwise"
+                label="Background connection"
+                value={state.backgroundEnabled}
+                disabled={busy || !state.localEnabled}
+                subtitle="Keep receiving updates after switching apps. Shows an ongoing notification and stops when you remove T3 from recents."
+                onValueChange={setAndroidLocalBackgroundEnabled}
+              />
+              <SettingsSwitchRow
+                icon="bell.badge"
+                label="Live agent progress"
+                value={state.localActivityEnabled}
+                disabled={busy || !state.localEnabled}
+                subtitle="Show working agents and input requests in an ongoing activity card."
+                onValueChange={setAndroidLocalActivityEnabled}
+              />
+            </>
+          ) : null}
           {state.transport === "unifiedpush" ? (
             <SettingsRow
               icon="bell.badge"
