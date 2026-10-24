@@ -207,6 +207,15 @@
   ],
   "packageOverrides": [
     {
+      "name": "http_ece",
+      "version": "1.2.0",
+      "sourceUrl": "https://github.com/web-push-libs/encrypted-content-encoding/blob/0562510a30819f52424724a6fd5504becacd98a1/LICENSE",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2015 Martin Thomson"]
+      }
+    },
+    {
       "name": "remark-math",
       "version": "6.0.0",
       "sourceUrl": "https://github.com/remarkjs/remark-math/blob/main/license",
