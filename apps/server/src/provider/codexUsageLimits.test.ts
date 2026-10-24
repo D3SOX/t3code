@@ -12,6 +12,18 @@ import {
 const checkedAt = "2026-07-18T10:00:00.000Z";
 
 describe("codexRateLimitsToLimits", () => {
+  it("keeps purchased credits separate from reset credits in reads and credit-only updates", () => {
+    const credits = { balance: "123.4500", hasCredits: true, unlimited: false };
+    const snapshot = { credits };
+    expect(
+      codexRateLimitsToLimits({ checkedAt, snapshot, resetCredits: { availableCount: 2 } }),
+    ).toMatchObject({ credits, resetCredits: { availableCount: 2 } });
+    expect(codexRateLimitsToUpdate(snapshot)).toEqual({ windows: [], credits });
+    expect(codexRateLimitsToUpdate({ credits: null })).toEqual({ windows: [], credits: null });
+    expect(mergeCodexRateLimits(snapshot, { primary: null })?.credits).toEqual(credits);
+    expect(mergeCodexRateLimits(snapshot, { credits: null })?.credits).toBeNull();
+  });
+
   it("shows an Enterprise monthly credit allowance in reads and notifications without a duration", () => {
     const snapshot = {
       limitId: "codex",

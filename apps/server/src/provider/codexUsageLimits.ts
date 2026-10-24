@@ -17,6 +17,11 @@ interface CodexRateLimitWindow {
 }
 
 export interface CodexRateLimitSnapshot {
+  readonly credits?: {
+    readonly balance?: string | null;
+    readonly hasCredits: boolean;
+    readonly unlimited: boolean;
+  } | null;
   readonly limitId?: string | null;
   readonly planType?: string | null;
   readonly rateLimitReachedType?: string | null;
@@ -129,20 +134,39 @@ export function codexRateLimitsToLimits(input: {
 }): ServerProviderUsageLimits {
   const resetCredits = codexResetCreditsToContract(input.resetCredits);
   const windows = codexRateLimitsToWindows(input.rateLimitsByLimitId?.codex ?? input.snapshot);
+  const bucketCredits = input.rateLimitsByLimitId?.codex?.credits;
+  const credits = codexCredits(
+    bucketCredits === undefined ? input.snapshot.credits : bucketCredits,
+  );
   return {
     ...makeUsageLimits({
       checkedAt: input.checkedAt,
       windows,
     }),
     ...(resetCredits ? { resetCredits } : {}),
+    ...(credits !== undefined ? { credits } : {}),
+  };
+}
+
+function codexCredits(credits: CodexRateLimitSnapshot["credits"]) {
+  if (credits == null) return credits;
+  const balance = credits.balance?.trim();
+  return {
+    hasCredits: credits.hasCredits,
+    unlimited: credits.unlimited,
+    ...(balance ? { balance } : {}),
   };
 }
 
 export function codexRateLimitsToUpdate(
   snapshot: CodexRateLimitSnapshot,
 ): ProviderUsageLimitsUpdate | undefined {
+  if (snapshot.limitId && snapshot.limitId !== "codex") return undefined;
   const windows = codexRateLimitsToWindows(snapshot);
-  return windows.length > 0 ? { windows } : undefined;
+  const credits = codexCredits(snapshot.credits);
+  return windows.length > 0 || credits !== undefined
+    ? { windows, ...(credits !== undefined ? { credits } : {}) }
+    : undefined;
 }
 
 export function codexRateLimitsFailureMessage(error: CodexErrors.CodexAppServerError): string {
@@ -182,6 +206,7 @@ export function mergeCodexRateLimits(
     ...(update.primary !== undefined ? { primary: update.primary } : {}),
     ...(update.secondary !== undefined ? { secondary: update.secondary } : {}),
     ...(update.individualLimit !== undefined ? { individualLimit: update.individualLimit } : {}),
+    ...(update.credits !== undefined ? { credits: update.credits } : {}),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   type ServerProvider,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
+  type ServerProviderCredits,
   type UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
 
@@ -174,8 +175,17 @@ export interface LimitAccount {
 export function collectLimitAccounts(presentations: LimitPresentations): readonly LimitAccount[] {
   const accounts = new Map<string, LimitAccount>();
   const creditSources = new Map<string, LimitAccount>();
+  const balanceSources = new Map<string, LimitAccount>();
   const hubRedeems = new Map<string, LimitAccount>();
   const merge = (key: string, next: LimitAccount) => {
+    const previousBalance = balanceSources.get(key);
+    if (
+      next.limits.credits !== undefined &&
+      (!previousBalance ||
+        Date.parse(next.limits.checkedAt) > Date.parse(previousBalance.limits.checkedAt))
+    ) {
+      balanceSources.set(key, next);
+    }
     // Redeeming through a hub also clears the routing cooldown that hub holds
     // for the account. Redeeming natively against the same subscription resets
     // it upstream but leaves the hub refusing to route to the account until
@@ -224,6 +234,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         (creditSource ? creditSource.redeem : (winner.redeem ?? previous.redeem ?? next.redeem)),
       limits: {
         ...winner.limits,
+        ...(balanceSources.has(key) ? { credits: balanceSources.get(key)!.limits.credits } : {}),
         ...(creditSource?.limits.resetCredits
           ? { resetCredits: creditSource.limits.resetCredits }
           : { resetCredits: undefined }),
@@ -530,7 +541,13 @@ export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
   if (limits.unavailable?.reason === "probeFailed") {
     return limits.unavailable.message ?? "Could not read limits.";
   }
-  return limits.windows.length === 0 ? "No limits reported." : null;
+  return limits.windows.length === 0 && !limits.credits ? "No limits reported." : null;
+}
+
+export function formatCreditBalance(credits: ServerProviderCredits): string {
+  return credits.unlimited
+    ? "Unlimited"
+    : (credits.balance ?? (credits.hasCredits ? "Unavailable" : "0"));
 }
 
 export function remainingPercent(window: ServerProviderUsageWindow): number {

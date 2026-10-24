@@ -53,14 +53,25 @@ export function applyUsageLimitsUpdate(input: {
   readonly checkedAt: string;
 }): ServerProviderUsageLimits | undefined {
   const { previous, update } = input;
-  if (update.windows.length === 0 || previous?.unavailable?.reason === "unsupported") {
+  if (
+    (update.windows.length === 0 && update.credits === undefined) ||
+    previous?.unavailable?.reason === "unsupported"
+  ) {
     return previous;
   }
   const merged = new Map(previous?.windows.map((window) => [window.id, window] as const));
   // Codex sends this notification beside every token-usage tick, almost
   // always with unchanged numbers. Decide "nothing changed" per window on
   // the way through so the no-op case never allocates a new snapshot.
-  let changed = false;
+  const credits = update.credits === undefined ? previous?.credits : update.credits;
+  const oldCredits = previous?.credits;
+  let changed =
+    credits !== oldCredits &&
+    (credits == null ||
+      oldCredits == null ||
+      credits.balance !== oldCredits.balance ||
+      credits.hasCredits !== oldCredits.hasCredits ||
+      credits.unlimited !== oldCredits.unlimited);
   for (const window of update.windows) {
     const existing = merged.get(window.id);
     const next: ServerProviderUsageWindow = {
@@ -86,6 +97,7 @@ export function applyUsageLimitsUpdate(input: {
   return {
     ...makeUsageLimits({ checkedAt: input.checkedAt, windows: merged.values() }),
     ...(previous?.resetCredits !== undefined ? { resetCredits: previous.resetCredits } : {}),
+    ...(credits !== undefined ? { credits } : {}),
     ...(unavailable !== undefined ? { unavailable } : {}),
   };
 }
@@ -116,7 +128,12 @@ export function resolveUsageLimitsAfterProbe(input: {
     !probed.unavailable &&
     Date.parse(published.checkedAt) > Date.parse(probed.checkedAt)
   ) {
-    return { ...probed, checkedAt: published.checkedAt, windows: published.windows };
+    return {
+      ...probed,
+      checkedAt: published.checkedAt,
+      windows: published.windows,
+      ...(published.credits !== undefined ? { credits: published.credits } : {}),
+    };
   }
   return probed;
 }

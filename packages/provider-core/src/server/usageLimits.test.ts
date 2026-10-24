@@ -21,6 +21,27 @@ const weekly = {
 const published = { checkedAt, windows: [session, weekly] };
 
 describe("applyUsageLimitsUpdate", () => {
+  it("updates credit-only snapshots, preserves credits through window updates, and clears explicitly", () => {
+    const credits = { balance: "120.5", hasCredits: true, unlimited: false };
+    const update = { windows: [], credits };
+    const next = applyUsageLimitsUpdate({ previous: published, checkedAt, update });
+    expect(next).toEqual({ ...published, credits });
+    expect(applyUsageLimitsUpdate({ previous: next, checkedAt, update })).toBe(next);
+    const windowUpdate = applyUsageLimitsUpdate({
+      previous: next,
+      checkedAt,
+      update: { windows: [{ ...session, usedPercent: 55 }] },
+    });
+    expect(windowUpdate?.credits).toEqual(credits);
+    expect(
+      applyUsageLimitsUpdate({
+        previous: windowUpdate,
+        checkedAt,
+        update: { windows: [], credits: null },
+      })?.credits,
+    ).toBeNull();
+  });
+
   it("returns the published object itself when no window moved", () => {
     // Codex repeats the same numbers beside every token-usage tick; the
     // ingestion path relies on identity to skip the publish.
@@ -94,18 +115,21 @@ describe("resolveUsageLimitsAfterProbe", () => {
       ],
       resetCredits: { availableCount: 2 },
       externalUsage: { label: "Old dashboard", url: "https://example.com/old" },
+      credits: { balance: "10", hasCredits: true, unlimited: false },
     };
     const probed = {
       ...published,
       windows: [{ ...session, usedPercent: 0 }],
       resetCredits: { availableCount: 1 },
       externalUsage: { label: "Usage dashboard", url: "https://example.com/usage" },
+      credits: { balance: "20", hasCredits: true, unlimited: false },
     };
 
     expect(resolveUsageLimitsAfterProbe({ published: live, probed })).toEqual({
       ...probed,
       checkedAt: live.checkedAt,
       windows: live.windows,
+      credits: live.credits,
     });
 
     const sameTime = { ...probed, checkedAt: live.checkedAt };
