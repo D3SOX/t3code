@@ -1,7 +1,5 @@
-// @vitest-environment jsdom
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { render } from "../../../test/render";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   onProjectChange: (_value: string) => {},
@@ -105,36 +103,24 @@ import { resolveThreadActionProjectRef } from "~/lib/chatThreadActions";
 import { useUiStateStore } from "~/uiStateStore";
 import { DraftHeroHeadline } from "./DraftHeroHeadline";
 
-afterEach(() => {
-  useUiStateStore.setState({ lastNewThreadProjectRef: null });
-  state.setDraftProject.mockClear();
-  vi.unstubAllGlobals();
-});
-
 describe("new-thread project selection", () => {
   it("uses the project selected in the composer for the next New thread click", async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    state.setDraftProject.mockClear();
+    state.onProjectChange = () => {};
+    using _state = {
+      [Symbol.dispose]: () => useUiStateStore.setState({ lastNewThreadProjectRef: null }),
+    };
     useUiStateStore.setState({
       lastNewThreadProjectRef: { environmentId: "environment-1", projectId: "project-b" } as never,
     });
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    await act(() =>
-      root.render(
-        <DraftHeroHeadline
-          draftId={"draft-1" as never}
-          activeProjectRef={{ environmentId: "environment-1", projectId: "project-b" } as never}
-          activeProjectTitle="Repo B"
-        />,
-      ),
+    await using screen = await render(
+      <DraftHeroHeadline
+        draftId={"draft-1" as never}
+        activeProjectRef={{ environmentId: "environment-1", projectId: "project-b" } as never}
+        activeProjectTitle="Repo B"
+      />,
     );
-
-    const repoA = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Repo A"),
-    );
-    expect(repoA).toBeDefined();
-    await act(() => repoA!.click());
+    await screen.getByRole("button", { name: "Repo A" }).click();
 
     expect(state.setDraftProject).toHaveBeenCalledWith(
       "project-a",
@@ -151,8 +137,5 @@ describe("new-thread project selection", () => {
         handleNewThread: async () => {},
       }),
     ).toEqual({ environmentId: "environment-1", projectId: "project-a" });
-
-    await act(() => root.unmount());
-    container.remove();
   });
 });

@@ -1,7 +1,8 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { act, render as renderClient, type Screen } from "../../test/render";
+import { act, fakeTimers, render as renderClient, type Screen } from "../../test/render";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
@@ -184,9 +185,15 @@ import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
 
 function setup() {
   let screen: Screen | null = null;
+  let timers: Disposable | null = null;
   const render = async () => {
-    if (screen) await screen.rerender(<ThreadNotificationCoordinator />);
-    else screen = await renderClient(<ThreadNotificationCoordinator />);
+    if (screen) {
+      await screen.rerender(<ThreadNotificationCoordinator />);
+      await act(() => vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS));
+    } else {
+      screen = await renderClient(<ThreadNotificationCoordinator />);
+      timers = fakeTimers();
+    }
   };
   const complete = async () => {
     state.completedAt = "2026-09-13T10:00:00.000Z";
@@ -229,6 +236,7 @@ function setup() {
     complete,
     unmount: async () => screen?.unmount(),
     async [Symbol.asyncDispose]() {
+      timers?.[Symbol.dispose]();
       await screen?.[Symbol.asyncDispose]();
       vi.restoreAllMocks();
       vi.unstubAllGlobals();

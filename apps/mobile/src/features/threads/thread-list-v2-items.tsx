@@ -588,11 +588,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly wokeAt: string | null;
   readonly snoozeWakeLabelText?: string;
   /** Preformatted per row so minute ticks redraw only changed labels; status and countdown labels take precedence. */
-  /** Preformatted against the parent clock (row order timestamp: settle stamp
-      on settled rows, latest activity otherwise). Blank while a status label
-      or the wake countdown owns that slot. Precomputed per row — not via the
-      list's extraData — so the minute tick re-renders only rows whose
-      displayed text moved. */
   readonly timeLabel: string;
   /** Parent minute tick carried on the row's list item, present only when the
       row's menu offers snooze presets, so those menus refresh while mounted
@@ -607,14 +602,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   /** Keep the environment's provider array stable across unrelated list updates. */
   readonly providers: ReadonlyArray<ThreadListProvider> | undefined;
   readonly providerInstance: ThreadRowProviderInstance | null;
-  /** Which machine hosts the thread. Null when only one environment is
-      connected — repeating the same label on every row is noise. Mirrors
-      the web sidebar's remote-environment cloud icon, but as text since
-      phones have no hover tooltips. */
-  /** Which machine hosts the thread. Null when only one environment is
-      connected — repeating the same label on every row is noise. Mirrors
-      the web sidebar's remote-environment cloud icon, but as text since
-      phones have no hover tooltips. */
+  /** Hosting environment; omitted when only one is connected. */
   readonly environmentLabel: string | null;
   /** Drawn after the label so the machine reads at a glance; ignored while
       the label is null. */
@@ -622,11 +610,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       the label is null. */
   readonly environmentMachine?: EnvironmentMachineKind;
   /** Home uses flat rows; split-view sidebars use rounded tonal containers. */
-  /** Hosting surface. "screen" (default) renders the compact Home idiom:
-      flat edge-to-edge rows on the screen background with inset hairlines.
-      "sidebar" renders the iPad split-view idiom: rounded rows blending
-      into the drawer surface, selection filled with the accent color —
-      matching the v1 sidebar rows. */
   readonly pane?: "screen" | "sidebar";
   /** Keeps row hairlines inside a section; section headers draw their own rule. */
   /** Keeps row hairlines inside a section; section headers draw their own rule. */

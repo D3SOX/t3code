@@ -1,8 +1,6 @@
-// @vitest-environment jsdom
-import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { render } from "../../test/render";
 import type { lazyRouteComponent } from "@tanstack/react-router";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   projects: [
@@ -39,12 +37,6 @@ vi.mock("../env", () => ({ isElectron: false }));
 import { Route } from "./_chat.index";
 import { useUiStateStore } from "../uiStateStore";
 
-afterEach(() => {
-  useUiStateStore.setState({ lastNewThreadProjectRef: null });
-  state.startDraft.mockClear();
-  vi.unstubAllGlobals();
-});
-
 it.each([
   { remembered: "chosen-project", expected: "chosen-project" },
   { remembered: "removed-project", expected: "recent-project" },
@@ -52,7 +44,10 @@ it.each([
 ])(
   "returning home selects $expected when the remembered project is $remembered",
   async ({ remembered, expected }) => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    state.startDraft.mockClear();
+    using _state = {
+      [Symbol.dispose]: () => useUiStateStore.setState({ lastNewThreadProjectRef: null }),
+    };
     useUiStateStore.setState({
       lastNewThreadProjectRef: remembered
         ? ({
@@ -61,18 +56,12 @@ it.each([
           } as never)
         : null,
     });
-    const container = document.createElement("div");
-    const root = createRoot(container);
     const View = Route.options.component as ReturnType<typeof lazyRouteComponent>;
-    try {
-      await View.preload?.();
-      await act(() => root.render(<View />));
-      expect(state.startDraft).toHaveBeenCalledWith(
-        { environmentId: "environment-1", projectId: expected },
-        { replace: true },
-      );
-    } finally {
-      await act(() => root.unmount());
-    }
+    await View.preload?.();
+    await using screen = await render(<View />);
+    expect(state.startDraft).toHaveBeenCalledWith(
+      { environmentId: "environment-1", projectId: expected },
+      { replace: true },
+    );
   },
 );

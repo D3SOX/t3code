@@ -7,9 +7,8 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { render } from "../../test/render";
+import { expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   revision: 1,
@@ -38,8 +37,7 @@ const mutableResources: AssetResource[] = [
   { _tag: "draft-workspace-file", cwd: "/repo", path: "image.png" },
 ];
 
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+function setup() {
   state.revision = 1;
   state.requests.mockReset();
   state.query = Atom.make(
@@ -56,9 +54,7 @@ beforeEach(() => {
     Atom.withRefresh(30 * 60_000),
     Atom.setIdleTTL(60 * 60_000),
   );
-});
-
-afterEach(() => vi.unstubAllGlobals());
+}
 
 function ImageSource({ resource }: { resource: AssetResource }) {
   const image = useAssetUrlState(environmentId, resource);
@@ -72,9 +68,9 @@ function ImageSource({ resource }: { resource: AssetResource }) {
 it.each(mutableResources)(
   "reloads $_tag when another message shows the same file",
   async (resource) => {
+    setup();
     const registry = AtomRegistry.make();
-    let renderer: Root | undefined;
-    const container = document.createElement("div");
+    using _registry = { [Symbol.dispose]: () => registry.dispose() };
     const renderMessages = (count: number) => (
       <RegistryContext.Provider value={registry}>
         {Array.from({ length: count }, (_, index) => (
@@ -82,65 +78,43 @@ it.each(mutableResources)(
         ))}
       </RegistryContext.Provider>
     );
-    try {
-      await act(async () => {
-        renderer = createRoot(container);
-        renderer.render(renderMessages(1));
-      });
-      expect(container.querySelector("output")?.textContent).toBe(
-        "https://host.test/api/assets/image-1.png (100px)",
-      );
-      state.revision = 2;
-      await act(async () => renderer!.render(renderMessages(2)));
-      for (const image of container.querySelectorAll("output")) {
-        expect(image.textContent).toBe("https://host.test/api/assets/image-2.png (200px)");
-      }
-      const requestsAfterLoading = state.requests.mock.calls.length;
-      await act(async () => renderer!.render(renderMessages(2)));
-      expect(state.requests).toHaveBeenCalledTimes(requestsAfterLoading);
-      await act(async () => renderer!.unmount());
-      renderer = undefined;
-      state.revision = 3;
-      await act(async () => {
-        renderer = createRoot(container);
-        renderer.render(renderMessages(1));
-      });
-      expect(container.querySelector("output")?.textContent).toBe(
-        "https://host.test/api/assets/image-3.png (300px)",
-      );
-    } finally {
-      await act(async () => renderer?.unmount());
-      registry.dispose();
+    await using screen = await render(renderMessages(1));
+    await expect
+      .element(screen.getByRole("status"))
+      .toHaveTextContent("https://host.test/api/assets/image-1.png (100px)");
+    state.revision = 2;
+    await screen.rerender(renderMessages(2));
+    for (const image of screen.container.querySelectorAll("output")) {
+      expect(image.textContent).toBe("https://host.test/api/assets/image-2.png (200px)");
     }
+    const requestsAfterLoading = state.requests.mock.calls.length;
+    await screen.rerender(renderMessages(2));
+    expect(state.requests).toHaveBeenCalledTimes(requestsAfterLoading);
+    await screen.unmount();
+    state.revision = 3;
+    await using reopened = await render(renderMessages(1));
+    await expect
+      .element(reopened.getByRole("status"))
+      .toHaveTextContent("https://host.test/api/assets/image-3.png (300px)");
   },
 );
 
 it("keeps immutable attachments cached across messages", async () => {
+  setup();
   const registry = AtomRegistry.make();
+  using _registry = { [Symbol.dispose]: () => registry.dispose() };
   const resource: AssetResource = { _tag: "attachment", attachmentId: "uploaded-image" };
-  let renderer: Root | undefined;
-  const container = document.createElement("div");
-  try {
-    await act(async () => {
-      renderer = createRoot(container);
-      renderer.render(
-        <RegistryContext.Provider value={registry}>
-          <ImageSource resource={resource} />
-        </RegistryContext.Provider>,
-      );
-    });
-    const requestsAfterLoading = state.requests.mock.calls.length;
-    await act(async () => {
-      renderer!.render(
-        <RegistryContext.Provider value={registry}>
-          <ImageSource resource={resource} />
-          <ImageSource resource={resource} />
-        </RegistryContext.Provider>,
-      );
-    });
-    expect(state.requests).toHaveBeenCalledTimes(requestsAfterLoading);
-  } finally {
-    await act(async () => renderer?.unmount());
-    registry.dispose();
-  }
+  await using screen = await render(
+    <RegistryContext.Provider value={registry}>
+      <ImageSource resource={resource} />
+    </RegistryContext.Provider>,
+  );
+  const requestsAfterLoading = state.requests.mock.calls.length;
+  await screen.rerender(
+    <RegistryContext.Provider value={registry}>
+      <ImageSource resource={resource} />
+      <ImageSource resource={resource} />
+    </RegistryContext.Provider>,
+  );
+  expect(state.requests).toHaveBeenCalledTimes(requestsAfterLoading);
 });

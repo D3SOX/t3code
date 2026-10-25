@@ -19,8 +19,10 @@ updates:
     directories:
       - /apps/mobile/modules/t3-agent-notifications/android
       - /apps/mobile/modules/t3-composer-editor/android
+      - /apps/mobile/modules/t3-highlights/android
       - /apps/mobile/modules/t3-native-controls/android
       - /apps/mobile/modules/t3-review-diff/android
+      - /apps/mobile/modules/t3-review-diff/tests/android
       - /apps/mobile/modules/t3-terminal/android
       - /apps/mobile/modules/t3-widget-expiry/android
     schedule:
