@@ -256,13 +256,10 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const identity = yield* resolver.resolve(cwd);
 
-      expect(identity?.canonicalKey).toBe("github.com/t3tools/t3code");
-      expect(identity?.displayName).toBe("T3Tools/t3code");
-      expect(identity?.origin).toEqual({
-        canonicalKey: "github.com/julius/t3code-fork",
-        remoteUrl: "git@github.com:julius/t3code-fork.git",
-        displayName: "julius/t3code-fork",
-      });
+      expect(identity?.canonicalKey).toBe("github.com/fork/t3code");
+      expect(identity?.displayName).toBe("fork/t3code");
+      expect(identity?.locator.remoteName).toBe("origin");
+      expect(identity?.origin).toBeUndefined();
     }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
   );
 

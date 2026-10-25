@@ -19,8 +19,36 @@ vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => AsyncResult.success(state.preferences),
 }));
 vi.mock("../state/preferences", () => ({ mobilePreferencesAtom: {} }));
-vi.mock("../state/entities", () => ({ useThreadShell: vi.fn() }));
-vi.mock("../lib/android-workspace-navigation", () => ({ resetAndroidWorkspace: state.reset }));
+vi.mock("../state/entities", () => ({
+  useThreadShell: vi.fn(),
+  useProjects: () => [
+    {
+      id: "project",
+      environmentId: "environment",
+      repositoryIdentity: {
+        provider: "github",
+        canonicalKey: "github.com/d3sox/t3code",
+        owner: "D3SOX",
+        name: "t3code",
+      },
+    },
+  ],
+}));
+vi.mock("../features/workspace/useSelectWorkspaceDetail", () => ({
+  useSelectWorkspaceDetail: () => state.reset,
+}));
+vi.mock("../state/server", () => ({ environmentServerConfigsAtom: {} }));
+vi.mock("../state/atom-registry", () => ({
+  appAtomRegistry: {
+    get: () =>
+      new Map([
+        [
+          "environment",
+          { environment: { capabilities: { pullRequests: true, threadPullRequests: true } } },
+        ],
+      ]),
+  },
+}));
 vi.mock("../lib/openExternalUrl", () => ({ tryOpenExternalUrl: state.openExternal }));
 vi.mock("../lib/copyTextWithHaptic", () => ({ copyTextWithHaptic: vi.fn() }));
 
@@ -45,7 +73,7 @@ describe("mobile pull request link destinations", () => {
   it("honors the saved in-app preference", async () => {
     state.preferences = { pullRequestLinkTarget: "app" };
     expect(await useNavigateToPullRequest()(url, context)).toBe(true);
-    expect(state.reset).toHaveBeenCalledWith(expect.anything(), {
+    expect(state.reset).toHaveBeenCalledWith({
       name: "PullRequest",
       params: { ...context, repository: "d3sox/t3code", host: "github.com", number: 65 },
     });

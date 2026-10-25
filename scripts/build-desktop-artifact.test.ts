@@ -649,7 +649,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         const tempDir = yield* fs.makeTempDirectoryScoped({
           prefix: "t3-windows-architecture-test-",
         });
-        const sourceDir = path.join(tempDir, "server");
+        const sourceDir = path.join(tempDir, ".server");
         const nativeFiles = [
           "node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe",
           "node_modules/node-pty/prebuilds/win32-arm64/conpty/OpenConsole.exe",

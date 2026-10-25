@@ -275,7 +275,7 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
-  it.effect("omits default-mode collaboration settings without the T3 MCP server", () =>
+  it.effect("selects native default mode without the T3 MCP server", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
         nativeThreadId: "native-default-without-t3-mcp",
@@ -292,11 +292,14 @@ describe("CodexAdapterV2 runtime policy", () => {
         hasT3Mcp: false,
       });
 
-      assert.isUndefined(params.collaborationMode);
+      assert.deepEqual(params.collaborationMode, {
+        mode: "default",
+        settings: { model: "gpt-5.4" },
+      });
     }),
   );
 
-  it.effect("adds T3 plan-mode developer instructions when the T3 MCP server is attached", () =>
+  it.effect("uses native plan instructions alongside T3 MCP context", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
         nativeThreadId: "native-plan-with-t3-mcp",
@@ -314,10 +317,7 @@ describe("CodexAdapterV2 runtime policy", () => {
       });
 
       assert.equal(params.collaborationMode?.mode, "plan");
-      assert.include(
-        params.collaborationMode?.settings.developer_instructions ?? "",
-        "request_user_input",
-      );
+      assert.notProperty(params.collaborationMode?.settings, "developer_instructions");
       assert.include(params.additionalContext?.t3_code_tools?.value ?? "", "preview_status");
     }),
   );
@@ -3008,6 +3008,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   input: [],
                   cwd: "/workspace",
                   model: "gpt-5.4",
+                  collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
                   approvalPolicy: "never",
                   approvalsReviewer: "user",
                   sandboxPolicy: { type: "dangerFullAccess" },
@@ -3098,6 +3099,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                       input: [],
                       cwd: "/workspace",
                       model: "gpt-5.4",
+                      collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
                       approvalPolicy: "never",
                       approvalsReviewer: "user",
                       sandboxPolicy: { type: "dangerFullAccess" },

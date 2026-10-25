@@ -3045,11 +3045,16 @@ export const packWindowsServerAsar = Effect.fn("packWindowsServerAsar")(function
     }
     unpackGlobs.push(`**/${posixPath}`);
   }
+  // ASAR's unpack matcher skips dot directories even with dot:true; match the staging root literally.
+  const unpackRoot = input.sourceDir
+    .split(path.sep)
+    .join("/")
+    .replace(/[?*()[\]\\{}]/g, "\\$&");
   yield* Effect.tryPromise({
     try: () =>
       createPackageWithOptions(input.sourceDir, input.asarPath, {
         dot: true,
-        unpack: `{${unpackGlobs.join(",")}}`,
+        unpack: `${unpackRoot}/{${unpackGlobs.join(",")}}`,
         // glob 13 (@electron/asar 4) resolves ignores against cwd; anchor them at the source.
         globOptions: {
           cwd: input.sourceDir,
