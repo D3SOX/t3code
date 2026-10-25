@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   onProjectChange: (_value: string) => {},
+  items: [] as Array<{ value: string; label: string }>,
   setDraftProject: vi.fn(),
 }));
 
 vi.mock("~/composerDraftStore", () => ({
+  composerDraftHasUserContent: () => true,
   useComposerDraftStore: (select: (store: Record<string, unknown>) => unknown) =>
     select({
       setLogicalProjectDraftThreadId: state.setDraftProject,
@@ -26,13 +28,13 @@ vi.mock("~/hooks/useScratchProject", () => ({
     openScratchProject: vi.fn(),
   }),
 }));
+vi.mock("~/hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("~/state/server", () => ({ primaryServerKeybindingsAtom: {} }));
 vi.mock("~/keybindings", () => ({ shortcutLabelForCommand: () => null }));
-vi.mock("~/logicalProject", () => ({ selectProjectGroupingSettings: () => ({}) }));
-vi.mock("~/lib/chatThreadActions", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/lib/chatThreadActions")>()),
-  hasExplicitComposerModelSelection: () => false,
+vi.mock("~/logicalProject", () => ({
+  selectProjectGroupingSettings: () => ({}),
+  deriveLogicalProjectKeyFromSettings: () => "project-a",
 }));
 vi.mock("~/state/entities", () => ({ useProjects: () => [], useThreadShells: () => [] }));
 vi.mock("~/state/environments", () => ({
@@ -67,29 +69,43 @@ vi.mock("~/sidebarProjectGrouping", () => ({
 vi.mock("../Sidebar.logic", () => ({ sortLogicalProjectsForSidebar: (groups: unknown) => groups }));
 vi.mock("../ProjectFavicon", () => ({ ProjectFavicon: () => null }));
 vi.mock("../ProjectEnvironmentBadge", () => ({ ProjectEnvironmentBadge: () => null }));
-vi.mock("../ui/menu", async () => {
+vi.mock("../ui/combobox", () => {
   const Wrapper = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   return {
-    Menu: Wrapper,
-    MenuItem: Wrapper,
-    MenuPopup: Wrapper,
-    MenuRadioGroup: ({
+    Combobox: ({
       children,
+      items,
       onValueChange,
     }: {
       children: React.ReactNode;
-      onValueChange: (value: string) => void;
+      items: Array<{ value: string; label: string }>;
+      onValueChange: (item: { value: string; label: string }) => void;
     }) => {
-      state.onProjectChange = onValueChange;
+      state.items = items;
+      state.onProjectChange = (value) => onValueChange(items.find((item) => item.value === value)!);
       return <>{children}</>;
     },
-    MenuRadioItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
-      <button type="button" onClick={() => state.onProjectChange(value)}>
+    ComboboxList: ({
+      children,
+    }: {
+      children: (item: { value: string; label: string }) => React.ReactNode;
+    }) => <>{state.items.map(children)}</>,
+    ComboboxItem: ({
+      children,
+      value,
+    }: {
+      children: React.ReactNode;
+      value: { value: string };
+    }) => (
+      <button type="button" onClick={() => state.onProjectChange(value.value)}>
         {children}
       </button>
     ),
-    MenuSeparator: () => null,
-    MenuTrigger: Wrapper,
+    ComboboxPopup: Wrapper,
+    ComboboxTrigger: Wrapper,
+    ComboboxSearchInput: () => null,
+    ComboboxEmpty: () => null,
+    useComboboxFilter: () => ({ contains: () => true }),
   };
 });
 vi.mock("../ui/tooltip", () => ({

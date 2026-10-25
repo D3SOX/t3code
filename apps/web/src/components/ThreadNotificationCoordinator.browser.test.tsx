@@ -32,7 +32,7 @@ const state = vi.hoisted(() => ({
   subagent: false,
   prWatch: false,
   completionSilent: false,
-  background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
+  background: [] as Array<{ taskId: string; kind: "command" | "monitor"; awaited?: boolean }>,
   delegatedChild: null as "running" | "approval" | null,
   add: vi.fn(
     (_toast: {
@@ -566,7 +566,7 @@ describe("thread notifications", () => {
     await using harness = setup();
     const { render, complete } = harness;
     await render();
-    state.background = [{ taskId: "watch", kind: "monitor" }];
+    state.background = [{ taskId: "watch", kind: "monitor", awaited: true }];
     await complete();
     expect(state.add).not.toHaveBeenCalled();
     state.background = [{ taskId: "dev", kind: "command" }];

@@ -1955,7 +1955,17 @@ describe("Working section beta", () => {
       tracker.observe([inactive]);
       expect(render().workingCount).toBe(1);
       expect(render().items[0]?.thread.runtime).toBeNull();
+      const activeOrder = () =>
+        getThreadListV2OrderedSection({
+          threads: [inactive],
+          section: "active",
+          now: NOW,
+          workingShelfEnabled: true,
+          isWorking: tracker.isWorking,
+        });
+      expect(activeOrder()).toEqual([]);
       vi.advanceTimersByTime(2_000);
+      expect(activeOrder()).toEqual([inactive]);
       expect(render().workingCount).toBe(0);
       expect(ids(render())).toEqual(["grace"]);
       expect(tracker.returnedAt(inactive)).toBe(Date.parse(NOW) + 2_000);

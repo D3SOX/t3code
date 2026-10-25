@@ -1,9 +1,19 @@
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
-import { SourceControlProviderKind } from "@t3tools/contracts";
 
 import { evaluatePullRequestWatch } from "../../../../apps/server/src/orchestration-v2/pullRequestWatch.ts";
+
+const watchCapabilities: Parameters<typeof evaluatePullRequestWatch>[1]["capabilities"] = {
+  diff: true,
+  comment: true,
+  actions: [],
+  mergeMethods: [],
+  search: false,
+  review: { inlineComment: false, reply: false, resolve: false, verdicts: [] },
+  reviewers: { request: false, listCandidates: false },
+  checksAlwaysReport: true,
+};
 
 import {
   buildReviewSubmission,
@@ -641,7 +651,7 @@ describe("pull request detail decoding", () => {
           wakes: 0,
         },
         {
-          provider: SourceControlProviderKind.make("github"),
+          capabilities: watchCapabilities,
           headSha: "head",
           checks: decode([newer, older]).checks,
           mergeability: "mergeable",
@@ -652,7 +662,7 @@ describe("pull request detail decoding", () => {
       );
       expect(waiting.changes).toEqual([]);
       const ready = {
-        provider: SourceControlProviderKind.make("github"),
+        capabilities: watchCapabilities,
         headSha: "head",
         checks: finished.checks,
         mergeability: "mergeable" as const,

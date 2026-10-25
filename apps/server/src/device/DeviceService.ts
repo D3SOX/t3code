@@ -912,7 +912,6 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
 });
 
 /** @public */
-/** @public */
 export const make = Effect.gen(function* () {
   const localHost = yield* DeviceHost.DeviceHost;
   const config = yield* ServerConfig.ServerConfig;

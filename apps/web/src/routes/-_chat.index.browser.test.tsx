@@ -22,6 +22,7 @@ vi.mock("../state/entities", () => ({
   useProjects: () => state.projects,
   useThreadShells: () => [],
   useAllEnvironmentShellsBootstrapped: () => true,
+  readProject: () => state.projects[0],
 }));
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: [], isReady: true }),
@@ -31,6 +32,7 @@ vi.mock("../components/Sidebar.logic", () => ({
   sortScopedProjectsForSidebar: () => state.projects,
 }));
 vi.mock("../components/NoProjectsHero", () => ({ NoProjectsHero: () => null }));
+vi.mock("../components/HostedEmptyState", () => ({ HostedEmptyState: () => null }));
 vi.mock("../components/WorkspacePageHeader", () => ({ WorkspacePageHeader: () => null }));
 vi.mock("../env", () => ({ isElectron: false }));
 

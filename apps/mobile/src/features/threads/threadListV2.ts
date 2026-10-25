@@ -264,6 +264,7 @@ export function getThreadListV2OrderedSection(input: {
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
   readonly workingShelfEnabled?: boolean;
+  readonly isWorking?: (thread: EnvironmentThreadShell) => boolean;
   readonly inboxReturnAt?: (thread: EnvironmentThreadShell) => number | undefined;
 }): EnvironmentThreadShell[] {
   // An empty set is treated as absent so `?.` skips building the key.
@@ -284,7 +285,11 @@ export function getThreadListV2OrderedSection(input: {
     ) {
       return false;
     }
-    if (input.section === "active" && input.workingShelfEnabled && isThreadWorking(thread))
+    if (
+      input.section === "active" &&
+      input.workingShelfEnabled &&
+      (input.isWorking ?? isThreadWorking)(thread)
+    )
       return false;
     return (thread.pinnedAt != null) === (input.section === "pinned");
   });
