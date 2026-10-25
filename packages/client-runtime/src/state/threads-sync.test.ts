@@ -106,6 +106,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     readonly latestLocalTurnOrdinal?: number | null;
   };
   readonly httpSnapshot?: ThreadSnapshotLoadResult;
+  readonly loadSnapshot?: ThreadSnapshotLoader.ThreadSnapshotLoader["Service"]["load"];
   readonly completionMarker?: boolean;
   readonly resumeCache?: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]>;
   readonly loadCached?: ReturnType<Persistence.EnvironmentCacheStore["Service"]["loadThread"]>;
@@ -163,11 +164,14 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   const snapshotLoader = ThreadSnapshotLoader.ThreadSnapshotLoader.of({
     load: (_prepared, threadId) =>
       Ref.update(loaderCalls, (count) => count + 1).pipe(
-        Effect.as(
-          threadId === THREAD_ID
-            ? (options?.httpSnapshot ??
-                ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
-            : ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult),
+        Effect.andThen(
+          options?.loadSnapshot?.(_prepared, threadId) ??
+            Effect.succeed(
+              threadId === THREAD_ID
+                ? (options?.httpSnapshot ??
+                    ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
+                : ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult),
+            ),
         ),
       ),
   });
@@ -1178,6 +1182,72 @@ describe("EnvironmentThreads", () => {
       expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
       expect(yield* Ref.get(harness.removedThreads)).toEqual([]);
     }),
+  );
+
+  it.effect("rechecks an early HTTP miss when the conversation is reopened after creation", () =>
+    Effect.gen(function* () {
+      const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
+        snapshot: undefined,
+        owner: undefined,
+      };
+      const firstScope = yield* Scope.make();
+      const first = yield* makeHarness({
+        resumeCache,
+        httpSnapshot: { _tag: "missing" },
+      }).pipe(Effect.provideService(Scope.Scope, firstScope));
+      const missing = yield* awaitThreadState(
+        first.observed,
+        (value) => value.status === "deleted" || Option.isSome(value.error),
+      );
+      expect(missing.status).not.toBe("deleted");
+      expect(Option.isNone(missing.data)).toBe(true);
+      expect(yield* Ref.get(first.subscriptionCount)).toBe(0);
+      yield* Scope.close(firstScope, Exit.void);
+
+      const reopened = yield* makeHarness({
+        resumeCache,
+        httpSnapshot: {
+          _tag: "present",
+          snapshot: { snapshotSequence: 9, projection: BASE_PROJECTION },
+        },
+      });
+      const loaded = yield* awaitThreadState(reopened.observed, (value) =>
+        Option.isSome(value.data),
+      );
+      expect(Option.getOrThrow(loaded.data).thread.id).toBe(THREAD_ID);
+      expect(Option.isNone(loaded.error)).toBe(true);
+      expect(yield* Ref.get(reopened.loaderCalls)).toBe(1);
+      expect(yield* Ref.get(first.removedThreads)).toEqual([]);
+    }),
+  );
+
+  it.effect.each(["foreground", "reconnect"] as const)(
+    "rechecks an early HTTP miss on %s without retrying a parked subscription",
+    (trigger) =>
+      Effect.gen(function* () {
+        const response = yield* Ref.make<ThreadSnapshotLoadResult>({ _tag: "missing" });
+        const harness = yield* makeHarness({ loadSnapshot: () => Ref.get(response) });
+        yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.error));
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
+        expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
+
+        yield* Ref.set(response, {
+          _tag: "present",
+          snapshot: { snapshotSequence: 9, projection: BASE_PROJECTION },
+        });
+        if (trigger === "reconnect") {
+          yield* harness.replaceSession;
+        } else {
+          yield* Queue.offer(harness.wakeups, "application-active");
+        }
+        const loaded = yield* awaitThreadState(harness.observed, (value) =>
+          Option.isSome(value.data),
+        );
+        expect(Option.getOrThrow(loaded.data).thread.id).toBe(THREAD_ID);
+        expect(Option.isNone(loaded.error)).toBe(true);
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(2);
+        expect(yield* Ref.get(harness.removedThreads)).toEqual([]);
+      }),
   );
 
   it.effect("does not recreate a deleted cache from a queued save or finalizer", () =>

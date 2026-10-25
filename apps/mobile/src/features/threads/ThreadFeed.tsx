@@ -42,6 +42,7 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type RunId,
   type ScheduledTaskId,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -220,7 +221,8 @@ import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
 import * as Option from "effect/Option";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentThreadShells, threadEnvironment } from "../../state/threads";
-import { ThreadWorkflowOpening, useWorkflowOpening } from "./thread-workflow-opening";
+import { ThreadWorkflowOpening } from "./thread-workflow-opening";
+import { useWorkflowOpening } from "./use-workflow-opening";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useV2ItemSupport } from "../../state/v2-item-support";
 import {
@@ -294,6 +296,7 @@ export interface ThreadFeedProps {
   readonly onEditPendingMessage: ((message: QueuedThreadMessage) => void) | null;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
+  readonly threadDetailRef: ScopedThreadRef | null;
   readonly threadTitle: string;
   readonly workspaceRoot?: string | null;
   readonly feed: ReadonlyArray<ThreadFeedEntry>;
@@ -2027,7 +2030,10 @@ function useThreadFeedPresentation(
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const { listRef, onEndFollowEnabledChange, onHeaderMaterialVisibilityChange } = props;
-  const workflowOpening = useWorkflowOpening(props.environmentId, props.threadId);
+  const workflowOpening = useWorkflowOpening(
+    props.threadDetailRef?.environmentId ?? null,
+    props.threadDetailRef?.threadId ?? null,
+  );
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();

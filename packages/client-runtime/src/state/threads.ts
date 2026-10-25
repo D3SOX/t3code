@@ -769,9 +769,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       ORCHESTRATION_V2_WS_METHODS.subscribeThread,
       Effect.fn("EnvironmentThreadState.makeSubscribeInput")(function* (session) {
         let current = yield* SubscriptionRef.get(state);
-        // A prior definitive miss (or delete event) already cleared this thread.
-        // Park the subscription attempt without opening the socket so we do not
-        // retry forever against a known-missing id.
+        // An observed deletion already cleared this thread. Park without
+        // opening the socket so we do not retry a confirmed deletion forever.
         if (current.status === "deleted") {
           return yield* Effect.never;
         }
@@ -831,7 +830,12 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               break;
             }
             case "missing": {
-              yield* setDeleted();
+              // A queued creation can be visible before its first command commits.
+              // Park this attempt, but let reopen/reconnect/foreground try again;
+              // only a thread.deleted event is a durable deletion.
+              yield* setStreamError(
+                "This thread was not found on the host. Reopen it to try again.",
+              );
               return yield* Effect.never;
             }
             case "unavailable": {

@@ -1,10 +1,6 @@
-import { useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation } from "@react-navigation/native";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
-  resolveWorkflowOpening,
   workflowOpeningHeadline,
-  workflowOpeningParentThreadId,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -12,7 +8,7 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
-import { environmentThreadDetails } from "../../state/threads";
+import type { useWorkflowOpening } from "./use-workflow-opening";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { SubagentRow } from "./SubagentRow";
@@ -20,34 +16,6 @@ import { WorkLogBlock } from "./work-log-layout";
 
 // A script longer than this many lines shows its head until opened.
 const FOLDED_SCRIPT_LINES = 10;
-
-/** The workflow opening for a thread, or null; the parent's detail loads only for a workflow. */
-export function useWorkflowOpening(environmentId: EnvironmentId, threadId: ThreadId) {
-  const threadAtom = environmentThreadDetails.threadAtom(scopeThreadRef(environmentId, threadId));
-  // Selected as a primitive so an ordinary thread's updates never change the result.
-  const parentId = useAtomValue(threadAtom, (thread) =>
-    thread === null
-      ? null
-      : workflowOpeningParentThreadId({
-          thread: thread.projection.thread,
-          messages: thread.projection.messages,
-        }),
-  );
-  const projection = useAtomValue(threadAtom, (thread) =>
-    parentId === null ? null : (thread?.projection ?? null),
-  );
-  const parentSubagents = useAtomValue(
-    environmentThreadDetails.threadAtom(scopeThreadRef(environmentId, parentId ?? threadId)),
-    (parent) => (parentId === null ? null : (parent?.projection.subagents ?? null)),
-  );
-  return projection === null
-    ? null
-    : resolveWorkflowOpening({
-        thread: projection.thread,
-        messages: projection.messages,
-        parentSubagents,
-      });
-}
 
 function memberRowSubagent(
   member: RuntimeSubagent,

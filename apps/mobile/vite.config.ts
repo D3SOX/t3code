@@ -3,6 +3,7 @@ import "vite-plus/test/config";
 
 const reactTests = [
   "src/features/threads/ModelCapacityRetryNotice.test.tsx",
+  "src/features/threads/use-workflow-opening.test.tsx",
   "src/components/ui/Dialog.android.test.tsx",
   "src/features/settings/SettingsServerControlsRouteScreen.test.tsx",
   "src/features/settings/components/BranchNamingSettings.test.tsx",

@@ -876,9 +876,8 @@ function ThreadRouteContent(
     return <OpeningThreadLoadingScreen />;
   }
 
-  // A queued creation renders as ready content: its prompt is the whole
-  // conversation until the server creates the thread. The subscription's
-  // not-found error for that window is expected, not a load failure.
+  // A queued creation renders its local prompt while detail readers wait for
+  // the server to acknowledge it.
   const contentPresentation =
     creationState !== null
       ? { kind: "ready" as const }
