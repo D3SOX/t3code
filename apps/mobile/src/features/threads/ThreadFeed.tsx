@@ -273,6 +273,7 @@ import {
   ThreadMarkdownImageView,
 } from "./ThreadMarkdownImage";
 import { openSettings } from "../settings/settings-navigation";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 const WIDE_MARKDOWN_BLOCK_OPTIONS = {
   // iOS blockquotes and selectable text measure separately; definite bubble width matches UIKit's drawing width.
   includeBlockquotes: Platform.OS === "ios",
@@ -418,6 +419,7 @@ function AssistantForkButton(props: {
   });
   const forkFromRun = useAtomCommand(threadEnvironment.forkFromRun, "fork from response");
   const navigation = useNavigation();
+  const selectDetail = useSelectWorkspaceDetail();
   const [busy, setBusy] = useState(false);
   const canFork = canForkProjectedAssistantItem({
     projectedItem: props.projectedItem,
@@ -454,9 +456,9 @@ function AssistantForkButton(props: {
               );
               return;
             }
-            navigation.navigate("Thread", {
-              environmentId: props.environmentId,
-              threadId: targetThreadId,
+            selectDetail({
+              name: "Thread",
+              params: { environmentId: props.environmentId, threadId: targetThreadId },
             });
           })
           .finally(() => setBusy(false));
@@ -3240,6 +3242,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     >
       <View className="flex-1" onLayout={handleViewportLayout}>
         <View className="flex-1">
+          {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- ThreadFeedScrollView is passed through the iOS-only spread below; the prop rejects undefined. */}
           <KeyboardAwareLegendList
             ref={listRef}
             // LegendList cannot see adjustedContentInset; remount so initial positioning waits for UIKit attachment.

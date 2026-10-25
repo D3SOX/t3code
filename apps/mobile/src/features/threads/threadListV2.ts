@@ -743,6 +743,7 @@ export function buildThreadListV2Items(input: {
   readonly workingShelfEnabled?: boolean;
   /** Expands the Working shelf into rows. Collapsed is the default. */
   readonly workingShelfExpanded?: boolean;
+  readonly isWorking?: (thread: EnvironmentThreadShell) => boolean;
   /** Returns this device observed but the server does not stamp, such as an
       approval request mid-turn. Only read while the beta is on. */
   readonly inboxReturnAt?: (thread: EnvironmentThreadShell) => number | undefined;
@@ -836,7 +837,7 @@ export function buildThreadListV2Items(input: {
       settled.push(thread);
     } else if (thread.pinnedAt != null) {
       pinned.push(thread);
-    } else if (workingShelfEnabled && isThreadWorking(thread)) {
+    } else if (workingShelfEnabled && (input.isWorking ?? isThreadWorking)(thread)) {
       working.push(thread);
     } else {
       active.push(thread);

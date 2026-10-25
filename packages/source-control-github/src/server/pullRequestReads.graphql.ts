@@ -1293,7 +1293,7 @@ export declare namespace LabelCandidates {
 /** The connection type for Label. */
 export const RepositoryLabelsRepositoryLabelsLabelConnection = Schema.Struct({
   /** Information to aid in pagination. */
-  pageInfo: PullRequestCoreRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsPageInfoPageInfo,
+  pageInfo: RulesPageInfoPageInfo,
   /** A list of nodes. */
   nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestCoreRepositoryPullRequestLabelsNodesLabel)))
 })

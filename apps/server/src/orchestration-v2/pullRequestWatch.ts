@@ -8,7 +8,7 @@ import type {
   ThreadPullRequestLink,
   ThreadPullRequestKey,
 } from "@t3tools/contracts";
-import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
+import { threadPullRequestKeysEqual } from "../sourceControl/threadPullRequests.ts";
 import * as DateTime from "effect/DateTime";
 
 /** Bounds consecutive comment-only wakes to stop bot reply loops; check, conflict, or push news resets it. */
