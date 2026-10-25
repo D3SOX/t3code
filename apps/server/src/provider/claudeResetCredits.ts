@@ -1,12 +1,4 @@
-/**
- * Claude banked resets (the CLI's `cedar_ember` program). The CLI reads the
- * grants from the OAuth usage endpoint and claims one against the
- * organization; this module does the same with the credentials the CLI keeps
- * in its config directory. macOS keeps them in the keychain, so there the
- * feature is not offered.
- *
- * @module provider/claudeResetCredits
- */
+/** Banked resets use the CLI's OAuth usage endpoint and organization credentials. Keychain-only macOS credentials are unsupported. */
 import type {
   ProviderConsumeResetCreditOutcome,
   ServerProviderResetCredits,
@@ -107,11 +99,7 @@ class ClaudeResetCreditError extends Schema.TaggedError<ClaudeResetCreditError>(
 
 const isClaudeResetCreditError = Schema.is(ClaudeResetCreditError);
 
-/**
- * Every reset failure except `requestFailed` and `unconfirmed` is final:
- * Claude answered, or nothing was sent. An unanswered or unconfirmed claim
- * retries with the same request id.
- */
+/** Retry unanswered or unconfirmed claims with the same request ID. */
 export const isSettledClaudeResetCreditFailure = (error: unknown) =>
   isClaudeResetCreditError(error) &&
   error.reason !== "requestFailed" &&
@@ -245,10 +233,7 @@ const CLAIM_OUTCOMES = {
   ineligible: "noCredit",
 } as const satisfies Record<string, ProviderConsumeResetCreditOutcome>;
 
-/**
- * Claims `grantId`. `requestId` is the idempotency key: a retry with the same
- * id is the same claim. Ids are checked before anything is sent.
- */
+/** requestId is the claim's idempotency key. */
 export const consumeClaudeResetCredit = Effect.fn("consumeClaudeResetCredit")(function* (input: {
   readonly configDir: string;
   readonly accountConfigPath: string;
@@ -304,8 +289,7 @@ export const consumeClaudeResetCredit = Effect.fn("consumeClaudeResetCredit")(fu
   if (body.result === "cooldown") {
     return yield* new ClaudeResetCreditError({ reason: "coolingDown" });
   }
-  // Claude could not say whether the claim landed, so, like the CLI, keep the
-  // request id and let the retry ask about the same claim.
+  // Unknown outcomes retain the request ID so retries address the same claim.
   if (body.result === "unavailable") {
     return yield* new ClaudeResetCreditError({ reason: "unconfirmed" });
   }

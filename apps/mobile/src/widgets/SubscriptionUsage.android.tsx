@@ -45,7 +45,7 @@ export function SubscriptionUsage(props: SubscriptionUsageProps, environment: Wi
     { name: "Claude", detail: "Open T3 to connect", windows: [], expiresAt: 0, totalWindows: 0 },
   ];
   return (
-    // expo-widgets' native target opens the saved link even when app JS is stopped.
+    // Android lacks widgetURL; one card Button routes taps to the app listener opening props.url.
     <Button
       {...{ target: props.url ?? "expo-widgets://open-app" }}
       colors={{ containerColor: colors.surface }}

@@ -31,7 +31,7 @@ import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, readMcpAppHtml, resolveAsset } from "./assets/AssetAccess.ts";
-import { githubMediaResponse } from "./assets/GitHubMediaFetch.ts";
+import { sourceControlMediaResponse } from "./assets/sourceControlMediaResponse.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
   ATTACHMENT_UPLOAD_ROUTE_PREFIX,
@@ -58,17 +58,12 @@ import {
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-// HTML previews are agent output, not the app. The sandbox gives the document an
-// opaque origin: scripts run, but same-origin cookies, storage, and API calls are
-// out of reach. Relative sibling assets still load through their signed URLs.
-// No modals: agent HTML can open without a click (inline renders, and mobile
-// loads it as the top document), and must not raise blocking dialogs. Downloads
-// stay allowed so download links and buttons in the page work.
+// Opaque origin blocks cookies, storage and API access while allowing scripts.
+// Agent HTML can open without a click, so disallow blocking modals.
 const HTML_CONTENT_SECURITY_POLICY =
   "sandbox allow-scripts allow-forms allow-popups allow-downloads";
 
-// Types a browser may render as a document if a proxy strips the disposition
-// header. Downloads of these fall back to octet-stream.
+// Proxies may strip disposition; force document-capable downloads to octet-stream.
 const DOWNLOAD_MIME_TYPE_PATTERN = /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/;
 const isSafeDownloadMimeType = (mimeType: string): boolean =>
   DOWNLOAD_MIME_TYPE_PATTERN.test(mimeType) &&
@@ -263,13 +258,7 @@ export const layerBrowserApiCors = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const devOrigin = config.devUrl?.origin;
-    // Dev uses credentialed requests from Vite or the Electron custom origin, so both must be
-    // explicit. Packaged desktop omits credentials and uses Effect's default wildcard origin.
-    //
-    // T3CODE_DEV_ALLOWED_ORIGINS covers dev servers reached from a second
-    // origin — a tailnet name, a LAN IP, a phone. Browser dev normally proxies
-    // through Vite and is same-origin (no preflight at all), so this is a
-    // safety net for the desktop renderer and any direct-to-backend caller.
+    // Credentialed dev requests need explicit Vite/Electron origins; packaged desktop uses the default wildcard.
     return HttpRouter.cors({
       ...(devOrigin
         ? {
@@ -342,10 +331,7 @@ class DecodeOtlpTraceRecordsError extends Data.TaggedError("DecodeOtlpTraceRecor
   readonly cause: unknown;
 }> {}
 
-// Renderers export up to once a second while they have spans buffered, so
-// tracing this proxy would add more server spans than it forwards.
-// withTracerEnabled(false) drops the handler's spans, including the forward.
-// untracedRequestsLayer drops the HTTP server span.
+// Tracing once-per-second renderer exports would create more spans than it forwards.
 export const layerOtlpTracesProxyRoute = HttpRouter.add(
   "POST",
   OTLP_TRACES_PROXY_PATH,
@@ -402,12 +388,7 @@ export const layerOtlpTracesProxyRoute = HttpRouter.add(
 
 const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([OTLP_TRACES_PROXY_PATH]);
 
-// Skips the HTTP server span for UNTRACED_REQUEST_PATHS. That span starts
-// before routing, so a route handler cannot skip it. TracerDisabledWhen is one
-// predicate for the whole server, and HttpRouter.serve builds its routes
-// privately, so it is provided to the served layer, never merged into the
-// routes. Add paths here instead of providing it again. The query string is
-// ignored, as in routing.
+// HttpRouter.serve builds routes privately; provide the server-wide TracerDisabledWhen to the served layer.
 const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((request) => {
   const queryIndex = request.url.indexOf("?");
   const path = queryIndex === -1 ? request.url : request.url.slice(0, queryIndex);
@@ -446,10 +427,15 @@ export const layerAssetRoute = HttpRouter.add(
         headers: { "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff" },
       });
     }
-    if (asset.kind === "github-media") {
-      return yield* githubMediaResponse(asset, request.headers).pipe(
+    if (asset.kind === "source-control-media") {
+      return yield* sourceControlMediaResponse(asset, request.headers).pipe(
         Effect.tapError((cause) =>
-          Effect.logWarning("Failed to fetch GitHub media.", { url: asset.url, cause }),
+          // The URL can carry a token in its query string, and the error keeps the request it
+          // failed on; the host and the failure kind are enough to diagnose.
+          Effect.logWarning("Failed to fetch source control media.", {
+            host: URL.canParse(asset.url) ? new URL(asset.url).host : undefined,
+            reason: cause.reason._tag,
+          }),
         ),
         Effect.orElseSucceed(() =>
           HttpServerResponse.empty({
@@ -679,8 +665,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
     const etag = headers.ETag;
     const lastModified = headers["Last-Modified"];
 
-    // If-None-Match takes precedence over dates and uses weak comparison for
-    // GET/HEAD, including when compression changes the transferred bytes.
+    // If-None-Match precedes dates and uses weak GET/HEAD comparison even across compression.
     const ifNoneMatch = request.headers["if-none-match"];
     const ifModifiedSince = request.headers["if-modified-since"];
     const unchanged =

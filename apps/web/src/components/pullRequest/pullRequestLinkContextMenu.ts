@@ -1,6 +1,6 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import {
-  type SourceControlClientDefinition,
+  type SourceControlDefinition,
   UNKNOWN_SOURCE_CONTROL_CLIENT,
 } from "@t3tools/client-runtime/source-control-clients";
 
@@ -11,8 +11,7 @@ import { toastManager } from "../ui/toast";
 
 export type PullRequestLinkContextMenuAction = "copy-link" | "open-app" | "open-external";
 
-/** Named for the host rather than "externally": the point is where you will land. */
-export const openOnHostLabel = (host: SourceControlClientDefinition): string =>
+export const openOnHostLabel = (host: SourceControlDefinition): string =>
   host === UNKNOWN_SOURCE_CONTROL_CLIENT ? "Open on host" : `Open on ${host.label}`;
 
 /** Keep both explicit destinations available regardless of the saved click preference. */
@@ -26,14 +25,7 @@ export function pullRequestLinkContextMenuItems(
   ];
 }
 
-/**
- * The right-click on a change request's number. Everywhere else that number is written it is a
- * link, and the gesture that copies a link is the one hand reaches for — so without this the
- * platform's own edit menu opens over a control that has nothing to cut, paste or select.
- *
- * The URL still comes from the host contract, while the in-app callback lets each surface select
- * the same pull request without making this menu aware of page and panel navigation.
- */
+/** Own the context menu on change-request numbers so native edit menus do not cover link actions. */
 export async function showPullRequestLinkContextMenu({
   url,
   openInApp,

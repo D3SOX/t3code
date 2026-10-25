@@ -92,6 +92,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-adaptive-indigo-600-300",
     iconTintClassName: "accent-adaptive-indigo-600-300",
   },
+  request: {
+    label: "Request",
+    icon: "person.crop.circle",
+    className: "text-adaptive-fuchsia-600-300",
+    iconTintClassName: "accent-adaptive-fuchsia-600-300",
+  },
   working: {
     label: "Working",
     icon: "circle.dashed",
@@ -581,11 +587,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly pinned?: boolean;
   readonly wokeAt: string | null;
   readonly snoozeWakeLabelText?: string;
-  /** Preformatted against the parent clock (row order timestamp: settle stamp
-      on settled rows, latest activity otherwise). Blank while a status label
-      or the wake countdown owns that slot. Precomputed per row — not via the
-      list's extraData — so the minute tick re-renders only rows whose
-      displayed text moved. */
+  /** Preformatted per row so minute ticks redraw only changed labels; status and countdown labels take precedence. */
   /** Preformatted against the parent clock (row order timestamp: settle stamp
       on settled rows, latest activity otherwise). Blank while a status label
       or the wake countdown owns that slot. Precomputed per row — not via the
@@ -619,11 +621,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   /** Drawn after the label so the machine reads at a glance; ignored while
       the label is null. */
   readonly environmentMachine?: EnvironmentMachineKind;
-  /** Hosting surface. "screen" (default) renders the compact Home idiom:
-      flat edge-to-edge rows on the screen background with inset hairlines.
-      "sidebar" renders the iPad split-view idiom: rounded rows blending
-      into the drawer surface, selection filled with the accent color —
-      matching the v1 sidebar rows. */
+  /** Home uses flat rows; split-view sidebars use rounded tonal containers. */
   /** Hosting surface. "screen" (default) renders the compact Home idiom:
       flat edge-to-edge rows on the screen background with inset hairlines.
       "sidebar" renders the iPad split-view idiom: rounded rows blending
@@ -720,7 +718,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
   const dormant = useSwipeRowDormant(props.activationKey);
-  const { providerDrivers, providerIconUrl } = (() => {
+
+  const selectThread = () => onSelectThread(thread);
+  const { providerDrivers, providerIconUrl } = useMemo(() => {
     const provider = props.providers?.find(
       (candidate) =>
         candidate.instanceId ===
@@ -730,7 +730,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       providerDrivers: resolveThreadListV2ProviderDrivers(thread, props.providers),
       providerIconUrl: provider?.iconUrl,
     };
-  })();
+  }, [thread, props.providers]);
   const providerInstance = props.providerInstance;
   const pr = useThreadPr(thread);
   const prBadgeLabel = pr ? resolveThreadPrBadgeAction(pr).accessibilityLabel : null;
@@ -812,13 +812,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleRegenerateTitle = () => onRegenerateThreadTitle(thread);
   const handleSettle = () => onSettleThread(thread);
   const [customSnoozeOpen, setCustomSnoozeOpen] = useState(false);
-  // A recycled cell reassigns this mounted row to a different thread without
-  // remounting it, and the render closure stops running while list equality
-  // says the item is unchanged — so any row-local UI state must be dismissed
-  // when the identity under it changes. Without this, a custom snooze sheet
-  // opened for one thread survives the thread's removal/reorder and its
-  // submit snoozes whichever thread the cell was reassigned to. (ThreadSwipeable
-  // enforces the same contract on the swipe layer with its resetKey.)
+  // Recycling changes identity without remounting; clear local UI directly because equality may skip the render closure.
   const rowIdentity = `${thread.environmentId}:${thread.id}`;
   const [boundIdentity, setBoundIdentity] = useState(rowIdentity);
   if (boundIdentity !== rowIdentity) {
@@ -838,18 +832,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // Swipe: the v2 primary action is the lifecycle transition. Un-settling a
   // settled row keeps it active until new activity clears the user override.
   const canUnsettle = variant === "slim";
-  // The React Compiler caches render results on props and state, so a clock read
-  // in render would stay frozen until `thread` changes: the gate could never
-  // expire and its timer would re-fire every 50ms. The gate's clock is state.
-  const [snoozeGateClock, setSnoozeGateClock] = useState(() => ({
-    thread,
-    now: Date.now(),
-  }));
-  if (snoozeGateClock.thread !== thread)
-    setSnoozeGateClock({
-      thread,
-      now: Date.now(),
-    });
+  // Keep time in state; cached render-time reads freeze the gate and trigger 50ms expiry loops.
+  const [snoozeGateClock, setSnoozeGateClock] = useState(() => ({ thread, now: Date.now() }));
+  if (snoozeGateClock.thread !== thread) setSnoozeGateClock({ thread, now: Date.now() });
   const snoozeGateNow = new Date(snoozeGateClock.now).toISOString();
   const snoozeGateExpiryMs = props.snoozeSupported
     ? resolveThreadListV2SnoozeGateExpiryMs(thread, {
@@ -1400,12 +1385,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 {thread.runtime.lastError}
               </Text>
             ) : branch || props.environmentLabel ? (
-              /* "branch · machine" share one truncating line. The machine sits
-        last so a tight fit cuts the repetitive label, not the branch —
-        and machine-only fills the row for non-git projects. The glyph
-        hugs the label (it cannot live inside the Text without breaking
-        truncation), and the wrapper takes the slack so the trailers
-        stay pinned right. */
+              /* Keep branch and machine in one truncating line; the adjacent glyph must stay outside Text. */
               <View className="min-w-0 flex-1 flex-row items-center gap-1">
                 <Text
                   className={cn(
@@ -1500,7 +1480,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         }}
         onPress={() => {
           close();
-          onSelectThread(thread);
+          selectThread();
         }}
         style={rowAppearance.cardStyle}
       >
@@ -1533,7 +1513,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         className={rowAppearance.className}
         onPress={() => {
           close();
-          onSelectThread(thread);
+          selectThread();
         }}
         style={rowAppearance.style}
       >

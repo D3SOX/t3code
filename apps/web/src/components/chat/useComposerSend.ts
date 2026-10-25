@@ -1231,6 +1231,7 @@ export function useComposerSend(input: ComposerSendInput) {
                 messageId: newMessageId(),
                 role: "user",
                 text: "/compact",
+                idleCompaction: "onReturn",
                 attachments: [],
               },
               modelSelection: ctxSelectedModelSelection,

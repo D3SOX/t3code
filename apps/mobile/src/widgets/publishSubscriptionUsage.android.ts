@@ -5,8 +5,7 @@ export async function publishSubscriptionUsage(snapshot: SubscriptionUsageSnapsh
   if (!requireOptionalNativeModule("ExpoWidgets")) return;
   const { default: widget } = await import("./SubscriptionUsage");
   widget.updateSnapshot(snapshot);
-  // Android has no timeline; an alarm re-renders the stored snapshot at each
-  // deadline so stale readings flip to "Open T3 to refresh" unattended.
+  // Android lacks timelines; alarms re-render snapshots at expiry to mark readings stale.
   requireOptionalNativeModule<{ schedule: (name: string, deadlines: number[]) => void }>(
     "T3WidgetExpiry",
   )?.schedule(

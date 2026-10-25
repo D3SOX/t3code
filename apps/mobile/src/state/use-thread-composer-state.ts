@@ -145,13 +145,7 @@ export function appendReviewCommentToDraft(input: {
   }
 }
 
-/**
- * Which draft the composer is editing right now. While a queued message is
- * being edited the composer is pointed at that edit's own draft, so typing,
- * attaching, and pasting never touch the user's draft for the thread.
- * Resolved per call rather than captured, so a callback created before the
- * edit began still writes to the right place.
- */
+/** Resolve per call so callbacks created before editing still target the current draft. */
 function activeComposerDraftKey(thread: {
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
@@ -488,7 +482,6 @@ export function useThreadComposerState() {
     const draft = getComposerDraftSnapshot(queuedEditDraftKey(threadKey, edit.runId));
     const text = draft.text.trim();
     if (text.length === 0) {
-      // The server rejects an empty queued message, attachments or not.
       Dialog.alert("Add a message", "A queued message cannot be left empty.");
       return;
     }
@@ -581,10 +574,7 @@ export function useThreadComposerState() {
     if (!selectedThreadShell) {
       return null;
     }
-    // The server has not created this thread yet. Queuing a follow-up against
-    // its id would strand the message: if the creation is rejected the thread
-    // never appears and the drain drops the orphan. The composer disables its
-    // send button too; this guard also covers the editor's submit key.
+    // Before thread creation succeeds, follow-ups could become orphaned and be dropped by the drain.
     if (selectedThreadCreation !== null) {
       return null;
     }
@@ -619,10 +609,7 @@ export function useThreadComposerState() {
     if (text.length === 0 && attachments.length === 0) {
       return null;
     }
-    // A send-failure restore appends with allowOverflow so it never drops the
-    // user's files, which can leave the draft over the cap. Sending it anyway
-    // would enqueue a message that outbox recovery rejects forever, so block
-    // here until the user removes attachments.
+    // Recovery preserves over-cap attachments; require trimming or outbox delivery would reject indefinitely.
     if (attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
       Dialog.alert(
         "Too many attachments",
@@ -721,12 +708,9 @@ export function useThreadComposerState() {
       }
     }
 
-    // Resolved here rather than at drain time: the outbox can deliver minutes
-    // later, and the choice belongs to the moment the user pressed send.
-    // Steering travels as "auto" so a turn that ends in the meantime degrades
-    // to a queued run on the server instead of failing the delivery and
-    // bouncing the message back into the draft.
-    // A redirect declined approvals to steer the waiting turn, not to queue behind it.
+    // Resolve at send time because outbox delivery may be delayed.
+    // Steering uses "auto" so an ended turn queues a run instead of restoring the draft.
+    // An approval redirect must steer the waiting turn instead of queueing behind it.
     const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
     const followUpAction = resolveComposerDispatchMode({
       running: activeThreadBusy && canSteerActiveTurn,
@@ -752,11 +736,7 @@ export function useThreadComposerState() {
     const messageId = MessageId.make(metadata.messageId);
     // A new send supersedes the reason the previous one bounced back.
     clearThreadComposerError(threadKey);
-    // Enqueue publishes the queued atom synchronously (the durable write
-    // happens behind it), so clearing the draft here gives send feedback on
-    // the tap frame instead of after file I/O. If the write fails the message
-    // is rolled out of the queue and the content is merged back into the
-    // draft, preserving anything typed since.
+    // The queue publishes synchronously; failed writes restore content without replacing newer draft edits.
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
@@ -784,10 +764,7 @@ export function useThreadComposerState() {
     enqueuePromise.then(
       () => scheduleUnusedComposerAttachmentCleanup(attachments),
       (error: unknown) => {
-        // Restore text via merge (idempotent) but attachments via the uncapped
-        // append: the merge path slots existing attachments first and truncates
-        // at the send limit, which would silently drop this message's images if
-        // the user attached new ones while the write was in flight.
+        // Restore with uncapped append; capped merge could drop attachments added during the failed write.
         void mergeComposerDraftContent(threadKey, {
           text,
           context: draft.context,

@@ -185,8 +185,7 @@ export function ProviderInstanceIcon(props: {
         <ProviderIcon iconUrl={props.iconUrl} provider={props.provider} size={props.size} />
       </View>
       {props.showBadge ? (
-        // A wide right-aligned box lets the badge fit its initials. Alone, an
-        // absolute badge is capped at the icon's width, which clips "WO".
+        // An absolute badge alone is capped at icon width and clips initials.
         <View
           pointerEvents="none"
           style={{

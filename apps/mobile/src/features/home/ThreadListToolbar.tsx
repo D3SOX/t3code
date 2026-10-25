@@ -25,7 +25,6 @@ import { EnvironmentArtwork } from "../../components/EnvironmentArtwork";
 import { useEnvironmentIdentification } from "../../state/environmentIdentification";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
 
-/** One toolbar height for the compact list and expanded sidebar, including search. */
 export function ThreadListToolbar(props: {
   readonly searchQuery: string;
   readonly onSearchQueryChange: (query: string) => void;

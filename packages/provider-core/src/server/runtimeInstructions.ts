@@ -4,9 +4,7 @@ When the t3-code MCP server exposes link_pull_request, you must use it to regist
 Ending a turn to await a review is still monitoring. If a running review blocks a pending push or review response, keep watching and end your turn so review completion can wake you. Only hand the work back when the requested monitoring is complete or the user asks you to stop. A repository exception for waiting on an external review alone applies only after pending fixes have been pushed and actionable feedback has been handled.
 </pull_request_linking>`;
 
-/**
- * Shared runtime context; omit model and effort when the harness manages them dynamically.
- */
+/** Omit model and effort when the harness manages them dynamically. */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
   readonly model?: string | undefined;

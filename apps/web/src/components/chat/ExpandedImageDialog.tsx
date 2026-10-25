@@ -78,7 +78,6 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
   );
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  // JavaScript `%` keeps the sign of the dividend, and a negative index blanks the dialog.
   const imageCount = preview.images.length;
   const index =
     imageCount > 0 ? (((preview.index + imageOffset) % imageCount) + imageCount) % imageCount : 0;
@@ -116,9 +115,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     setImageOffset((current) => current + direction);
   };
 
-  // The element that opened the preview gets focus back on close. Without
-  // this a close button click leaves focus on the unmounted dialog, and the
-  // composer that owned the opener reads that as a blur and rests.
+  // Restore opener focus to prevent composer collapse.
   const openerRef = useRef<Element | null>(null);
   useEffect(() => {
     openerRef.current = document.activeElement;
@@ -304,10 +301,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   );
 });
 
-/**
- * The chat view's open media preview. It lives outside ChatView so opening or
- * closing it renders only the dialog host, not the whole chat chrome.
- */
+// Keep preview state outside ChatView to isolate dialog renders.
 const expandedImagePreviewAtom = Atom.make<{
   readonly threadKey: string;
   readonly preview: ExpandedImagePreview;
@@ -336,7 +330,6 @@ export function ExpandedImageDialogHost({ threadKey }: { readonly threadKey: str
     if (ownedSrc === null) return;
     return () => URL.revokeObjectURL(ownedSrc);
   }, [ownedSrc]);
-  // Leaving the thread (or the chat view) drops its preview.
   useEffect(() => () => closeExpandedImagePreviewFor(threadKey), [threadKey]);
   if (preview === null) return null;
   return (
