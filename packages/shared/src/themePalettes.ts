@@ -1,4 +1,11 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+export const BUILT_IN_THEME_IDS = [
+  "t3-code-dim",
+  "t3-chat",
+  "grove",
+  "ocean",
+  "ember",
+  "iris",
+] as const;
 
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
@@ -231,6 +238,14 @@ export const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
   terminalSelection: "#343a47",
   terminalScrollbar: "#222222",
   terminalScrollbarHover: "#363636",
+};
+
+export const T3_CODE_DIM_THEME: ThemeDefinition = {
+  id: "t3-code-dim",
+  label: "T3 Code Dim",
+  appearance: "light",
+  colors: T3_CODE_LIGHT_THEME_COLORS,
+  variants: { dark: T3_CODE_DARK_THEME_COLORS },
 };
 
 export const T3_CHAT_THEME: ThemeDefinition = {
@@ -909,6 +924,7 @@ export const IRIS_THEME: ThemeDefinition = {
 };
 
 export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
+  T3_CODE_DIM_THEME,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

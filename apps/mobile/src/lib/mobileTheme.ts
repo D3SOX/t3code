@@ -463,36 +463,32 @@ export function getMobileThemeVariables(
   overrides: Partial<MobileThemeVariables> | null = null,
 ): MobileThemeVariables {
   const colors = getMobileThemeColors(themeId, appearance);
-  const groupedCard =
-    themeId === DEFAULT_MOBILE_THEME_ID
+  const isStandardPalette = themeId === DEFAULT_MOBILE_THEME_ID || themeId === "t3-code-dim";
+  const groupedCard = isStandardPalette
+    ? appearance === "light"
+      ? colors.toolbarControlHover
+      : colors.sidebarRowActive
+    : themeId === "t3-chat"
       ? appearance === "light"
-        ? colors.toolbarControlHover
-        : colors.sidebarRowActive
-      : themeId === "t3-chat"
-        ? appearance === "light"
-          ? colors.toolbarControl
-          : colors.surface
-        : colors.muted;
-  const mobileColors =
-    themeId === DEFAULT_MOBILE_THEME_ID
-      ? {
-          ...colors,
-          messageSurface: flattenThemeColor(
-            themeColorWithAlpha(
-              appearance === "dark" ? colors.sidebarRowActive : colors.border,
-              0.3,
-            ),
-            colors.messageSurface,
-          ),
-        }
-      : colors;
+        ? colors.toolbarControl
+        : colors.surface
+      : colors.muted;
+  const mobileColors = isStandardPalette
+    ? {
+        ...colors,
+        messageSurface: flattenThemeColor(
+          themeColorWithAlpha(appearance === "dark" ? colors.sidebarRowActive : colors.border, 0.3),
+          colors.messageSurface,
+        ),
+      }
+    : colors;
   const baseVariables = createMobileThemeVariables(
     mobileColors,
     appearance,
     groupedCard,
     themeId === "t3-chat" && appearance === "dark"
       ? [colors.messageActionForeground, colors.messageAction]
-      : themeId !== DEFAULT_MOBILE_THEME_ID && themeId !== "t3-chat"
+      : !isStandardPalette && themeId !== "t3-chat"
         ? [colors.messageAction, colors.messageActionForeground]
         : undefined,
   );
