@@ -6,8 +6,9 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { imageSnapshotsDirectory } from "../assets/ImageSnapshots.ts";
+import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
+import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -80,20 +81,27 @@ export const layer = Layer.effect(
         return Effect.forEach(
           attachmentIds,
           (attachmentId) => {
-            const path = resolveAttachmentPathById({
-              attachmentsDir: config.attachmentsDir,
-              attachmentId,
-            });
+            const extension = parseAttachmentFileExtension(attachmentId);
+            const path =
+              resolveAttachmentPathById({
+                attachmentsDir: config.attachmentsDir,
+                attachmentId,
+              }) ??
+              (extension
+                ? resolveAttachmentRelativePath({
+                    attachmentsDir: config.attachmentsDir,
+                    relativePath: `${attachmentId}.${extension}`,
+                  })
+                : null);
             return path === null
               ? Effect.void
-              : fileSystem
-                  .remove(path, { force: true })
-                  .pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new ResourceCleanupError({ operation: "attachment", attachmentId, cause }),
-                    ),
-                  );
+              : fileSystem.remove(path, { force: true }).pipe(
+                  Effect.andThen(fileSystem.remove(`${path}.txt`, { force: true })),
+                  Effect.mapError(
+                    (cause) =>
+                      new ResourceCleanupError({ operation: "attachment", attachmentId, cause }),
+                  ),
+                );
           },
           { discard: true, concurrency: 4 },
         ).pipe(

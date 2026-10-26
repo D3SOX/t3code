@@ -318,12 +318,25 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
 export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {
   readonly pane?: "screen" | "sidebar";
   readonly hiddenCount: number;
+  /** Older settled threads are loading, or their last read failed. */
+  readonly state?: "loading" | "failed";
   readonly onPress: () => void;
 }) {
+  const label =
+    props.state === "loading"
+      ? "Loading"
+      : props.state === "failed"
+        ? "Could not load older threads. Retry"
+        : `Show more (${props.hiddenCount} settled hidden)`;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Show ${Math.min(props.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+      accessibilityLabel={
+        props.state === undefined
+          ? `Show ${Math.min(props.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`
+          : label
+      }
+      disabled={props.state === "loading"}
       onPress={props.onPress}
       className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
       style={({ pressed }) => ({
@@ -337,7 +350,7 @@ export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(pro
             : "text-xs font-t3-medium text-foreground-muted"
         }
       >
-        Show more ({props.hiddenCount} settled hidden)
+        {label}
       </Text>
     </Pressable>
   );
@@ -791,6 +804,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const canUnsettle = variant === "slim";
   // Keep time in state; cached render-time reads freeze the gate and trigger 50ms expiry loops.
   const [snoozeGateClock, setSnoozeGateClock] = useState(() => ({ thread, now: Date.now() }));
+  // oxlint-disable-next-line react/purity -- Reseeds the snooze gate clock only in the render-phase adjustment that runs when the thread changes.
   if (snoozeGateClock.thread !== thread) setSnoozeGateClock({ thread, now: Date.now() });
   const snoozeGateNow = new Date(snoozeGateClock.now).toISOString();
   const snoozeGateExpiryMs = props.snoozeSupported
@@ -822,98 +836,93 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }),
     snoozed: snoozedRow,
   });
-  const snoozePresets =
-    swipeActions.secondary === "snooze" ? resolveSnoozePresets(new Date()) : ([] as const);
-  const snoozePresetActions = [
-    ...snoozePresets.map((preset) => ({
-      id: `snooze:${preset.id}`,
-      title: preset.label,
-      subtitle: preset.whenLabel,
-    })),
-    {
-      id: "snooze:custom",
-      title: "Custom…",
-    },
-  ];
-  // Pinned cards keep the full lifecycle menu; only the pin item flips to
-  // Unpin. (Settling a pinned thread clears the pin server-side; snoozing
-  // hides the card until wake with the pin intact.)
-  const arrangementMenuItems = [
-    ...(props.reorderSupported === true
-      ? [
-          {
-            id: "arrange",
-            title: "Arrange threads…",
-            image: "line.3.horizontal",
-          },
-          {
-            id: "move-up",
-            title: "Move up",
-            image: "arrow.up",
-            attributes: {
-              disabled: props.canMoveUp !== true,
-            },
-          } satisfies MenuAction,
-          {
-            id: "move-down",
-            title: "Move down",
-            image: "arrow.down",
-            attributes: {
-              disabled: props.canMoveDown !== true,
-            },
-          } satisfies MenuAction,
-        ]
-      : []),
-    ...(props.pinningSupported
-      ? [
-          thread.pinnedAt != null
-            ? {
-                id: "unpin",
-                title: "Unpin",
-                image: "pin.slash",
-              }
-            : {
-                id: "pin",
-                title: "Pin",
-                image: "pin",
-              },
-        ]
-      : []),
-  ];
-  // A submenu with the current option checked, matching web. This is a
-  // per-thread setting, not a lifecycle verb.
-  const autoSettleMenuItems = props.autoSettleOptOutSupported
-    ? [
-        {
-          id: "auto-settle",
-          title: "Auto-settle behavior",
-          image: "timer",
-          subactions: [
+  const snoozePresets = useMemo(
+    // oxlint-disable-next-line react/purity -- The memo recomputes on the snoozePresetMinute tick, so preset times refresh every minute.
+    () => (swipeActions.secondary === "snooze" ? resolveSnoozePresets(new Date()) : ([] as const)),
+    // oxlint-disable-next-line react/memo-dependencies -- The minute tick refreshes relative snooze times while the row remains mounted.
+    [props.snoozePresetMinute, swipeActions.secondary],
+  );
+  const snoozePresetActions = useMemo<MenuAction[]>(
+    () => [
+      ...snoozePresets.map((preset) => ({
+        id: `snooze:${preset.id}`,
+        title: preset.label,
+        subtitle: preset.whenLabel,
+      })),
+      { id: "snooze:custom", title: "Custom…" },
+    ],
+    [snoozePresets],
+  );
+  const arrangementMenuItems = useMemo<MenuAction[]>(
+    () => [
+      ...(props.reorderSupported === true
+        ? [
+            { id: "arrange", title: "Arrange threads…", image: "line.3.horizontal" },
             {
-              id: "auto-settle:enabled",
-              title: "Enabled",
-              state: thread.autoSettleDisabledAt == null ? "on" : "off",
-            },
+              id: "move-up",
+              title: "Move up",
+              image: "arrow.up",
+              attributes: { disabled: props.canMoveUp !== true },
+            } satisfies MenuAction,
             {
-              id: "auto-settle:disabled",
-              title: "Disabled",
-              state: thread.autoSettleDisabledAt == null ? "off" : "on",
-            },
-          ],
-        } satisfies MenuAction,
-      ]
-    : [];
-  const titleMenuItems = [
-    {
-      id: "rename",
-      title: "Rename",
-      image: "square.and.pencil",
-    },
-    ...buildThreadTitleRegenerationMenuItems({
-      supported: props.titleRegenerationSupported,
-      isRegenerating: thread.titleRegeneration != null,
-    }),
-  ];
+              id: "move-down",
+              title: "Move down",
+              image: "arrow.down",
+              attributes: { disabled: props.canMoveDown !== true },
+            } satisfies MenuAction,
+          ]
+        : []),
+      ...(props.pinningSupported
+        ? [
+            thread.pinnedAt != null
+              ? { id: "unpin", title: "Unpin", image: "pin.slash" }
+              : { id: "pin", title: "Pin", image: "pin" },
+          ]
+        : []),
+    ],
+    [
+      props.canMoveDown,
+      props.canMoveUp,
+      props.reorderSupported,
+      props.pinningSupported,
+      thread.pinnedAt,
+    ],
+  );
+  const autoSettleMenuItems = useMemo<MenuAction[]>(
+    () =>
+      props.autoSettleOptOutSupported
+        ? [
+            {
+              id: "auto-settle",
+              title: "Auto-settle behavior",
+              image: "timer",
+              subactions: [
+                {
+                  id: "auto-settle:enabled",
+                  title: "Enabled",
+                  state: thread.autoSettleDisabledAt == null ? "on" : "off",
+                },
+                {
+                  id: "auto-settle:disabled",
+                  title: "Disabled",
+                  state: thread.autoSettleDisabledAt == null ? "off" : "on",
+                },
+              ],
+            } satisfies MenuAction,
+          ]
+        : [],
+    [props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
+  );
+  const titleMenuItems = useMemo<MenuAction[]>(
+    () => [
+      { id: "rename", title: "Rename", image: "square.and.pencil" },
+      ...buildThreadTitleRegenerationMenuItems({
+        supported: props.titleRegenerationSupported,
+        isRegenerating: thread.titleRegeneration != null,
+      }),
+    ],
+    [props.titleRegenerationSupported, thread.titleRegeneration],
+  );
   const snoozableCardMenuActions = useMemo<MenuAction[]>(
     () => [
       {

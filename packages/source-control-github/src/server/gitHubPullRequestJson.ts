@@ -53,6 +53,7 @@ import type {
   CheckContext,
   LabelCandidates,
   PullRequestActivity,
+  PullRequestCommitStats,
   PullRequestCheckContexts,
   PullRequestCore,
   PullRequestFilesViewed,
@@ -1199,7 +1200,7 @@ export function toPullRequestHeads(result: PullRequestHeads.Result): {
 }
 
 export interface GitHubPullRequestActivityPage {
-  /** Only on the first page, which is the one that asks for them. */
+  readonly nonMergeCommitIds: ReadonlyArray<string>;
   readonly author?: PullRequestActor | null;
   readonly commits?: ReadonlyArray<PullRequestCommit>;
   /** Issue comments and reviews, each list unsorted. */
@@ -1214,6 +1215,9 @@ export function toPullRequestActivityPage(
   const pr = result.repository?.pullRequest;
   if (pr == null) return null;
   return {
+    nonMergeCommitIds: nodesOf(pr.commits).flatMap(({ commit }) =>
+      commit.parents.totalCount > 1 ? [] : [commit.id],
+    ),
     ...(pr.author === undefined ? {} : { author: toActor(pr.author) }),
     ...(pr.commits === undefined
       ? {}
@@ -1234,6 +1238,25 @@ export function toPullRequestActivityPage(
   };
 }
 
+export function toPullRequestCommitStats(result: PullRequestCommitStats.Result) {
+  return new Map(
+    (result.nodes ?? []).flatMap((commit) =>
+      commit?.__typename === "Commit"
+        ? [
+            [
+              commit.oid,
+              {
+                additions: Math.max(0, commit.additions),
+                deletions: Math.max(0, commit.deletions),
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  );
+}
+
+/** A check context as the rollup reports it; opaque outside this module. */
 export type GitHubCheckContext = CheckFields;
 
 function toCheckContexts(nodes: ReadonlyArray<CheckContext>): ReadonlyArray<GitHubCheckContext> {
@@ -1334,10 +1357,6 @@ export interface GitHubReviewThreadPage {
   readonly reviewers: ReadonlyArray<PullRequestActor>;
   readonly avatarsByLogin: ReadonlyMap<string, string>;
   readonly botLogins: ReadonlySet<string>;
-  readonly commitStats: ReadonlyMap<
-    string,
-    { readonly additions: number; readonly deletions: number }
-  >;
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly viewer: { readonly canUpdate: boolean; readonly didAuthor: boolean };
   /** Dismissal reasons by the dismissed review's node id, which the review itself never carries. */
@@ -1466,18 +1485,10 @@ export function toReviewThreadPage(result: ReviewThreads.Result): GitHubReviewTh
     // Keyed by login, so someone who was asked and then answered appears once.
     if (actor !== null && !reviewers.has(actor.login)) reviewers.set(actor.login, actor);
   }
-  const commitStats = new Map<string, { readonly additions: number; readonly deletions: number }>();
   const commits: PullRequestCommit[] = [];
   for (const { commit } of nodesOf(pullRequest.commits)) {
     const oid = trimmed(commit.oid);
     if (oid === null) continue;
-    // Merge stats count upstream changes against the first parent as PR work.
-    if (commit.parents.totalCount <= 1) {
-      commitStats.set(oid, {
-        additions: Math.max(0, commit.additions),
-        deletions: Math.max(0, commit.deletions),
-      });
-    }
     const committedDate = trimmed(commit.committedDate);
     if (committedDate === null) continue;
     commits.push({
@@ -1506,7 +1517,6 @@ export function toReviewThreadPage(result: ReviewThreads.Result): GitHubReviewTh
     reviewers: [...reviewers.values()],
     avatarsByLogin,
     botLogins,
-    commitStats,
     commits,
     viewer: toPullRequestViewerFields(pullRequest),
     dismissalsByReviewId: toDismissalEntries(pullRequest.reviewDismissals),

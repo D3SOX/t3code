@@ -735,11 +735,9 @@ export function useThreadActions() {
       );
     }
     const resolved = resolveThreadTarget(target);
-    const wokeAt = resolved
-      ? threadWokeAt(resolved.thread, {
-          now: new Date().toISOString(),
-        })
-      : null;
+    // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
+    const nowIso = new Date().toISOString();
+    const wokeAt = resolved ? threadWokeAt(resolved.thread, { now: nowIso }) : null;
     const undoPlan = ThreadUndo.planThreadUndo("settle", resolved?.thread);
     // An older unpin/snooze Undo would re-pin or re-snooze, and the server
     // treats either as a promotion that un-settles; settling supersedes them.
@@ -856,12 +854,8 @@ export function useThreadActions() {
       );
     }
     const resolved = resolveThreadTarget(target);
-    if (
-      resolved &&
-      !canSnooze(resolved.thread, {
-        now: new Date().toISOString(),
-      })
-    ) {
+    // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
+    if (resolved && !canSnooze(resolved.thread, { now: new Date().toISOString() })) {
       return AsyncResult.failure(
         Cause.fail(
           new ThreadSnoozeBlockedError({

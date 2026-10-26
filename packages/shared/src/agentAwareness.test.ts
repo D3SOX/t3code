@@ -127,7 +127,6 @@ describe("projectThreadAwarenessV2", () => {
       })?.phase ?? null,
     ).toBe(phase);
   });
-
   it.each(["running", "completed", "failed"] as const)(
     "does not publish %s subagent activity",
     (status) => {
