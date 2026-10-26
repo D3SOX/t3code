@@ -1509,7 +1509,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* writeSystemEvents(yield* Ref.get(refreshed));
         projection = yield* readCommandProjection(threadId);
       }
-      const refreshedQueuedRun = nextQueuedRun(projection);
+      const refreshedQueuedRun =
+        options?.queuedRunId === undefined
+          ? nextQueuedRun(projection)
+          : projection.runs.find(
+              (run) => run.id === options.queuedRunId && run.status === "queued",
+            );
       if (refreshedQueuedRun === undefined) return;
       const queuedMessage = projection.messages.find(
         (candidate) => candidate.id === refreshedQueuedRun.userMessageId,
