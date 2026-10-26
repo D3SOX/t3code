@@ -225,6 +225,7 @@ function layerTest(input: {
   readonly onWindowCreate?: Effect.Effect<void>;
   readonly openedExternalUrls?: unknown[];
   readonly copiedTexts?: string[];
+  readonly onCopyText?: (text: string) => Effect.Effect<void>;
   readonly onPopupTemplate?: (input: ElectronMenu.ElectronMenuTemplateInput) => Effect.Effect<void>;
   readonly previewZoomReapplies?: number[];
   readonly onReveal?: (window: Electron.BrowserWindow) => void;
@@ -316,10 +317,12 @@ function layerTest(input: {
               return true;
             }),
           openSystemSettings: () => Effect.succeed(true),
-          copyText: (text) =>
-            Effect.sync(() => {
-              input.copiedTexts?.push(text);
-            }),
+          copyText:
+            input.onCopyText ??
+            ((text) =>
+              Effect.sync(() => {
+                input.copiedTexts?.push(text);
+              })),
         } satisfies ElectronShell.ElectronShell["Service"]),
         layerElectronTheme,
         layerElectronWindow,
@@ -455,6 +458,66 @@ const captureOne = DesktopSnapShotId.make("11111111-1111-4111-8111-111111111111"
 const captureTwo = DesktopSnapShotId.make("22222222-2222-4222-8222-222222222222");
 
 describe("DesktopWindow", () => {
+  it.effect.each([
+    ["mailto:support@example.com", "Copy Email Address", "support@example.com"],
+    [
+      "MAILTO:help%2Bdesk@example.com?subject=Support&body=Hello",
+      "Copy Email Address",
+      "help+desk@example.com",
+    ],
+    [
+      "mailto:first@example.com,second@example.com",
+      "Copy Email Address",
+      "first@example.com,second@example.com",
+    ],
+    [
+      "https://example.com/contact?subject=Support",
+      "Copy Link",
+      "https://example.com/contact?subject=Support",
+    ],
+  ] as const)(
+    "copies the link destination without selecting text: %s",
+    ([linkURL, label, expected]) =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+        const popup = yield* Deferred.make<ElectronMenu.ElectronMenuTemplateInput>();
+        const copied = yield* Deferred.make<string>();
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+          const contextMenu = fakeWindow.webContentsListeners.get("context-menu");
+          assert.isDefined(contextMenu);
+          contextMenu!(
+            { preventDefault: vi.fn() },
+            {
+              linkURL,
+              mediaType: "none",
+              editFlags: { canCopy: false },
+            },
+          );
+          const { template } = yield* Deferred.await(popup);
+          const item = template.find((entry) => entry.label === label);
+          assert.isDefined(item);
+          assert.notEqual(item?.enabled, false);
+          assert.isDefined(item?.click);
+          item!.click!({} as Electron.MenuItem, fakeWindow.window, {} as Electron.KeyboardEvent);
+          assert.equal(yield* Deferred.await(copied), expected);
+        }).pipe(
+          Effect.provide(
+            layerTest({
+              window: fakeWindow.window,
+              createCount,
+              mainWindow,
+              onPopupTemplate: (menu) => Effect.asVoid(Deferred.succeed(popup, menu)),
+              onCopyText: (text) => Effect.asVoid(Deferred.succeed(copied, text)),
+            }),
+          ),
+        );
+      }),
+  );
+
   it("restores bounds only when the window fits within a connected display", () => {
     const persistedBounds = { x: 2040, y: 80, width: 1320, height: 880 };
     const displays = [

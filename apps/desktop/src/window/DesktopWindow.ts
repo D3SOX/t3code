@@ -41,6 +41,15 @@ const TITLEBAR_HEIGHT = 40;
 const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
+function emailAddressFromLink(href: string): string | null {
+  try {
+    const url = new URL(href);
+    return url.protocol === "mailto:" ? decodeURIComponent(url.pathname) || null : null;
+  } catch {
+    return null;
+  }
+}
+
 function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
   if (window.isDestroyed() || window.isFullScreen()) return;
   window.setWindowButtonPosition({
@@ -578,12 +587,16 @@ export const make = Effect.gen(function* () {
           menuTemplate.push({ type: "separator" });
         }
 
-        if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
+        const emailAddress = emailAddressFromLink(params.linkURL);
+        if (
+          emailAddress !== null ||
+          Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))
+        ) {
           menuTemplate.push(
             {
-              label: "Copy Link",
+              label: emailAddress === null ? "Copy Link" : "Copy Email Address",
               click: () => {
-                void runPromise(electronShell.copyText(params.linkURL));
+                void runPromise(electronShell.copyText(emailAddress ?? params.linkURL));
               },
             },
             { type: "separator" },
