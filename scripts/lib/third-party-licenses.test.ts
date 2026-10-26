@@ -79,6 +79,29 @@ afterEach(async () => {
 });
 
 describe("third-party license generation", () => {
+  it("includes the HTTP encryption notice when its package omits the license file", async () => {
+    const fixture = await createFixture();
+    await writeJson(fixture.appManifest, {
+      name: "fixture-server",
+      dependencies: { http_ece: "1.2.0" },
+    });
+    await writeJson(NodePath.join(fixture.root, "node_modules/http_ece/package.json"), {
+      name: "http_ece",
+      version: "1.2.0",
+      license: "MIT",
+      main: "ece.js",
+    });
+
+    const manifest = await generateThirdPartyLicenseManifest({
+      configFile: NodePath.join(REPOSITORY_ROOT, "third-party-licenses.config.json"),
+      packageManifests: [{ bundle: "server", path: fixture.appManifest }],
+    });
+    const notice = manifest.entries.find((entry) => entry.name === "http_ece");
+    expect(notice?.license).toBe("MIT");
+    expect(notice?.noticeText).toContain("Copyright (c) 2015 Martin Thomson");
+    expect(notice?.noticeText).toContain("Permission is hereby granted, free of charge");
+  });
+
   it.each(["web", "mobile"])(
     "uses installer pins for device tool notices in the %s manifest",
     async (bundle) => {
