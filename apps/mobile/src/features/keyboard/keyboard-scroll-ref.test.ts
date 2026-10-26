@@ -31,6 +31,7 @@ describe("keyboard chat scroll correction", () => {
       };
     } = { exports: {} };
     const reanimated = {
+      useSharedValue: (value: unknown) => ({ value }),
       useAnimatedReaction: (_prepare: unknown, reaction: typeof reactToPadding) => {
         reactToPadding = reaction;
       },

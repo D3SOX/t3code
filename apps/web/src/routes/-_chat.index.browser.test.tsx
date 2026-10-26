@@ -60,7 +60,7 @@ it.each([
     });
     const View = Route.options.component as ReturnType<typeof lazyRouteComponent>;
     await View.preload?.();
-    await using screen = await render(<View />);
+    await using _screen = await render(<View />);
     expect(state.startDraft).toHaveBeenCalledWith(
       { environmentId: "environment-1", projectId: expected },
       { replace: true },

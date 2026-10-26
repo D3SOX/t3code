@@ -101,6 +101,7 @@ const browserTestProject = {
   // Pre-bundle lazy browser and worker dependencies to avoid mid-run reloads.
   optimizeDeps: {
     include: [
+      "@base-ui/react/combobox",
       "vite-plus/test/browser",
       "@base-ui/react/autocomplete",
       "saxes",

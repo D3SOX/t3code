@@ -13,6 +13,8 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
+import type { ConnectionAttemptError } from "@t3tools/client-runtime/connection";
+import type { ConnectionPersistenceError } from "@t3tools/client-runtime/platform";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect } from "react";
 
@@ -29,10 +31,9 @@ export const olderSettledThreads = createOlderSettledThreadAtoms(
   connectionAtomRuntime,
   environmentShell.stateAtom,
 );
-export const threadEnvironment = createThreadEnvironmentAtoms(
-  connectionAtomRuntime,
-  threadFamilies.snapshotAtom,
-);
+export const threadEnvironment: ReturnType<
+  typeof createThreadEnvironmentAtoms<never, ConnectionAttemptError | ConnectionPersistenceError>
+> = createThreadEnvironmentAtoms(connectionAtomRuntime, threadFamilies.snapshotAtom);
 const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,

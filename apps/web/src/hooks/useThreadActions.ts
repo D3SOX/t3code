@@ -20,7 +20,7 @@ import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+
 import { pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
@@ -299,10 +299,6 @@ export function useThreadActions() {
   const router = useRouter();
   const handleNewThread = useNewThreadHandler();
 
-  const handleNewThreadRef = useRef(handleNewThread);
-  useEffect(() => {
-    handleNewThreadRef.current = handleNewThread;
-  }, [handleNewThread]);
   const resolveThreadTarget = (target: ScopedThreadRef) => {
     const thread = readThreadShell(target);
     if (!thread) {
@@ -547,12 +543,9 @@ export function useThreadActions() {
       currentRouteThreadRef.environmentId === threadRef.environmentId
     ) {
       await navigateAfterThreadDeletion(async () => {
-        await handleNewThreadRef.current(
-          scopeProjectRef(threadRef.environmentId, thread.projectId),
-          {
-            replace: true,
-          },
-        );
+        await handleNewThread(scopeProjectRef(threadRef.environmentId, thread.projectId), {
+          replace: true,
+        });
       });
     }
     if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {

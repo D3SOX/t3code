@@ -2098,6 +2098,7 @@ export function composerDraftHasUserContent(draft: ComposerDraft | undefined): b
 /** Select a boolean so draft indicators change only when content appears or disappears. */
 export function useThreadHasUnsentDraft(draftKey: string): boolean {
   const hasDraft = useAtomValue(composerDraftAtom(draftKey), composerDraftHasUserContent);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Load persisted drafts when this independent indicator mounts.
   useEffect(() => {
     ensureComposerDraftsLoaded();
   }, []);

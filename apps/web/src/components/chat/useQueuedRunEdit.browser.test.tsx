@@ -1,3 +1,4 @@
+import { AsyncResult } from "effect/reactivity";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   EnvironmentId,
@@ -86,10 +87,8 @@ function Harness(props: {
     serverProjection: projection([{ id: RUN, status: props.runStatus }]),
     promptRef: { current: "" },
     composerRef: { current: null },
-    createAttachmentAssetUrl: async () => ({
-      _tag: "Success",
-      value: { relativeUrl: "/attachment", expiresAt: 0 },
-    }),
+    createAttachmentAssetUrl: async () =>
+      AsyncResult.success({ relativeUrl: "/attachment", expiresAt: 0 }),
     setThreadError: vi.fn(),
   });
   useImperativeHandle(props.hookRef, () => result);
@@ -175,17 +174,19 @@ describe("useQueuedRunEdit", () => {
   it("does not copy a saved edit into the thread draft when the run starts mid-save", async () => {
     const { hook } = setup();
     let finishSave: (result: { readonly _tag: "Success" }) => void = () => {};
-    mocks.editQueuedRun.mockReturnValue(
-      new Promise((resolve) => {
+    mocks.editQueuedRun.mockImplementation((target) => {
+      if ((target as { input: { editing?: boolean } }).input.editing === true)
+        return Promise.resolve({ _tag: "Success" });
+      return new Promise((resolve) => {
         finishSave = resolve;
-      }),
-    );
+      });
+    });
     await using screen = await render(view(THREAD_A, "queued", hook));
     await beginChangedEdit(hook);
 
     // Not inside act(): act would hold the projection update until the save settles.
     const saved = requireHook(hook).saveEdit(savedContent("changed"), () => {});
-    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledTimes(2));
     // The server applied the edit and then started the run; the projection
     // reports the start before the edit's acknowledgement arrives.
     await act(() => setRuns(THREAD_A, "running"));
@@ -200,16 +201,18 @@ describe("useQueuedRunEdit", () => {
   it("leaves a newer edit alone when a save from before navigation finishes", async () => {
     const { hook } = setup();
     let finishSave: (result: { readonly _tag: "Success" }) => void = () => {};
-    mocks.editQueuedRun.mockReturnValue(
-      new Promise((resolve) => {
+    mocks.editQueuedRun.mockImplementation((target) => {
+      if ((target as { input: { editing?: boolean } }).input.editing === true)
+        return Promise.resolve({ _tag: "Success" });
+      return new Promise((resolve) => {
         finishSave = resolve;
-      }),
-    );
+      });
+    });
     await using screen = await render(view(THREAD_A, "queued", hook));
     await beginChangedEdit(hook);
     // Not inside act(): act would hold the rerenders until the save settles.
     const saved = requireHook(hook).saveEdit(savedContent("changed"), () => {});
-    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledTimes(2));
 
     // Leaving the thread unmounts the chat view; coming back mounts a new one.
     await screen.rerender(<AppAtomRegistryProvider>{null}</AppAtomRegistryProvider>);

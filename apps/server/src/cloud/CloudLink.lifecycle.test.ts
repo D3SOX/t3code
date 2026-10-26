@@ -172,8 +172,6 @@ describe("releaseManagedTunnelOnShutdown", () => {
     return Option.getOrThrow(mtime).getTime();
   });
 
-  const writeDesktopUpdateRestartMarker = writeRestartMarker();
-
   const provideReleaseHarness =
     (harness: ReleaseHarness) =>
     <A, E, R>(effect: Effect.Effect<A, E, R>) =>

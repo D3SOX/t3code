@@ -220,7 +220,10 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       workingShelfEnabled,
       inboxReturnAt: threadListInboxReturns.returnedAt,
     });
-    const visible = new Set([...pinned, ...active].map(keyOf));
+    const visible = new Set([
+      ...pinned.map(keyOf),
+      ...getThreadListV2OrderedSection({ ...shared, section: "active" }).map(keyOf),
+    ]);
     const parked = threads.filter(
       (thread) => thread.archivedAt === null && !visible.has(keyOf(thread)),
     );

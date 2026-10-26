@@ -80,8 +80,6 @@ import { ThreadPullRequestBadgeControl } from "./ThreadStatusIndicators";
 
 // The lease overscans 160px around a 20px viewport, a 340px band. With 45px rows the band
 // covers exactly 8 rows at each scroll position below.
-const ROW_HEIGHT = 45;
-const SPACER = 1000;
 
 it("keeps a long PR hover list in the viewport and lets the last row be selected", async () => {
   const previousViewport = { width: window.innerWidth, height: window.innerHeight };
@@ -101,7 +99,7 @@ it("keeps a long PR hover list in the viewport and lets the last row be selected
   document.body.append(container);
 
   try {
-    await using screen = await render(
+    await using _screen = await render(
       <div style={{ position: "fixed", top: 220, left: 300 }}>
         <ThreadPullRequestBadgeControl
           render={<Button size="xs" />}

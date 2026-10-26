@@ -715,7 +715,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         ? {
             label: thread.goal?.status === "active" ? "Goal" : "Working",
             icon: "working" as const,
-            className: "text-info",
+            className: "text-info-foreground",
           }
         : status === "waiting"
           ? {
@@ -745,7 +745,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   ? {
                       label: "Limited",
                       icon: "failed" as const,
-                      className: "text-error-foreground",
+                      className: "text-warning-foreground",
                     }
                   : status === "failed"
                     ? {
@@ -763,7 +763,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         ? {
                             label: "Done",
                             icon: "done" as const,
-                            className: "text-success",
+                            className: "text-success-foreground",
                           }
                         : null;
   const isWokeStatus = topStatus?.icon === "woke";

@@ -1148,7 +1148,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const {
-    workingShelfEnabled,
     pinnedThreads,
     visiblePinnedThreads,
     visibleActiveThreads,
@@ -1433,7 +1432,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // Snapshot navigation before partition mutation; background parks use a null plan.
   const planForwardNavigation = (
     threadKey: string,
-    coParkingKeys?: ReadonlySet<string>,
+    _coParkingKeys?: ReadonlySet<string>,
   ): (() => void) | null => {
     if (readRouteThreadKey(router) !== threadKey) return null;
     const shell = threadByKeyRef.current.get(threadKey);

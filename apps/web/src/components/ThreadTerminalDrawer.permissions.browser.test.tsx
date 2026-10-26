@@ -113,7 +113,7 @@ function setup(): Disposable {
 
 it("rechecks the target terminal grant when a retained surface callback reports a resize", async () => {
   using _env = setup();
-  await using screen = await render(
+  await using _screen = await render(
     <TerminalViewport
       advancedTypography={false}
       threadRef={threadRef}

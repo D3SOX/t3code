@@ -1718,7 +1718,7 @@ describe("EnvironmentThreads", () => {
       );
       expect(missing.status).not.toBe("deleted");
       expect(Option.isNone(missing.data)).toBe(true);
-      expect(yield* Ref.get(first.subscriptionCount)).toBe(0);
+      expect(yield* SubscriptionRef.get(first.subscriptionCount)).toBe(0);
       yield* Scope.close(firstScope, Exit.void);
 
       const reopened = yield* makeHarness({
@@ -1746,7 +1746,7 @@ describe("EnvironmentThreads", () => {
         const harness = yield* makeHarness({ loadSnapshot: () => Ref.get(response) });
         yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.error));
         expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
-        expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
+        expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(0);
 
         yield* Ref.set(response, {
           _tag: "present",

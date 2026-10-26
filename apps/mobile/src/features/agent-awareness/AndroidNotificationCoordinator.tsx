@@ -28,6 +28,7 @@ import { forgetAndroidUnifiedPushHost } from "./androidNotifications";
 export function useAndroidPushState() {
   const [state, setState] = useState(getAndroidPushState);
   const [foregroundRefresh, setForegroundRefresh] = useState(0);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to native notification and app lifecycle events.
   useEffect(() => {
     const refresh = () => setState(getAndroidPushState());
     const unsubscribe = subscribeAndroidPushState(refresh);
@@ -75,11 +76,13 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
   const connectionState = host?.connectionState;
   const supported = host?.serverConfig?.environment.capabilities.unifiedPush === true;
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Load the persisted native device identity for this host.
   useEffect(() => {
     void loadOrCreateAgentAwarenessDeviceId()
       .then(setDeviceId)
       .catch(() => setStatus(environmentId, "Could not load this device's identity"));
   }, [environmentId]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Register the host key with the external UnifiedPush distributor when connected.
   useEffect(() => {
     if (state.transport !== "unifiedpush" || !state.enabled || connectionState !== "connected")
       return;
@@ -110,6 +113,7 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
     state.foregroundRefresh,
   ]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Synchronize the distributor endpoint with the connected host.
   useEffect(() => {
     if (
       !state.enabled ||
@@ -181,11 +185,13 @@ function LocalNotifications({ connections }: { connections: readonly SavedRemote
     [connections],
   );
   const snapshots = useAtomValue(snapshotsAtom);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Load the persisted native identity before sending local notifications.
   useEffect(() => {
     void loadOrCreateAgentAwarenessDeviceId()
       .then(setDeviceId)
       .catch(() => {});
   }, []);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Resume native local alerts when the app returns to the foreground.
   useEffect(() => {
     if (state.transport !== "local" || !state.localEnabled || !deviceId) return;
     const resume = () => {
@@ -195,6 +201,7 @@ function LocalNotifications({ connections }: { connections: readonly SavedRemote
     const listener = AppState.addEventListener("change", resume);
     return () => listener.remove();
   }, [state.transport, state.localEnabled, deviceId]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Publish shell transitions and activity to Android notification APIs.
   useEffect(() => {
     const now = Date.now();
     const activity = localAgentActivity(snapshots, now);
@@ -240,6 +247,7 @@ function LocalNotifications({ connections }: { connections: readonly SavedRemote
 function ConnectedAndroidNotifications() {
   const { savedConnectionsById, isLoadingSavedConnection } = useSavedRemoteConnections();
   const state = useAndroidPushState();
+  // oxlint-disable-next-line t3code/react-effect-budget -- Remove native distributor subscriptions for deleted connections.
   useEffect(() => {
     if (Platform.OS !== "android" || isLoadingSavedConnection) return;
     for (const environmentId of Object.keys(state.subscriptions)) {

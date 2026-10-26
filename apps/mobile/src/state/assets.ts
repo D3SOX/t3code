@@ -55,6 +55,7 @@ export function useAssetUrlState(
       ? EMPTY_ASSET_URL_ATOM
       : assetEnvironment.createUrl({ environmentId, input: { resource } });
   const result = useAtomValue(query);
+  // oxlint-disable-next-line t3code/react-effect-budget -- A new mounted image occurrence must invalidate the external URL cache once.
   useEffect(() => {
     if (blocked !== null || !mutableResource) return;
     const cached = registry.get(query);

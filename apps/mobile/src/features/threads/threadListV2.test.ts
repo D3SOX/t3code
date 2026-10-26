@@ -57,13 +57,6 @@ function makeThread(
 
 const NOW = "2026-06-02T00:00:00.000Z";
 
-const linkedPullRequest = {
-  projectId: ProjectId.make("project-1"),
-  repository: "pingdotgg/t3code",
-  number: 42,
-  url: "https://github.com/pingdotgg/t3code/pull/42",
-};
-
 describe("resolveThreadListV2SnoozeMenuSelection", () => {
   it("recomputes presets that remain available instead of using old timestamps", () => {
     const displayedPresets = resolveSnoozePresets(new Date(2026, 4, 8, 10));
@@ -761,16 +754,6 @@ describe("buildThreadListV2Items settled sort reuse", () => {
     })
       .items.filter((item) => item.variant === "slim")
       .map((item) => `${item.thread.environmentId}:${item.thread.id}`);
-  }
-
-  function countDateParses(build: () => void): number {
-    const spy = vi.spyOn(Date, "parse");
-    try {
-      build();
-      return spy.mock.calls.length;
-    } finally {
-      spy.mockRestore();
-    }
   }
 
   const older = makeSettled("older", "2026-06-01T01:00:00.000Z");
@@ -1593,46 +1576,6 @@ it("excludes subagents from navigation, search and ordering while retaining user
 const BASE_MS = Date.parse(NOW);
 const isoAt = (ms: number) => new Date(ms).toISOString();
 const MINUTE_MS = 60_000;
-
-function runningRuntime() {
-  return {
-    status: "running" as const,
-    providerName: "Codex",
-    providerInstanceId: ProviderInstanceId.make("codex"),
-    runtimeMode: "full-access" as const,
-    activeRunId: null,
-    lastError: null,
-    updatedAt: NOW,
-  };
-}
-
-function buildTickThreads() {
-  return {
-    ready: makeThread({
-      id: ThreadId.make("tick-ready"),
-      title: "tick ready",
-      latestUserMessageAt: isoAt(BASE_MS - 5 * MINUTE_MS),
-    }),
-    approval: makeThread({
-      id: ThreadId.make("tick-approval"),
-      title: "tick approval",
-      hasPendingApprovals: true,
-      latestUserMessageAt: isoAt(BASE_MS - 5 * MINUTE_MS),
-    }),
-    settled: makeThread({
-      id: ThreadId.make("tick-settled"),
-      title: "tick settled",
-      settledOverride: "settled",
-      settledAt: isoAt(BASE_MS - 3 * 24 * 60 * MINUTE_MS),
-    }),
-    snoozed: makeThread({
-      id: ThreadId.make("tick-snoozed"),
-      title: "tick snoozed",
-      snoozedAt: isoAt(BASE_MS - MINUTE_MS),
-      snoozedUntil: isoAt(BASE_MS + 2 * 60 * MINUTE_MS),
-    }),
-  };
-}
 
 function buildTickList(
   threads: ReadonlyArray<EnvironmentThreadShell>,

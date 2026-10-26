@@ -218,7 +218,8 @@ export function useQueuedRunEdit(input: {
   const editKey = scopedThreadKey(routeThreadRef);
   const storedEdit = useAtomValue(queuedRunEdits.atom)[editKey] ?? null;
   const editing = activeThreadId === null ? null : storedEdit;
-  const isSaving = isPausing || useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const saving = useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const isSaving = isPausing || saving;
   const draftTarget =
     editing === null ? threadDraftTarget : queuedEditDraftTarget(routeThreadRef, editing.runId);
 
@@ -246,7 +247,8 @@ export function useQueuedRunEdit(input: {
       .clearComposerContent(queuedEditDraftTarget(routeThreadRef, runId));
 
   const beginEditingQueuedRun = async (request: EditQueuedRunRequest) => {
-    if (activeThreadId === null || editing !== null || saveInFlightRef.current) return;
+    if (activeThreadId === null || (editing !== null && !isSaving) || saveInFlightRef.current)
+      return;
     saveInFlightRef.current = true;
     setIsSaving(true);
     const result = await editQueuedRunCommand({

@@ -1,4 +1,3 @@
-import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
@@ -712,11 +711,6 @@ export function useThreadComposerState() {
     // Steering uses "auto" so an ended turn queues a run instead of restoring the draft.
     // An approval redirect must steer the waiting turn instead of queueing behind it.
     const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
-    const followUpAction = resolveComposerDispatchMode({
-      running: activeThreadBusy && canSteerActiveTurn,
-      alternateModifier: followUpOverride !== undefined && followUpOverride !== activeTurnDefault,
-      activeTurnDefault,
-    });
     const setupRunning = [selectedThreadActivityRun?.status, selectedThreadRuntime?.status].some(
       (status) => status === "preparing" || status === "starting",
     );
@@ -725,7 +719,7 @@ export function useThreadComposerState() {
       : resolveMobileFollowUpDispatchMode({
           running: activeThreadBusy,
           canSteer: canSteerActiveTurn,
-          preference: followUpBehavior,
+          preference: activeTurnDefault,
           ...(followUpOverride === undefined
             ? {}
             : {

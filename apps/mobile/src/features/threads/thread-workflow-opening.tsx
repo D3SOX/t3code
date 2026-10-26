@@ -1,6 +1,3 @@
-import { StackActions, useNavigation } from "@react-navigation/native";
-import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   workflowOpeningHeadline,
   type RuntimeSubagent,

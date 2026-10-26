@@ -1187,6 +1187,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         // keeps its account badge so same-driver instances stay distinct.
         <View className="flex-row items-center">
           {providerDrivers.slice(0, -1).map((driver, index) => (
+            // oxlint-disable-next-line react/no-array-index-key -- Repeated provider history icons have no local state.
             <View key={`${driver}:${index}`} className="-mr-1 opacity-30">
               <ProviderIcon provider={driver} size={12} />
             </View>

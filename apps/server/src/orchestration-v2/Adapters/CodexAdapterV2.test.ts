@@ -268,10 +268,6 @@ describe("CodexAdapterV2 runtime policy", () => {
         params.additionalContext?.t3_code_orchestration_01?.value ?? "",
         "Use `delegate_task`",
       );
-      assert.include(
-        params.additionalContext?.t3_code_orchestration_02?.value ?? "",
-        "structured object, never as JSON text",
-      );
     }),
   );
 

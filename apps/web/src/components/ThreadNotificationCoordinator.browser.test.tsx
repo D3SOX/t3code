@@ -287,7 +287,7 @@ function setup() {
 describe("thread notifications", () => {
   it.each([false, true])("alerts only once for the same limit when focused=%s", async (focused) => {
     await using harness = setup();
-    const { render, complete } = harness;
+    const { render } = harness;
     state.mode = "notifications-and-sound";
     state.focused = focused;
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -307,7 +307,7 @@ describe("thread notifications", () => {
 
   it("allows a different reset window but suppresses retries within the same window", async () => {
     await using harness = setup();
-    const { render, complete } = harness;
+    const { render } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -332,7 +332,7 @@ describe("thread notifications", () => {
 
   it("keeps separate provider instances and environments eligible for alerts", async () => {
     await using harness = setup();
-    const { render, complete } = harness;
+    const { render } = harness;
     state.mode = "notifications-and-sound";
     state.focused = false;
     state.environmentIds = ["env-1", "env-2"];
@@ -373,7 +373,7 @@ describe("thread notifications", () => {
 
   it("does not consume the shared alert when the first thread cannot notify", async () => {
     await using harness = setup();
-    const { render, complete } = harness;
+    const { render } = harness;
     state.mode = "notifications";
     state.active = { environmentId: "env-1", threadId: "thread-1" };
     state.usageLimitResetAt = "2026-09-13T14:00:00.000Z";
@@ -575,7 +575,7 @@ describe("thread notifications", () => {
     ["limited", "Usage limit reached"],
   ] as const)("uses the same %s event for in-app and desktop alerts", async (event, title) => {
     await using harness = setup();
-    const { render, complete } = harness;
+    const { render } = harness;
     state.mode = "notifications-and-sound";
     await render();
     state[event] = true;
@@ -598,6 +598,7 @@ describe("thread notifications", () => {
     expect(state.notification).toHaveBeenCalledWith(title, {
       body: "Fix the login form",
       tag: expect.any(String),
+      requireInteraction: false,
       silent: true,
     });
   });

@@ -274,8 +274,6 @@ export function useComposerSend(input: ComposerSendInput) {
     composerRef,
     composerDraftTarget,
     promptRef,
-    composerImagesRef,
-    composerFilesRef,
     composerTerminalContextsRef,
     feedbackUploadsInFlightRef,
     queuedRunEdit,
