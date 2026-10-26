@@ -24,6 +24,7 @@ import {
   createVividThemeColors,
   getDefaultThemeColors,
   themeColorToHex,
+  themeAllowsSidebarArtwork,
   toCanonicalThemeColor,
   THEME_FILE_VERSION,
 } from "./themePalette";
@@ -57,6 +58,10 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe("theme files", () => {
+  it.each(BUILT_IN_THEMES)("allows environment artwork with $label", (theme) => {
+    expect(themeAllowsSidebarArtwork(theme.id)).toBe(true);
+  });
+
   it("keeps built-in and standard search pairs readable and distinct from inline code", () => {
     const toOklab = converter("oklab");
     const distance = (first: string, second: string) => {

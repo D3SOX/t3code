@@ -246,6 +246,7 @@ export const T3_CODE_DIM_THEME: ThemeDefinition = {
   appearance: "light",
   colors: T3_CODE_LIGHT_THEME_COLORS,
   variants: { dark: T3_CODE_DARK_THEME_COLORS },
+  sidebarArtwork: true,
 };
 
 export const T3_CHAT_THEME: ThemeDefinition = {
