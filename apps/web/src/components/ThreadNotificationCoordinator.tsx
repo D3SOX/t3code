@@ -303,10 +303,7 @@ export function startThreadNotifications(
     for (const [prior, state] of changed) {
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
-        quiet:
-          isThreadCompletionSilent(state.raw) ||
-          state.raw.latestRunStopRequested === true ||
-          state.raw.latestRunSilent === true,
+        quiet: isThreadCompletionSilent(state.raw) || state.raw.latestRunStopRequested === true,
       });
     }
   };

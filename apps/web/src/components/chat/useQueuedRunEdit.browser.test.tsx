@@ -86,6 +86,11 @@ function Harness(props: {
     serverProjection: projection([{ id: RUN, status: props.runStatus }]),
     promptRef: { current: "" },
     composerRef: { current: null },
+    createAttachmentAssetUrl: async () => ({
+      _tag: "Success",
+      value: { relativeUrl: "/attachment", expiresAt: 0 },
+    }),
+    setThreadError: vi.fn(),
   });
   useImperativeHandle(props.hookRef, () => result);
   return null;
@@ -100,7 +105,7 @@ function view(threadRef: ScopedThreadRef, runStatus: string, hook: { current: Ho
 }
 
 function setup() {
-  mocks.editQueuedRun.mockReset();
+  mocks.editQueuedRun.mockReset().mockResolvedValue({ _tag: "Success" });
   useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
   setRuns(THREAD_A, "queued");
   setRuns(THREAD_B, "queued");

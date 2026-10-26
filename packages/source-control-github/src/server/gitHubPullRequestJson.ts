@@ -1323,10 +1323,6 @@ export interface GitHubReviewThreadComments {
   readonly avatarsByLogin: ReadonlyMap<string, string>;
   readonly botLogins: ReadonlySet<string>;
   /** Per-commit line counts carried by the same bounded pull-request query. */
-  readonly commitStats: ReadonlyMap<
-    string,
-    { readonly additions: number; readonly deletions: number }
-  >;
   /** Empty means unread; preserve existing commits. */
   readonly commits: ReadonlyArray<PullRequestCommit>;
   /** What GitHub says the reader may do with this pull request, read off the same response. */

@@ -1106,6 +1106,7 @@ describe("AssetAccess", () => {
           expect(yield* resolveAsset(suffix.slice(0, suffix.indexOf("/")), fontName)).toEqual({
             kind: "file",
             path: canonicalFontPath,
+            mutable: true,
           });
         }
       }
@@ -1649,8 +1650,10 @@ describe("AssetAccess", () => {
       },
     ]);
     return Effect.gen(function* () {
+      const decodeAssetCreateUrlInput = Schema.decodeEffect(AssetCreateUrlInput);
+
       // Every client and server release spells the resource this way on the wire.
-      const { resource } = yield* Schema.decodeEffect(AssetCreateUrlInput)({
+      const { resource } = yield* decodeAssetCreateUrlInput({
         resource: { _tag: "github-media", cwd: "/repo", url },
       });
       const issued = yield* issueAssetUrl({ resource });
@@ -1679,6 +1682,8 @@ describe("AssetAccess", () => {
 
   it.effect("refuses media no host keeps behind a credential, without echoing the URL", () =>
     Effect.gen(function* () {
+      const encodeAssetAccessError = Schema.encodeEffect(Schema.fromJsonString(AssetAccessError));
+
       for (const url of [
         "https://example.com/shot.png",
         "https://example.com/shot.png?token=private-media-token",
@@ -1687,7 +1692,7 @@ describe("AssetAccess", () => {
           resource: { _tag: SOURCE_CONTROL_MEDIA_ASSET, cwd: "/repo", url },
         }).pipe(Effect.flip);
         expect(error._tag).toBe("AssetGitHubMediaUrlValidationError");
-        const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(AssetAccessError))(error);
+        const encoded = yield* encodeAssetAccessError(error);
         expect(encoded).not.toContain(url);
       }
     }).pipe(Effect.provide(layerTest)),

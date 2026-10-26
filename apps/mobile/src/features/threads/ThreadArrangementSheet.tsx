@@ -214,18 +214,19 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
       ...shared,
       section: "pinned",
     });
+    const active = getThreadListV2OrderedSection({
+      ...shared,
+      section: "active",
+      workingShelfEnabled,
+      inboxReturnAt: threadListInboxReturns.returnedAt,
+    });
     const visible = new Set([...pinned, ...active].map(keyOf));
     const parked = threads.filter(
       (thread) => thread.archivedAt === null && !visible.has(keyOf(thread)),
     );
     return {
       pinned,
-      active: getThreadListV2OrderedSection({
-        ...shared,
-        section: "active",
-        workingShelfEnabled,
-        inboxReturnAt: threadListInboxReturns.returnedAt,
-      }),
+      active,
       snoozed: parked.filter((thread) => effectiveSnoozed(thread, { now })),
       settled: sortSettledThreads(parked.filter((thread) => !effectiveSnoozed(thread, { now }))),
     };
@@ -303,7 +304,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     .map((row) => `${row.key}:${row.thread?.pinOrderKey}:${row.thread?.activeOrderKey}`)
     .join("|");
   useEffect(() => {
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A changed thread order cancels the in-progress drag; stop only touches refs and state setters.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies, react/set-state-in-effect -- A changed thread order cancels the in-progress drag and clears its preview; stop only touches refs and state setters.
     stop();
   }, [orderVersion]);
   useEffect(

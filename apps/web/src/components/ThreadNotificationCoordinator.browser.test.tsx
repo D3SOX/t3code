@@ -2,10 +2,13 @@ import type { ClientSettings } from "@t3tools/contracts/settings";
 import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { act, fakeTimers, render as renderClient, type Screen } from "../../test/render";
+import { act, fakeTimers } from "../../test/render";
+import type { AnyRouter } from "@tanstack/react-router";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
+  settingsListeners: new Set<() => void>(),
   mode: "off" as ClientSettings["notificationMode"],
   inApp: true,
   active: { environmentId: "env-1", threadId: "other-thread" },
@@ -143,30 +146,40 @@ function mockThreads() {
   return [stableParent, child];
 }
 
-vi.mock(import("@effect/atom-react"), async (original) => ({
-  ...(await original()),
-  useAtomValue: (() => ({
-    status: state.live ? "live" : "disconnected",
-    snapshot: Option.some({ threads: mockThreads() }),
-  })) as never,
-}));
-vi.mock(import("@tanstack/react-router"), async (original) => ({
-  ...(await original()),
-  useNavigate: (() => state.navigate) as never,
-  useParams: (() => state.active) as never,
-}));
+const shellAtom = Atom.family((_id: string) => Atom.make<unknown>(null));
+const environmentIdsAtom = Atom.make<ReadonlyArray<string>>([]);
+vi.mock(import("../state/shell"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    environmentShell: {
+      ...actual.environmentShell,
+      stateValueAtom: ((id: string) => shellAtom(id)) as never,
+    },
+  };
+});
+vi.mock(import("../state/presentation"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    environmentSummaries: {
+      ...actual.environmentSummaries,
+      get environmentIdsAtom() {
+        return environmentIdsAtom as never;
+      },
+    },
+  };
+});
 vi.mock(import("../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useClientSettings: ((
-    select: (
-      settings: Pick<ClientSettings, "notificationMode" | "inAppNotificationsEnabled">,
-    ) => unknown,
-  ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp })) as never,
-  getClientSettings: (() => ({ notificationMode: state.mode })) as never,
-}));
-vi.mock(import("../state/environments"), async (original) => ({
-  ...(await original()),
-  useEnvironmentIds: (() => [...state.environmentIds]) as never,
+  subscribeClientSettings: ((listener: () => void) => {
+    state.settingsListeners.add(listener);
+    return () => state.settingsListeners.delete(listener);
+  }) as never,
+  getClientSettings: (() => ({
+    notificationMode: state.mode,
+    inAppNotificationsEnabled: state.inApp,
+  })) as never,
 }));
 vi.mock(import("../threadNotifications"), async (original) => ({
   ...(await original()),
@@ -181,18 +194,40 @@ vi.mock(import("./ui/toast"), async (original) => {
   };
 });
 
-import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
+import { startThreadNotifications } from "./ThreadNotificationCoordinator";
 
 function setup() {
-  let screen: Screen | null = null;
+  const registry = AtomRegistry.make();
+  let stop: (() => void) | null = null;
   let timers: Disposable | null = null;
+  const routes = new Set<() => void>();
+  const router = {
+    state: {
+      get matches() {
+        return [{ params: state.active }];
+      },
+    },
+    navigate: state.navigate,
+    subscribe: (_event: string, listener: () => void) => {
+      routes.add(listener);
+      return () => routes.delete(listener);
+    },
+  } as unknown as AnyRouter;
   const render = async () => {
-    if (screen) {
-      await screen.rerender(<ThreadNotificationCoordinator />);
-      await act(() => vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS));
-    } else {
-      screen = await renderClient(<ThreadNotificationCoordinator />);
+    const started = stop !== null;
+    for (const listener of state.settingsListeners) listener();
+    registry.set(environmentIdsAtom, [...state.environmentIds]);
+    for (const id of state.environmentIds)
+      registry.set(shellAtom(id), {
+        status: state.live ? "live" : "disconnected",
+        snapshot: Option.some({ threads: mockThreads() }),
+      });
+    if (!started) {
+      stop = startThreadNotifications(registry, router);
       timers = fakeTimers();
+    } else {
+      for (const listener of routes) listener();
+      await act(() => vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS));
     }
   };
   const complete = async () => {
@@ -226,6 +261,7 @@ function setup() {
     delegatedChild: null,
   });
   stableParent = null;
+  state.settingsListeners.clear();
   vi.spyOn(document, "visibilityState", "get").mockImplementation(
     () => state.visible as DocumentVisibilityState,
   );
@@ -234,10 +270,14 @@ function setup() {
   return {
     render,
     complete,
-    unmount: async () => screen?.unmount(),
+    unmount: async () => {
+      stop?.();
+      stop = null;
+    },
     async [Symbol.asyncDispose]() {
       timers?.[Symbol.dispose]();
-      await screen?.[Symbol.asyncDispose]();
+      stop?.();
+      registry.dispose();
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },

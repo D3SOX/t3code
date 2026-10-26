@@ -137,7 +137,6 @@ function AppContent() {
       <SplashScreenCoordinator />
       <SubscriptionUsageCoordinator />
       <AndroidNotificationCoordinator />
-      <PermissionUpdateNotice />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>

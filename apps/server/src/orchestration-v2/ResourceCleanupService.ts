@@ -51,32 +51,44 @@ export const layer = Layer.effect(
     const path = yield* Path.Path;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
     return {
-      cleanupScheduledTasks: (threadId: ThreadId) =>
-        scheduledTasks
+      cleanupScheduledTasks: Effect.fn("ResourceCleanupService.cleanupScheduledTasks")(function (
+        threadId: ThreadId,
+      ) {
+        return scheduledTasks
           .deleteForThread(threadId)
           .pipe(
             Effect.mapError(
               (cause) =>
                 new ResourceCleanupError({ operation: "scheduled-tasks", threadId, cause }),
             ),
-          ),
-      cleanupTerminals: (threadId: string) =>
-        terminals
+          );
+      }),
+      cleanupTerminals: Effect.fn("ResourceCleanupService.cleanupTerminals")(function (
+        threadId: string,
+      ) {
+        return terminals
           .close({ threadId, deleteHistory: true })
           .pipe(
             Effect.mapError(
               (cause) => new ResourceCleanupError({ operation: "terminal", threadId, cause }),
             ),
-          ),
-      cleanupPreviews: (threadId: string) =>
-        previews
+          );
+      }),
+      cleanupPreviews: Effect.fn("ResourceCleanupService.cleanupPreviews")(function (
+        threadId: string,
+      ) {
+        return previews
           .close({ threadId: ThreadId.make(threadId) })
           .pipe(
             Effect.mapError(
               (cause) => new ResourceCleanupError({ operation: "preview", threadId, cause }),
             ),
-          ),
-      cleanupAttachments: (attachmentIds: ReadonlyArray<string>, threadId: string) => {
+          );
+      }),
+      cleanupAttachments: Effect.fn("ResourceCleanupService.cleanupAttachments")(function (
+        attachmentIds: ReadonlyArray<string>,
+        threadId: string,
+      ) {
         const directory = imageSnapshotsDirectory(config.attachmentsDir, threadId, path);
         return Effect.forEach(
           attachmentIds,
@@ -118,7 +130,7 @@ export const layer = Layer.effect(
                   ),
           ),
         );
-      },
+      }),
     };
   }),
 );

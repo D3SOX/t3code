@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest, pullRequestLinkContextMenu } from "../../native/useOpenPullRequest";

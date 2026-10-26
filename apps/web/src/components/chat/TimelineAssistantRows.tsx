@@ -82,7 +82,7 @@ export function AssistantTimelineRow({
                 <ChatMarkdownAssetImage
                   key={path}
                   environmentId={threadRef.environmentId}
-                  kind={mediaKindFromPath(path) ?? "image"}
+                  kind={mediaKindFromPath(path) === "video" ? "video" : "image"}
                   resource={image.resource}
                   alt={image.alt}
                   srcFragment={image.srcFragment}

@@ -123,7 +123,6 @@ it("rechecks the target terminal grant when a retained surface callback reports 
       cwd="/repo"
       panelWorkspaceRoot="/repo"
       onSessionExited={state.otherCommand}
-      focusRequestId={0}
       autoFocus={false}
       visible={true}
       resizeEpoch={0}

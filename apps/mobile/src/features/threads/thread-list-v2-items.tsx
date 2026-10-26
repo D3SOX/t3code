@@ -73,6 +73,12 @@ import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 
+const TITLE_FAVICON_SIZE = 15;
+// Centers the favicon on the first line of the text-base title.
+const TITLE_FAVICON_OFFSET = 4;
+// Lines below the title start where the title text does.
+const TITLE_TEXT_INSET = TITLE_FAVICON_SIZE + 8;
+
 interface StatusLabel {
   readonly label: string;
   readonly icon: AppSymbolName;
@@ -716,11 +722,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const status = resolveThreadListV2Status(thread);
   const showThreadBranches = useShowThreadBranches();
   const branch = showThreadBranches ? thread.branch : null;
-  const compact =
-    !showThreadBranches &&
-    !props.environmentLabel &&
-    !props.searchMatch &&
-    !((status === "failed" || status === "limited") && thread.runtime?.lastError);
   // "Done" marks a completion the user has not opened yet — same emerald
   // label as the web sidebar, sourced from the server-side visited watermark
   // so checking a thread on any device clears it everywhere.
@@ -1204,117 +1205,25 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </>
   );
 
-  // Sidebar rows use navigation foregrounds on their active and idle surfaces.
+  const titleTextInset = props.project ? TITLE_TEXT_INSET : 0;
   const cardContent = (
     <>
-      <View className="flex-row items-center gap-1.5">
+      <View className="flex-row items-start gap-2">
         {props.project ? (
-          <ProjectFavicon
-            environmentId={thread.environmentId}
-            faviconPath={props.project.faviconPath}
-            projectIcon={props.project.projectIcon}
-            size={15}
-            projectTitle={props.project.title}
-            workspaceRoot={props.project.workspaceRoot}
-          />
-        ) : null}
-        <Text
-          className={cn(
-            "flex-1 text-sm font-t3-medium",
-            selected
-              ? selectedThreadRowColors.mutedForegroundClassName
-              : rowAppearance.mutedForegroundClassName,
-          )}
-          numberOfLines={1}
-        >
-          {props.projectTitle ?? props.project?.title ?? ""}
-        </Text>
-        {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
-        {draftIndicator}
-        {pinnedRow ? (
-          <SymbolView
-            name="pin"
-            size={11}
-            tintColorClassName={rowAppearance.mutedIconTintClassName}
-            type="monochrome"
-          />
-        ) : null}
-        {showsWoke ? (
-          <Pressable
-            className="-m-2.5 flex-row items-center gap-1 p-2.5"
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss Woke notification"
-            onPress={handleAcknowledgeWoke}
-            onLongPress={() => undefined}
-            style={({ pressed }) => ({
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <SymbolView
-              name="bell.badge"
-              size={13}
-              tintColorClassName={
-                selected ? selectedThreadRowColors.iconTintClassName : "accent-warning-foreground"
-              }
-              type="monochrome"
-              weight="semibold"
+          <View style={{ marginTop: TITLE_FAVICON_OFFSET }}>
+            <ProjectFavicon
+              environmentId={thread.environmentId}
+              faviconPath={props.project.faviconPath}
+              projectIcon={props.project.projectIcon}
+              size={TITLE_FAVICON_SIZE}
+              projectTitle={props.project.title}
+              workspaceRoot={props.project.workspaceRoot}
             />
-            <Text
-              className={cn(
-                "text-xs font-t3-bold",
-                selected ? selectedThreadRowColors.foregroundClassName : "text-warning-foreground",
-              )}
-            >
-              Woke
-            </Text>
-          </Pressable>
-        ) : statusLabel ? (
-          <View className="flex-row items-center gap-1">
-            <SymbolView
-              name={statusLabel.icon}
-              size={13}
-              tintColorClassName={
-                selected ? selectedThreadRowColors.iconTintClassName : statusLabel.iconTintClassName
-              }
-              type="monochrome"
-              weight="semibold"
-            />
-            <Text
-              className={cn(
-                "text-xs font-t3-bold",
-                (status === "working" || status === "waiting") && "tabular-nums",
-                selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
-              )}
-            >
-              {statusLabel.label}
-              {status === "working" ? (
-                <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
-              ) : status === "waiting" ? (
-                <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
-              ) : null}
-            </Text>
           </View>
-        ) : (
-          <Text
-            className={cn(
-              "text-xs tabular-nums",
-              selected
-                ? selectedThreadRowColors.foregroundClassName
-                : rowAppearance.tertiaryForegroundClassName,
-            )}
-          >
-            {timeLabel}
-          </Text>
-        )}
-        {compact ? (
-          <View className="shrink-0 flex-row items-center gap-2">{cardIndicators}</View>
         ) : null}
-      </View>
-      <View className="mt-1">
         <Text
           className={cn(
-            "text-base",
-            // Background work recedes to regular weight, matching web.
+            "flex-1 text-base",
             !recede && "font-t3-medium",
             selected
               ? selectedThreadRowColors.foregroundClassName
@@ -1324,97 +1233,155 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {thread.title}
         </Text>
-        {props.searchMatch ? (
-          <View className="mt-1">
-            <ThreadSearchMatchExcerpt
-              sidebar={sidebarPane}
-              match={props.searchMatch}
-              query={props.searchQuery ?? ""}
-              selected={selected}
+        <View className="flex-row items-center gap-1.5" style={{ marginTop: 3 }}>
+          {draftIndicator}
+          {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+          {pinnedRow ? (
+            <SymbolView
+              name="pin"
+              size={11}
+              tintColorClassName={rowAppearance.mutedIconTintClassName}
+              type="monochrome"
             />
-          </View>
-        ) : null}
-        {!compact ? (
-          <View className="mt-1 flex-row items-center gap-2">
-            {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+          ) : null}
+          {showsWoke ? (
+            <Pressable
+              className="-m-2.5 flex-row items-center gap-1 p-2.5"
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss Woke notification"
+              onPress={handleAcknowledgeWoke}
+              onLongPress={() => undefined}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <SymbolView
+                name="bell.badge"
+                size={13}
+                tintColorClassName={
+                  selected ? selectedThreadRowColors.iconTintClassName : "accent-warning-foreground"
+                }
+                type="monochrome"
+                weight="semibold"
+              />
               <Text
                 className={cn(
-                  "flex-1 text-xs",
+                  "text-xs font-t3-bold",
                   selected
-                    ? selectedThreadRowColors.mutedForegroundClassName
-                    : status === "limited"
-                      ? "text-warning-foreground"
-                      : "text-danger-foreground",
+                    ? selectedThreadRowColors.foregroundClassName
+                    : "text-warning-foreground",
                 )}
-                numberOfLines={1}
               >
-                {thread.runtime.lastError}
+                Woke
               </Text>
-            ) : branch || props.environmentLabel ? (
-              /* Keep branch and machine in one truncating line; the adjacent glyph must stay outside Text. */
-              <View className="min-w-0 flex-1 flex-row items-center gap-1">
-                <Text
-                  className={cn(
-                    "shrink text-xs",
-                    selected
-                      ? selectedThreadRowColors.mutedForegroundClassName
-                      : rowAppearance.mutedForegroundClassName,
-                  )}
-                  numberOfLines={1}
-                >
-                  {branch ? (
-                    <Text
-                      className={cn(
-                        "text-xs",
-                        selected
-                          ? selectedThreadRowColors.mutedForegroundClassName
-                          : rowAppearance.mutedForegroundClassName,
-                      )}
-                      style={{
-                        fontFamily: MONO_FONT,
-                      }}
-                    >
-                      {branch}
-                    </Text>
-                  ) : null}
-                  {branch && props.environmentLabel ? "  ·  " : null}
-                  {props.environmentLabel ? (
-                    <Text
-                      className={cn(
-                        "text-xs",
-                        selected
-                          ? selectedThreadRowColors.mutedForegroundClassName
-                          : rowAppearance.tertiaryForegroundClassName,
-                      )}
-                    >
-                      {props.environmentLabel}
-                    </Text>
-                  ) : null}
-                </Text>
-                {props.environmentLabel && props.environmentMachine ? (
-                  <EnvironmentMachineSymbol
-                    kind={props.environmentMachine}
-                    size={11}
-                    tintColorClassName={
-                      selected
-                        ? selectedThreadRowColors.mutedIconTintClassName
-                        : rowAppearance.tertiaryIconTintClassName
-                    }
-                  />
+            </Pressable>
+          ) : statusLabel ? (
+            <View className="flex-row items-center gap-1">
+              <SymbolView
+                name={statusLabel.icon}
+                size={13}
+                tintColorClassName={
+                  selected
+                    ? selectedThreadRowColors.iconTintClassName
+                    : statusLabel.iconTintClassName
+                }
+                type="monochrome"
+                weight="semibold"
+              />
+              <Text
+                className={cn(
+                  "text-xs font-t3-bold",
+                  (status === "working" || status === "waiting") && "tabular-nums",
+                  selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
+                )}
+              >
+                {statusLabel.label}
+                {status === "working" ? (
+                  <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
+                ) : status === "waiting" ? (
+                  <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
                 ) : null}
-              </View>
-            ) : (
-              <View className="flex-1" />
-            )}
-            {cardIndicators}
-          </View>
+              </Text>
+            </View>
+          ) : (
+            <Text
+              className={cn(
+                "text-xs tabular-nums",
+                selected
+                  ? selectedThreadRowColors.foregroundClassName
+                  : rowAppearance.tertiaryForegroundClassName,
+              )}
+            >
+              {timeLabel}
+            </Text>
+          )}
+        </View>
+      </View>
+      {props.searchMatch ? (
+        <View className="mt-1" style={{ paddingLeft: titleTextInset }}>
+          <ThreadSearchMatchExcerpt
+            sidebar={sidebarPane}
+            match={props.searchMatch}
+            query={props.searchQuery ?? ""}
+            selected={selected}
+          />
+        </View>
+      ) : null}
+      <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
+        {branch ? (
+          <Text
+            className="max-w-1/2 shrink text-xs text-foreground-muted"
+            numberOfLines={1}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {branch}
+          </Text>
         ) : null}
+        {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+          <Text
+            className={cn(
+              "flex-1 text-xs",
+              selected
+                ? selectedThreadRowColors.mutedForegroundClassName
+                : status === "limited"
+                  ? "text-warning-foreground"
+                  : "text-danger-foreground",
+            )}
+            numberOfLines={1}
+          >
+            {thread.runtime.lastError}
+          </Text>
+        ) : props.environmentLabel ? (
+          <View className="min-w-0 flex-1 flex-row items-center gap-1">
+            {props.environmentMachine ? (
+              <EnvironmentMachineSymbol
+                kind={props.environmentMachine}
+                size={11}
+                tintColorClassName={
+                  selected
+                    ? selectedThreadRowColors.mutedIconTintClassName
+                    : rowAppearance.tertiaryIconTintClassName
+                }
+              />
+            ) : null}
+            <Text
+              className={cn(
+                "shrink text-xs",
+                selected
+                  ? selectedThreadRowColors.mutedForegroundClassName
+                  : rowAppearance.tertiaryForegroundClassName,
+              )}
+              numberOfLines={1}
+            >
+              {props.environmentLabel}
+            </Text>
+          </View>
+        ) : (
+          <View className="flex-1" />
+        )}
+        {cardIndicators}
       </View>
     </>
   );
 
-  // Background work fades as a whole, status label included, so it takes
-  // less attention than rows that need a human (input, approval, done).
   const fadedCardContent = recede ? (
     <View
       style={{

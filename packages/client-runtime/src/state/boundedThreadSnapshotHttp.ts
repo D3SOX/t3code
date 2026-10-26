@@ -69,7 +69,10 @@ export const layer: Layer.Layer<
       RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
     );
     return ThreadSnapshotLoader.ThreadSnapshotLoader.of({
-      load: (prepared: PreparedConnection, threadId: ThreadId) => {
+      load: Effect.fn("ThreadSnapshotLoader.load")(function (
+        prepared: PreparedConnection,
+        threadId: ThreadId,
+      ) {
         const loadFullFallback = ThreadSnapshotLoader.fetchEnvironmentThreadSnapshot({
           prepared,
           threadId,
@@ -157,7 +160,7 @@ export const layer: Layer.Layer<
             ),
           ),
         );
-      },
+      }),
     });
   }),
 );

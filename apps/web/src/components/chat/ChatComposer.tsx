@@ -1,5 +1,8 @@
 import { composerSubmissionHints } from "../../composer-logic";
-import { ACTIVE_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import {
+  ACTIVE_COMPOSER_PLACEHOLDER,
+  DISCONNECTED_COMPOSER_PLACEHOLDER,
+} from "../../composerPlaceholder";
 
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
@@ -1007,8 +1010,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const refreshWorkspaceSnapshotOnTyping = useProviderWorkspaceSnapshotRefresh({
     environmentId,
     gitCwd,
-    selectedProviderEntry,
-    selectedProviderStatus: selectedProviderStatus,
+    instanceId: selectedProviderEntry?.instanceId,
   });
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;

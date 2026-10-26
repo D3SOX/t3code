@@ -314,11 +314,11 @@ describe("question answer paths", () => {
       expect(NodeFS.statSync(path + ".txt").mtimeMs).toBe(before);
       yield* Effect.gen(function* () {
         const cleanup = yield* Cleanup.ResourceCleanupService;
-        yield* cleanup.cleanupAttachments([file.id]);
+        yield* cleanup.cleanupAttachments([file.id], "thread-1");
         expect(NodeFS.existsSync(path)).toBe(false);
         expect(NodeFS.existsSync(path + ".txt")).toBe(false);
         NodeFS.writeFileSync(path + ".txt", "orphaned extraction");
-        yield* cleanup.cleanupAttachments([file.id]);
+        yield* cleanup.cleanupAttachments([file.id], "thread-1");
         expect(NodeFS.existsSync(path + ".txt")).toBe(false);
       }).pipe(
         Effect.provide(
