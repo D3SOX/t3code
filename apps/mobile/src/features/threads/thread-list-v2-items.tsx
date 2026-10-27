@@ -722,6 +722,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const status = resolveThreadListV2Status(thread);
   const showThreadBranches = useShowThreadBranches();
   const branch = showThreadBranches ? thread.branch : null;
+  const errorDetails =
+    status === "failed" || status === "limited" ? thread.runtime?.lastError : null;
   // "Done" marks a completion the user has not opened yet — same emerald
   // label as the web sidebar, sourced from the server-side visited watermark
   // so checking a thread on any device clears it everywhere.
@@ -1314,6 +1316,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               {timeLabel}
             </Text>
           )}
+          {!showThreadBranches ? cardIndicators : null}
         </View>
       </View>
       {props.searchMatch ? (
@@ -1326,60 +1329,62 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           />
         </View>
       ) : null}
-      <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
-        {branch ? (
-          <Text
-            className="max-w-1/2 shrink text-xs text-foreground-muted"
-            numberOfLines={1}
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {branch}
-          </Text>
-        ) : null}
-        {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
-          <Text
-            className={cn(
-              "flex-1 text-xs",
-              selected
-                ? selectedThreadRowColors.mutedForegroundClassName
-                : status === "limited"
-                  ? "text-warning-foreground"
-                  : "text-danger-foreground",
-            )}
-            numberOfLines={1}
-          >
-            {thread.runtime.lastError}
-          </Text>
-        ) : props.environmentLabel ? (
-          <View className="min-w-0 flex-1 flex-row items-center gap-1">
-            {props.environmentMachine ? (
-              <EnvironmentMachineSymbol
-                kind={props.environmentMachine}
-                size={11}
-                tintColorClassName={
-                  selected
-                    ? selectedThreadRowColors.mutedIconTintClassName
-                    : rowAppearance.tertiaryIconTintClassName
-                }
-              />
-            ) : null}
+      {showThreadBranches || props.environmentLabel || errorDetails ? (
+        <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
+          {branch ? (
+            <Text
+              className="max-w-1/2 shrink text-xs text-foreground-muted"
+              numberOfLines={1}
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {branch}
+            </Text>
+          ) : null}
+          {errorDetails ? (
             <Text
               className={cn(
-                "shrink text-xs",
+                "flex-1 text-xs",
                 selected
                   ? selectedThreadRowColors.mutedForegroundClassName
-                  : rowAppearance.tertiaryForegroundClassName,
+                  : status === "limited"
+                    ? "text-warning-foreground"
+                    : "text-danger-foreground",
               )}
               numberOfLines={1}
             >
-              {props.environmentLabel}
+              {errorDetails}
             </Text>
-          </View>
-        ) : (
-          <View className="flex-1" />
-        )}
-        {cardIndicators}
-      </View>
+          ) : props.environmentLabel ? (
+            <View className="min-w-0 flex-1 flex-row items-center gap-1">
+              {props.environmentMachine ? (
+                <EnvironmentMachineSymbol
+                  kind={props.environmentMachine}
+                  size={11}
+                  tintColorClassName={
+                    selected
+                      ? selectedThreadRowColors.mutedIconTintClassName
+                      : rowAppearance.tertiaryIconTintClassName
+                  }
+                />
+              ) : null}
+              <Text
+                className={cn(
+                  "shrink text-xs",
+                  selected
+                    ? selectedThreadRowColors.mutedForegroundClassName
+                    : rowAppearance.tertiaryForegroundClassName,
+                )}
+                numberOfLines={1}
+              >
+                {props.environmentLabel}
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-1" />
+          )}
+          {showThreadBranches ? cardIndicators : null}
+        </View>
+      ) : null}
     </>
   );
 
