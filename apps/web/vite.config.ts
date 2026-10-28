@@ -102,6 +102,8 @@ const browserTestProject = {
   optimizeDeps: {
     include: [
       "@base-ui/react/combobox",
+      "@base-ui/react/radio",
+      "@base-ui/react/radio-group",
       "vite-plus/test/browser",
       "@base-ui/react/autocomplete",
       "saxes",
