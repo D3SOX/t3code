@@ -3352,17 +3352,9 @@ export default function ChatView(props: ChatViewProps) {
                 detailLoading={threadDetailLoading}
                 citationRequest={citationRequest}
                 citationHistory={citationHistory}
-                {...(true
-                  ? {
-                      onCiteAssistantText: citeAssistantTextStable,
-                      ...(activeProject
-                        ? {
-                            onRunShellCommand: runShellCommandStable,
-                          }
-                        : {}),
-                    }
-                  : {})}
-                isWorking={true && isWorking}
+                onCiteAssistantText={citeAssistantTextStable}
+                {...(activeProject ? { onRunShellCommand: runShellCommandStable } : {})}
+                isWorking={isWorking}
                 runlessWorkActive={runlessWorkStartedAt !== null}
                 isCompacting={isCompacting}
                 awaitingUser={
@@ -3392,7 +3384,7 @@ export default function ChatView(props: ChatViewProps) {
                       onOpenWorktreeSetupTerminal,
                     }
                   : {})}
-                isPreparingWorktree={true && isPreparingWorktree}
+                isPreparingWorktree={isPreparingWorktree}
                 footer={timelineFooter}
                 listRef={legendListRef}
                 runs={serverProjection?.runs ?? []}
