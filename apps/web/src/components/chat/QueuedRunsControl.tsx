@@ -268,7 +268,7 @@ export function QueuedRunsControl({
     });
   };
   return (
-    <ComposerBanner.Attachment>
+    <div className="chat-content-lane">
       <ComposerBanner.Root
         role="region"
         aria-label={`${items.length} queued message${items.length === 1 ? "" : "s"}`}
@@ -568,7 +568,7 @@ export function QueuedRunsControl({
           </ComposerBanner.Children>
         </ComposerBanner.Scroll>
       </ComposerBanner.Root>
-    </ComposerBanner.Attachment>
+    </div>
   );
 }
 
