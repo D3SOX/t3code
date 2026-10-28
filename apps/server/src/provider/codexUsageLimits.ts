@@ -155,12 +155,30 @@ function codexCredits(credits: CodexRateLimitSnapshot["credits"]) {
 
 export function codexRateLimitsToUpdate(
   snapshot: CodexRateLimitSnapshot,
+  previous?: CodexRateLimitSnapshot,
 ): ProviderUsageLimitsUpdate | undefined {
   if (snapshot.limitId && snapshot.limitId !== "codex") return undefined;
-  const windows = codexRateLimitsToWindows(snapshot);
+  const previousWindows = previous ? codexRateLimitsToWindows(previous) : [];
+  // Token ticks repeat session-cached limits that may predate an account probe or reset.
+  const windows = codexRateLimitsToWindows(snapshot).filter((window) => {
+    const existing = previousWindows.find((candidate) => candidate.id === window.id);
+    return (
+      !existing ||
+      existing.kind !== window.kind ||
+      existing.usedPercent !== window.usedPercent ||
+      existing.resetsAt !== window.resetsAt ||
+      existing.windowDurationMins !== window.windowDurationMins
+    );
+  });
   const credits = codexCredits(snapshot.credits);
-  return windows.length > 0 || credits !== undefined
-    ? { windows, ...(credits !== undefined ? { credits } : {}) }
+  const previousCredits = codexCredits(previous?.credits);
+  const creditsChanged =
+    credits != null &&
+    (credits.balance !== previousCredits?.balance ||
+      credits.unlimited !== previousCredits?.unlimited ||
+      credits.hasCredits !== previousCredits?.hasCredits);
+  return windows.length > 0 || creditsChanged
+    ? { windows, ...(creditsChanged ? { credits } : {}) }
     : undefined;
 }
 
