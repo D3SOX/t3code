@@ -1,4 +1,3 @@
-import type { ModelCapacityRetry } from "@t3tools/contracts";
 import { capacityRetryLabel } from "@t3tools/shared/modelCapacityRetry";
 import { useEffect, useState } from "react";
 import { CircleAlertIcon } from "lucide-react";
@@ -46,3 +45,5 @@ function CapacityRetryBanner({
     </div>
   );
 }
+
+import type { ModelCapacityRetry } from "@t3tools/shared/modelCapacityRetry";

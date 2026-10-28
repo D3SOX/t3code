@@ -125,8 +125,6 @@ it("rechecks the target terminal grant when a retained surface callback reports 
       onSessionExited={state.otherCommand}
       autoFocus={false}
       visible={true}
-      resizeEpoch={0}
-      drawerHeight={200}
       keybindings={[]}
     />,
   );

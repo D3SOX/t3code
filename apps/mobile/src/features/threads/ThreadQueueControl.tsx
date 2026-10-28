@@ -1,3 +1,10 @@
+import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import { queuedRunEditBlockedReason } from "@t3tools/client-runtime/queued-run-edit";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
+import { useQuietThreadShell } from "../../state/entities";
+import { makeQueuedRunsAtom } from "@t3tools/client-runtime/queued-run-edit";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";
 import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
@@ -118,6 +125,14 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   } | null>(null);
   const [translation] = useState(() => new Animated.Value(0));
   const queuedRuns = workflow?.queuedRuns ?? [];
+  const pendingQuestions = useAtomValue(
+    environmentThreadDetails.pendingRequestsAtom(
+      scopeThreadRef(target.environmentId, target.threadId),
+    ),
+  );
+  const editBlockedReason = queuedRunEditBlockedReason({
+    openQuestionCount: pendingQuestions?.userInputs.length ?? 0,
+  });
   const order = queuedRuns.map(({ run }) => run.id).join(",");
   useEffect(() => {
     if (drag.current && drag.current.order !== order) {
@@ -165,7 +180,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       return;
     }
     if (action === "edit") {
-      if (editing !== null) return;
+      if (editing !== null || editBlockedReason !== null) return;
       const entry = queuedRuns[index]!;
       busyRef.current = true;
       setBusyRunId(runId);
@@ -181,17 +196,35 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         });
         if (result._tag !== "Success") return;
         void Haptics.selectionAsync();
-        beginQueuedRunEdit(threadKey, {
-          runId,
-          messageId: entry.messageId,
-          originalText: entry.text,
-          existingAttachments: entry.attachments,
-          ...(entry.context
-            ? {
-                context: entry.context,
-              }
-            : {}),
-        });
+        beginQueuedRunEdit(
+          threadKey,
+          {
+            runId,
+            messageId: entry.messageId,
+            originalText: entry.text,
+            existingAttachments: entry.attachments,
+            ...(entry.context
+              ? {
+                  context: entry.context,
+                }
+              : {}),
+          },
+          makeQueuedRunsAtom({
+            threadId: target.threadId,
+            snapshot: threadEnvironment.snapshotAtom(target.environmentId),
+            detailStatus: environmentThreadDetails.statusAtom(
+              scopeThreadRef(target.environmentId, target.threadId),
+            ),
+            runs: Atom.make(
+              (get) =>
+                get(
+                  environmentThreadDetails.quietThreadAtom(
+                    scopeThreadRef(target.environmentId, target.threadId),
+                  ),
+                )?.projection.runs ?? null,
+            ),
+          }),
+        );
         navigation.goBack();
       })().finally(() => {
         busyRef.current = false;
@@ -386,7 +419,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           No messages waiting in this queue.
         </Text>
       ) : null}
-      {queuedRuns.map(({ run, text, attachments, context }, index) => {
+      {queuedRuns.map(({ run, text, attachments, context, message }, index) => {
         const layout = dragRows?.find((row) => row.id === run.id);
         const offset =
           sourceLayout?.y !== undefined &&
@@ -403,6 +436,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           index,
           isEditing: editing?.runId === run.id,
           isGuestMessage: context?.guest !== undefined,
+          editBlocked: editBlockedReason !== null,
           queuedCount: queuedRuns.length,
           text,
         });
@@ -578,21 +612,26 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         environmentId={target.environmentId}
                         attachments={attachments}
                       />
-                      <Text
-                        className={
-                          controls.isEditing
-                            ? "min-w-0 flex-1 text-sm text-foreground-muted"
-                            : "min-w-0 flex-1 text-sm text-foreground"
-                        }
-                        numberOfLines={1}
-                      >
-                        {context?.guest === undefined ? null : (
-                          <Text className="font-t3-medium text-adaptive-fuchsia-600-300">
-                            {`${context.guest.name}  `}
-                          </Text>
-                        )}
-                        {title}
-                      </Text>
+                      <View className="min-w-0 flex-1">
+                        {message ? (
+                          <QueuedRunSender environmentId={target.environmentId} message={message} />
+                        ) : null}
+                        <Text
+                          className={
+                            controls.isEditing
+                              ? "min-w-0 flex-1 text-sm text-foreground-muted"
+                              : "min-w-0 flex-1 text-sm text-foreground"
+                          }
+                          numberOfLines={1}
+                        >
+                          {context?.guest === undefined ? null : (
+                            <Text className="font-t3-medium text-adaptive-fuchsia-600-300">
+                              {`${context.guest.name}  `}
+                            </Text>
+                          )}
+                          {title}
+                        </Text>
+                      </View>
                       <View className="shrink-0 flex-row items-center gap-1">
                         <SymbolView
                           name={run.queueAfterNextTool ? "hammer" : "clock"}
@@ -909,5 +948,61 @@ function QueueDragHandle(props: {
         />
       </View>
     </GestureDetector>
+  );
+}
+
+type QueuedRunMessage = NonNullable<
+  NonNullable<ReturnType<typeof useThreadQueueWorkflow>>["queuedRuns"][number]["message"]
+>;
+
+/** Who sent a queued message, as its sent form shows it in the thread. */
+function QueuedRunSender(props: {
+  readonly environmentId: EnvironmentId;
+  readonly message: QueuedRunMessage;
+}) {
+  const { attribution, scheduledTaskId } = resolveUserMessagePresentation(props.message);
+  const senderThreadId = attribution === "agent" ? props.message.senderThreadId : undefined;
+  const senderShell = useQuietThreadShell(
+    senderThreadId ? scopeThreadRef(props.environmentId, senderThreadId) : null,
+  );
+  const tasks = useEnvironmentQuery(
+    scheduledTaskId
+      ? serverEnvironment.scheduledTasksLive({ environmentId: props.environmentId, input: {} })
+      : null,
+  );
+  const sender =
+    attribution === "automation"
+      ? {
+          icon: "calendar.badge.clock" as const,
+          label:
+            tasks.data?.tasks.find((task) => task.id === scheduledTaskId)?.title ?? "Automation",
+        }
+      : attribution === "agent"
+        ? {
+            icon: "bubble.left.and.bubble.right" as const,
+            label: senderShell?.title.trim() || "Agent",
+          }
+        : attribution === "t3code"
+          ? { icon: null, label: "Sent by T3 Code" }
+          : null;
+  if (sender === null) return null;
+  return (
+    <View className="flex-row items-center gap-1">
+      {sender.icon ? (
+        <SymbolView
+          name={sender.icon}
+          size={11}
+          weight="medium"
+          tintColorClassName="accent-foreground-muted"
+          type="monochrome"
+        />
+      ) : null}
+      <Text
+        numberOfLines={1}
+        className="min-w-0 shrink font-t3-medium text-2xs text-foreground-muted"
+      >
+        {sender.label}
+      </Text>
+    </View>
   );
 }

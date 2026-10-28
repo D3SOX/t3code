@@ -45,7 +45,7 @@ export function useLinkedPullRequestActions(input: {
     thread?.environmentId ?? null,
     AuthOrchestrationOperateScope,
   );
-  const canEdit = canOperate && capabilities?.threadPullRequests === true;
+  const canEdit = canOperate && capabilities !== undefined;
   const canWatch = canOperate && capabilities?.threadPullRequestWatch === true;
   const canStartWatch =
     canWatch &&
@@ -58,44 +58,40 @@ export function useLinkedPullRequestActions(input: {
   const unlink = useAtomCommand(threadEnvironment.unlinkPullRequest, { reportFailure: false });
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: false });
 
-  const run = useCallback(
-    async (failureTitle: string, pending: Promise<AtomCommandResult<unknown, unknown>>) => {
-      const result = await pending;
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-      const cause = squashAtomCommandFailure(result);
-      Dialog.alert(failureTitle, cause instanceof Error ? cause.message : "Try again.");
-    },
-    [],
-  );
+  const run = async (
+    failureTitle: string,
+    pending: Promise<AtomCommandResult<unknown, unknown>>,
+  ) => {
+    const result = await pending;
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    const cause = squashAtomCommandFailure(result);
+    Dialog.alert(failureTitle, cause instanceof Error ? cause.message : "Try again.");
+  };
 
-  const setLinked = useCallback(
-    (
-      reference: { host: string; repository: string; number: number; url: string },
-      linked: boolean,
-    ) => {
-      if (thread === null) return;
-      const mutation = planThreadPullRequestMutation({
-        capabilities,
-        threadId: thread.id,
-        reference,
-        legacyProjectId: null,
-        linked,
-      });
-      if (mutation === null || mutation.type === "thread.meta.update") return;
-      const environmentId = thread.environmentId;
-      void run(
-        linked
-          ? `Couldn't link this ${terminology.singular}`
-          : `Couldn't unlink this ${terminology.singular}`,
-        mutation.type === "thread.pull-request.link"
-          ? link({ environmentId, input: mutation.input })
-          : unlink({ environmentId, input: mutation.input }),
-      );
-    },
-    [capabilities, link, run, terminology, thread, unlink],
-  );
+  const setLinked = (
+    reference: { host: string; repository: string; number: number; url: string },
+    linked: boolean,
+  ) => {
+    if (thread === null) return;
+    const mutation = planThreadPullRequestMutation({
+      capabilities,
+      threadId: thread.id,
+      reference,
+      linked,
+    });
+    if (mutation === null) return;
+    const environmentId = thread.environmentId;
+    void run(
+      linked
+        ? `Couldn't link this ${terminology.singular}`
+        : `Couldn't unlink this ${terminology.singular}`,
+      mutation.type === "thread.pull-request.link"
+        ? link({ environmentId, input: mutation.input })
+        : unlink({ environmentId, input: mutation.input }),
+    );
+  };
 
-  const promptLink = useCallback(() => {
+  const promptLink = () => {
     const { singular } = terminology;
     Dialog.prompt({
       title: `Link ${singular}`,
@@ -120,7 +116,7 @@ export function useLinkedPullRequestActions(input: {
         setLinked(resolved.link, true);
       },
     });
-  }, [project, setLinked, terminology]);
+  };
 
   const menuActions = useCallback(
     (link: ThreadPullRequestLink): MenuAction[] => {
@@ -205,10 +201,7 @@ export function useLinkedPullRequestActions(input: {
     [run, setLinked, thread, watch, navigateToPullRequest],
   );
 
-  return useMemo(
-    () => ({ canLink: canEdit, terminology, promptLink, menuActions, onMenuAction }),
-    [canEdit, terminology, promptLink, menuActions, onMenuAction],
-  );
+  return { canLink: canEdit, terminology, promptLink, menuActions, onMenuAction };
 }
 
 export type LinkedPullRequestActions = ReturnType<typeof useLinkedPullRequestActions>;

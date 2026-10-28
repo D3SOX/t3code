@@ -3,7 +3,6 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type ReactNode } from "react";
 import { cn } from "~/lib/utils";
-import { useClientSettings } from "../../hooks/useSettings";
 import {
   animateSidebarLayoutChanges,
   sidebarMarkerId,
@@ -116,7 +115,7 @@ export function SidebarDragBoundary(props: {
 export function SidebarSectionHeader(props: {
   marker: "working-header" | "snoozed-header" | "settled-header";
   label: string;
-  /** A muted trailing count; classic shows it only while the shelf is collapsed. */
+  /** A muted trailing count. */
   count: number;
   className?: string;
   dragging?: boolean;
@@ -133,9 +132,6 @@ export function SidebarSectionHeader(props: {
       : props.marker === "snoozed-header"
         ? "snoozed"
         : "settled";
-  const redesign = useClientSettings((s) => s.redesignEnabled);
-  const collapsedCount = props.toggle.expanded ? null : props.count;
-  const count = redesign ? props.count : collapsedCount;
   return (
     <SortableSidebarMarker
       marker={props.marker}
@@ -143,6 +139,9 @@ export function SidebarSectionHeader(props: {
       className={cn("mx-0.5 h-8", props.className)}
     >
       <CollapsibleSectionHeader
+        role="treeitem"
+        tabIndex={-1}
+        data-sidebar-row={`shelf:${shelf}`}
         onClick={props.toggle.onToggle}
         onContextMenu={
           props.onContextMenu
@@ -172,14 +171,9 @@ export function SidebarSectionHeader(props: {
         expanded={props.toggle.expanded}
         tone={props.isDropTarget ? "accent" : props.dragging ? "emphasized" : "muted"}
         data-testid={`sidebar-${shelf}-shelf-toggle`}
-        accessory={
-          redesign && count !== null ? (
-            <span className="font-normal tabular-nums">{count}</span>
-          ) : null
-        }
+        accessory={<span className="font-normal tabular-nums">{props.count}</span>}
       >
         {props.label}
-        {!redesign && collapsedCount !== null ? ` (${collapsedCount})` : null}
       </CollapsibleSectionHeader>
     </SortableSidebarMarker>
   );

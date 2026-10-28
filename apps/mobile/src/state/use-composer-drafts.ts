@@ -86,12 +86,22 @@ export function setComposerContextImporting(draftKey: string, importing: boolean
   else delete next[draftKey];
   appAtomRegistry.set(composerContextImportsAtom, next);
 }
-let lastComposerSelection: {
-  draftKey: string;
-  text: string;
-  start: number;
-  end: number;
-} | null = null;
+
+interface ComposerDraftSelection {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+// Keyed by draft so a caret move in one composer neither replaces another draft's caret
+// nor notifies its readers. Kept alive so the caret survives the composer unmounting.
+const composerDraftSelectionAtom = Atom.family((_draftKey: string) =>
+  Atom.make<ComposerDraftSelection | null>(null).pipe(
+    Atom.keepAlive,
+    Atom.withLabel("mobile:composer-draft-selection"),
+  ),
+);
+const NO_COMPOSER_DRAFT_SELECTION_ATOM = Atom.make<ComposerDraftSelection | null>(null);
 export function rememberComposerDraftSelection(
   draftKey: string,
   text: string,
@@ -100,28 +110,36 @@ export function rememberComposerDraftSelection(
     end: number;
   },
 ): void {
-  lastComposerSelection = {
-    draftKey,
-    text,
-    ...selection,
-  };
+  appAtomRegistry.set(composerDraftSelectionAtom(draftKey), { text, ...selection });
+}
+
+function matchingComposerDraftSelection(
+  selection: ComposerDraftSelection | null,
+  text: string,
+): { start: number; end: number } | null {
+  if (selection?.text !== text) return null;
+  return { start: selection.start, end: selection.end };
 }
 
 /** Read the post-chip-insertion selection or the editor restores the pre-insert caret before the chip. */
-export function readComposerDraftSelection(
+function readComposerDraftSelection(
   draftKey: string,
   text: string,
-): {
-  start: number;
-  end: number;
-} | null {
-  if (lastComposerSelection?.draftKey !== draftKey || lastComposerSelection.text !== text) {
-    return null;
-  }
-  return {
-    start: lastComposerSelection.start,
-    end: lastComposerSelection.end,
-  };
+): { start: number; end: number } | null {
+  return matchingComposerDraftSelection(
+    appAtomRegistry.get(composerDraftSelectionAtom(draftKey)),
+    text,
+  );
+}
+
+export function useComposerDraftSelection(
+  draftKey: string | null,
+  text: string,
+): { start: number; end: number } | null {
+  const selection = useAtomValue(
+    draftKey === null ? NO_COMPOSER_DRAFT_SELECTION_ATOM : composerDraftSelectionAtom(draftKey),
+  );
+  return draftKey === null ? null : matchingComposerDraftSelection(selection, text);
 }
 export interface ComposerDraftInsertion {
   readonly text: string;
@@ -150,8 +168,7 @@ function contextInsertionRange(
   draft: ComposerDraft,
   target?: ComposerDraftInsertion,
 ) {
-  const captured =
-    target ?? (lastComposerSelection?.draftKey === draftKey ? lastComposerSelection : null);
+  const captured = target ?? appAtomRegistry.get(composerDraftSelectionAtom(draftKey));
   // Append after text edits during writes; caret-only moves preserve the captured insertion range.
   const selection = captured?.text === draft.text ? captured : null;
   const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
@@ -347,12 +364,10 @@ function draftWithInsertedContext(
     records: [...records.values()],
   });
   if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return null;
-  lastComposerSelection = {
-    draftKey,
-    text,
+  rememberComposerDraftSelection(draftKey, text, {
     start: start + insertion.length,
     end: start + insertion.length,
-  };
+  });
   return withReferencedContextFiles(draft, text, context);
 }
 export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDraftPersistenceError>()(
@@ -396,6 +411,12 @@ export interface ComposerDraftWorkspaceSelection {
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
   readonly pullRequestReference?: string;
+  /**
+   * Local mode chosen before refs named the current branch. It is never cleared when refs load:
+   * a local task runs on the checkout, so the draft keeps following it (a later checkout change
+   * included) until the user picks a branch, rather than pinning the first name refs reported.
+   */
+  readonly followsCurrentCheckout?: boolean;
 }
 export type ComposerDraftSettingsUpdate = Pick<
   ComposerDraft,
@@ -407,6 +428,7 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   startFromOrigin: Schema.optional(Schema.Boolean),
   pullRequestReference: Schema.optional(Schema.String),
+  followsCurrentCheckout: Schema.optional(Schema.Boolean),
 });
 const ComposerDraftProjectSchema = Schema.Struct({
   environmentId: EnvironmentIdSchema,
@@ -462,6 +484,16 @@ export const composerDraftsAtom = Atom.make<Record<string, ComposerDraft>>({}).p
   Atom.keepAlive,
   Atom.withLabel("mobile:composer-drafts"),
 );
+
+/**
+ * Whether persisted drafts have merged in. Hydration starts with the app's
+ * attachment upload worker; a failed load stays false until the next
+ * `ensureComposerDraftsLoaded` caller retries it.
+ */
+export const composerDraftsLoadedAtom = Atom.make(false).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("mobile:composer-drafts-loaded"),
+);
 export const stickyComposerModelSelectionAtom = Atom.make<ModelSelection | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("mobile:sticky-composer-model-selection"),
@@ -491,6 +523,7 @@ let persistRetryNeeded = false;
 const persistenceQueue = new SerializedAsyncQueue();
 export function resetComposerDraftsLoadState(): void {
   loadPromise = null;
+  appAtomRegistry.set(composerDraftsLoadedAtom, false);
   persistRetryNeeded = false;
 }
 function attachmentContextRecord(
@@ -1038,6 +1071,7 @@ export function ensureComposerDraftsLoaded(): void {
         ),
       });
     }
+    appAtomRegistry.set(composerDraftsLoadedAtom, true);
   });
   loadPromise = loading;
   void loading.catch((cause) => {
@@ -2081,6 +2115,7 @@ export function useComposerDraftSettings(draftKey: string | null): ComposerDraft
   const settings = useAtomValue(
     draftKey ? composerDraftSettingsAtom(draftKey) : EMPTY_DRAFT_SETTINGS_ATOM,
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts loading persisted composer drafts from native storage on first use
   useEffect(() => {
     ensureComposerDraftsLoaded();
   }, []);
@@ -2106,6 +2141,7 @@ export function useThreadHasUnsentDraft(draftKey: string): boolean {
 }
 export function useComposerDraft(draftKey: string | null): ComposerDraft {
   const draft = useAtomValue(draftKey ? composerDraftAtom(draftKey) : EMPTY_DRAFT_ATOM);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts loading persisted composer drafts from native storage on first use
   useEffect(() => {
     ensureComposerDraftsLoaded();
   }, []);
@@ -2113,6 +2149,7 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
 }
 export function useStickyComposerModelSelection(): ModelSelection | null {
   const selection = useAtomValue(stickyComposerModelSelectionAtom);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts loading persisted composer drafts from native storage on first use
   useEffect(() => {
     ensureComposerDraftsLoaded();
   }, []);

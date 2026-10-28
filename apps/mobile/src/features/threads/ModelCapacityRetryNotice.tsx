@@ -1,11 +1,15 @@
-import type { ScopedThreadRef, ModelCapacityRetry } from "@t3tools/contracts";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { capacityRetryLabel, getModelCapacityRetry } from "@t3tools/shared/modelCapacityRetry";
 import * as Option from "effect/Option";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import {
+  capacityRetryLabel,
+  getModelCapacityRetry,
+  type ModelCapacityRetry,
+} from "@t3tools/shared/modelCapacityRetry";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
-import { useThreadDetail } from "../../state/use-thread-detail";
+import { useEnvironmentThread } from "../../state/threads";
 
 export function ModelCapacityRetryNotice({
   threadRef,
@@ -17,10 +21,7 @@ export function ModelCapacityRetryNotice({
   onCancel: () => void;
 }) {
   const detail = Option.getOrNull(
-    useThreadDetail({
-      environmentId: threadRef?.environmentId ?? null,
-      threadId: threadRef?.threadId ?? null,
-    }).data,
+    useEnvironmentThread(threadRef?.environmentId ?? null, threadRef?.threadId ?? null).data,
   );
   const retry = useMemo(
     () => getModelCapacityRetry(detail?.turnItems ?? [], thread.runtime?.activeRunId),

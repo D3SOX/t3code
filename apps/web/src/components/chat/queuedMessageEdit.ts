@@ -1,5 +1,10 @@
-import type { ChatAttachment, OrchestrationMessageContext } from "@t3tools/contracts";
-import { serializeLegacyContextMessage } from "@t3tools/shared/composerContextLegacySend";
+import type { ChatAttachment, OrchestrationMessageContext, ThreadId } from "@t3tools/contracts";
+import {
+  asKnownContextRecord,
+  terminalContextDraftFromRecord,
+  reviewCommentFromRecord,
+  previewAnnotationFromRecord,
+} from "../../lib/composerContextRecords";
 import { resolveQueuedEditExit } from "@t3tools/client-runtime/queued-run-edit";
 import {
   composerDraftHasUserContent,
@@ -12,6 +17,7 @@ import {
 /** Return a removed queue entry without overwriting the user's current draft. */
 export function restoreQueuedMessage(input: {
   readonly target: ComposerThreadTarget;
+  readonly threadId: ThreadId;
   readonly text: string;
   readonly context?: OrchestrationMessageContext | undefined;
   readonly images: ComposerImageAttachment[];
@@ -19,9 +25,36 @@ export function restoreQueuedMessage(input: {
 }): string {
   const store = useComposerDraftStore.getState();
   const current = store.getComposerDraft(input.target)?.prompt ?? "";
-  const restored = input.context
-    ? serializeLegacyContextMessage({ text: input.text, records: input.context.records })
-    : input.text;
+  const restored = input.text;
+  const existing = store.getComposerDraft(input.target);
+  const records = (input.context?.records ?? []).flatMap((record) => {
+    const known = asKnownContextRecord(record);
+    return known ? [known] : [];
+  });
+  store.setTerminalContexts(input.target, [
+    ...(existing?.terminalContexts ?? []),
+    ...records
+      .filter((record) => record.kind === "terminal")
+      .map((record) => terminalContextDraftFromRecord(record, input.threadId)),
+  ]);
+  store.setReviewComments(input.target, [
+    ...(existing?.reviewComments ?? []),
+    ...records.filter((record) => record.kind === "review-comment").map(reviewCommentFromRecord),
+  ]);
+  store.setPreviewAnnotations(input.target, [
+    ...(existing?.previewAnnotations ?? []),
+    ...records
+      .filter((record) => record.kind === "preview-annotation")
+      .map(previewAnnotationFromRecord),
+  ]);
+  store.setThreadContexts(input.target, [
+    ...(existing?.threadContexts ?? []),
+    ...records.filter((record) => record.kind === "thread"),
+  ]);
+  store.setEnvironmentContexts(input.target, [
+    ...(existing?.environmentContexts ?? []),
+    ...records.filter((record) => record.kind === "environment"),
+  ]);
   const prompt = [current, restored].filter((text) => text.length > 0).join("\n\n");
   store.setPrompt(input.target, prompt);
   store.addImages(input.target, input.images, { allowDuplicates: true });

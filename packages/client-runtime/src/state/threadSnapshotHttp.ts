@@ -1,22 +1,15 @@
 import type { OrchestrationV2ThreadDetailSnapshot, ThreadId } from "@t3tools/contracts";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-
-import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
-import type { PreparedConnection } from "../connection/model.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
-import type { RemoteEnvironmentRequestError } from "../rpc/http.ts";
+import type * as ManagedRelay from "../relay/managedRelay.ts";
+import type * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import {
   executeAuthenticatedEnvironmentHttpRequest,
   withOrchestrationProtocolHeader,
 } from "./environmentHttpAuth.ts";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
 
-// Long enough for a slow but alive server to finish. On a cold open a timeout makes the socket
-// ask the same server for the same snapshot again, and older turn pages have no fallback, so a
-// short deadline only drops work. The socket fallback is for setups where /api fails but /ws
-// works, such as a proxy that blocks /api.
-const DEFAULT_THREAD_SNAPSHOT_TIMEOUT_MS = 20_000;
+import type { PreparedConnection } from "../connection/model.ts";
 
 export type ThreadSnapshotHistoryMeta = {
   readonly historyCursor: string | null;
@@ -32,6 +25,16 @@ export type ThreadSnapshotLoadResult =
     }
   | { readonly _tag: "missing" }
   | { readonly _tag: "unavailable" };
+
+export class ThreadSnapshotLoader extends Context.Service<
+  ThreadSnapshotLoader,
+  {
+    readonly load: (
+      prepared: PreparedConnection,
+      threadId: ThreadId,
+    ) => Effect.Effect<ThreadSnapshotLoadResult>;
+  }
+>()("@t3tools/client-runtime/state/threadSnapshotHttp/ThreadSnapshotLoader") {}
 
 export const fetchEnvironmentThreadSnapshot = Effect.fn(
   "clientRuntime.state.fetchEnvironmentThreadSnapshot",
@@ -49,7 +52,7 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
     group: "orchestration",
     method: "GET",
     url: (urls) => urls.threadSnapshot({ params: { threadId: input.threadId } }),
-    timeoutMs: input.timeoutMs ?? DEFAULT_THREAD_SNAPSHOT_TIMEOUT_MS,
+    timeoutMs: input.timeoutMs ?? 20_000,
     request: ({ client, headers }) =>
       client.threadSnapshot({
         params: { threadId: input.threadId },
@@ -57,15 +60,3 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
       }),
   });
 });
-
-export type FetchEnvironmentThreadSnapshotError = RemoteEnvironmentRequestError;
-
-export class ThreadSnapshotLoader extends Context.Service<
-  ThreadSnapshotLoader,
-  {
-    readonly load: (
-      prepared: PreparedConnection,
-      threadId: ThreadId,
-    ) => Effect.Effect<ThreadSnapshotLoadResult>;
-  }
->()("@t3tools/client-runtime/state/threadSnapshotHttp/ThreadSnapshotLoader") {}

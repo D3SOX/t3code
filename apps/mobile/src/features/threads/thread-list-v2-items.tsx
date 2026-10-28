@@ -31,9 +31,11 @@ import {
   resolveThreadWorkingStartedAt,
 } from "@t3tools/client-runtime/state/models";
 import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
-import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
+import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
-import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
+import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
@@ -44,11 +46,19 @@ import { Menu } from "../../components/ui/Menu";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
+import { useNowAfter } from "../../lib/clock";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
+import { copyThreadReference } from "../../lib/copyThreadReference";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
+import {
+  pendingDraftBranchNeedsRefs,
+  resolvePendingDraftBranch,
+} from "../../state/pending-new-tasks-model";
+import { useBranches } from "../../state/queries";
+import { useNewTaskProjectDefaults } from "./use-new-task-project-defaults";
 import {
   resolveThreadPrBadgeAction,
   type ThreadPrPresentation,
@@ -61,6 +71,7 @@ import {
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   resolveThreadListV2SnoozeGateExpiryMs,
   resolveThreadListV2SnoozeMenuSelection,
+  resolveThreadListV2SnoozePresets,
   threadHasUnseenCompletion,
   resolveThreadListV2Status,
   resolveThreadListV2ProviderDrivers,
@@ -70,14 +81,9 @@ import {
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { shouldRecedeThreadRow } from "./thread-row-emphasis";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
+import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
-
-const TITLE_FAVICON_SIZE = 15;
-// Centers the favicon on the first line of the text-base title.
-const TITLE_FAVICON_OFFSET = 4;
-// Lines below the title start where the title text does.
-const TITLE_TEXT_INSET = TITLE_FAVICON_SIZE + 8;
 
 interface StatusLabel {
   readonly label: string;
@@ -414,17 +420,38 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
     [deleteLabel, handleDelete, pendingTask.title],
   );
   const projectTitle = props.projectTitle ?? props.project?.title ?? pendingTask.projectTitle ?? "";
-  const showThreadBranches = useShowThreadBranches();
-  const branch = showThreadBranches ? pendingTask.branch : null;
-  const handleMenuAction = ({
-    nativeEvent,
-  }: {
-    readonly nativeEvent: {
-      readonly event: string;
-    };
-  }) => {
-    if (nativeEvent.event === "delete") onDeletePendingTask(pendingTask);
+  const projectCwd = props.project?.workspaceRoot || null;
+  // Drafts only; the reads are shared per-project atoms, and queued rows skip them.
+  const projectDefaults = useNewTaskProjectDefaults(isDraft ? props.project : null);
+  const draftDefaults = {
+    canChooseWorkspace: !projectDefaults.isScratch,
+    defaultMode: projectDefaults.defaultWorkspaceMode,
+    defaultModeSettled: projectDefaults.defaultWorkspaceModeSettled,
   };
+  const draftBranchRefs = useBranches({
+    environmentId: pendingTask.environmentId,
+    cwd:
+      isDraft && pendingDraftBranchNeedsRefs(pendingTask.draft, draftDefaults) ? projectCwd : null,
+  });
+  const showThreadBranches = useShowThreadBranches();
+  const resolvedBranch = isDraft
+    ? resolvePendingDraftBranch({
+        draft: pendingTask.draft,
+        defaults: draftDefaults,
+        isGitRepo: draftBranchRefs.data?.isRepo ?? true,
+        branches: draftBranchRefs.data?.refs ?? [],
+        projectCwd,
+      })
+    : pendingTask.branch;
+
+  const branch = showThreadBranches ? resolvedBranch : null;
+
+  const handleMenuAction = useCallback(
+    ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
+      if (nativeEvent.event === "delete") onDeletePendingTask(pendingTask);
+    },
+    [onDeletePendingTask, pendingTask],
+  );
   const rowContent = (
     <>
       <View className="flex-row items-center gap-1.5">
@@ -647,7 +674,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly settlementSupported: boolean;
   /** False on servers that predate thread.snooze/unsnooze. */
   readonly snoozeSupported: boolean;
-  /** False on servers that predate thread.pin/unpin. */
+  readonly snoozePresets: ReadonlyArray<SnoozePresetSetting> | undefined;
   readonly pinningSupported: boolean;
   /** False on servers that predate thread.auto-settle.set. */
   readonly autoSettleOptOutSupported: boolean;
@@ -671,7 +698,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly searchQuery?: string;
   readonly simultaneousSwipeGesture?: ComponentProps<typeof ThreadSwipeable>["simultaneousWith"];
 }) {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, fontScale } = useWindowDimensions();
+  const titleTypography = useScaledTextRole("body");
+  const metadataTypography = useScaledTextRole("label");
+  const projectIconSize = titleTypography.fontSize * 1.25 * fontScale;
+  const machineIconSize = metadataTypography.fontSize * fontScale;
+  const titleLineHeight = titleTypography.lineHeight * fontScale;
   const {
     thread,
     variant,
@@ -805,31 +837,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // Swipe: the v2 primary action is the lifecycle transition. Un-settling a
   // settled row keeps it active until new activity clears the user override.
   const canUnsettle = variant === "slim";
-  // Keep time in state; cached render-time reads freeze the gate and trigger 50ms expiry loops.
-  const [snoozeGateClock, setSnoozeGateClock] = useState(() => ({ thread, now: Date.now() }));
-  // oxlint-disable-next-line react/purity -- Reseeds the snooze gate clock only in the render-phase adjustment that runs when the thread changes.
-  if (snoozeGateClock.thread !== thread) setSnoozeGateClock({ thread, now: Date.now() });
-  const snoozeGateNow = new Date(snoozeGateClock.now).toISOString();
+  // The gate's only time-dependent edge is the queued-turn grace window, so its
+  // expiry is known without a clock: evaluate at the message's own timestamp.
+  // A gate held by runtime status has no expiry, and no clock tick opens it.
   const snoozeGateExpiryMs = props.snoozeSupported
-    ? resolveThreadListV2SnoozeGateExpiryMs(thread, {
-        now: snoozeGateNow,
-      })
+    ? resolveThreadListV2SnoozeGateExpiryMs(thread, { now: thread.latestUserMessageAt ?? "" })
     : null;
-  useEffect(() => {
-    // A gate still closed past its expiry is held by runtime status, not time,
-    // so no clock tick can open it.
-    if (snoozeGateExpiryMs === null || snoozeGateExpiryMs <= snoozeGateClock.now) return;
-    const delayMs = Math.min(snoozeGateExpiryMs - Date.now() + 50, 2_147_483_647);
-    const id = setTimeout(
-      () =>
-        setSnoozeGateClock({
-          thread,
-          now: Date.now(),
-        }),
-      delayMs,
-    );
-    return () => clearTimeout(id);
-  }, [snoozeGateExpiryMs, snoozeGateClock.now, thread]);
+  // The window is inclusive, so wake just past it.
+  const snoozeGateNowMs = useNowAfter(snoozeGateExpiryMs === null ? null : snoozeGateExpiryMs + 1);
+  const snoozeGateNow = new Date(snoozeGateNowMs).toISOString();
   const swipeActions = resolveThreadListV2SwipeActions({
     variant,
     settlementSupported: props.settlementSupported,
@@ -839,12 +855,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     }),
     snoozed: snoozedRow,
   });
-  const snoozePresets = useMemo(
-    // oxlint-disable-next-line react/purity -- The memo recomputes on the snoozePresetMinute tick, so preset times refresh every minute.
-    () => (swipeActions.secondary === "snooze" ? resolveSnoozePresets(new Date()) : ([] as const)),
-    // oxlint-disable-next-line react/memo-dependencies -- The minute tick refreshes relative snooze times while the row remains mounted.
-    [props.snoozePresetMinute, swipeActions.secondary],
-  );
+  const snoozePresets = resolveThreadListV2SnoozePresets({
+    secondary: swipeActions.secondary,
+    now: props.snoozePresetMinute || snoozeGateNow,
+    presets: props.snoozePresets,
+  });
   const snoozePresetActions = useMemo<MenuAction[]>(
     () => [
       ...snoozePresets.map((preset) => ({
@@ -1019,6 +1034,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "archive") handleArchive();
       if (nativeEvent.event === "rename") handleRename();
       if (nativeEvent.event === "regenerate-title") handleRegenerateTitle();
+      if (nativeEvent.event === "copy-thread") {
+        const target = threadChipCopyTarget(
+          { environmentId: thread.environmentId, threadId: thread.id },
+          thread.title,
+        );
+        void copyThreadReference(target).then((didCopy) => {
+          if (!didCopy) Dialog.alert(target.failureTitle, "Try copying this thread again.");
+        });
+      }
       if (nativeEvent.event === "copy-thread-id") {
         copyTextWithHaptic(thread.id, {
           target: "thread-id",
@@ -1033,6 +1057,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         event: nativeEvent.event,
         displayedPresets: snoozePresets,
         now: new Date(),
+        presets: props.snoozePresets,
       });
       if (snoozeSelection._tag === "selected") {
         handleSnooze(snoozeSelection.preset.snoozedUntil);
@@ -1061,6 +1086,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handleUnsnooze,
       setCustomSnoozeOpen,
       snoozePresets,
+      props.snoozePresets,
     ],
   );
   const primaryAction = (() => {
@@ -1208,17 +1234,17 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     </>
   );
 
-  const titleTextInset = props.project ? TITLE_TEXT_INSET : 0;
+  const titleTextInset = props.project ? projectIconSize + 8 : 0;
   const cardContent = (
     <>
       <View className="flex-row items-start gap-2">
         {props.project ? (
-          <View style={{ marginTop: TITLE_FAVICON_OFFSET }}>
+          <View className="justify-center" style={{ height: titleLineHeight }}>
             <ProjectFavicon
               environmentId={thread.environmentId}
               faviconPath={props.project.faviconPath}
               projectIcon={props.project.projectIcon}
-              size={TITLE_FAVICON_SIZE}
+              size={projectIconSize}
               projectTitle={props.project.title}
               workspaceRoot={props.project.workspaceRoot}
             />
@@ -1469,7 +1495,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 environmentId={thread.environmentId}
                 faviconPath={props.project.faviconPath}
                 projectIcon={props.project.projectIcon}
-                size={15}
+                size={projectIconSize}
                 projectTitle={props.project.title}
                 workspaceRoot={props.project.workspaceRoot}
               />
@@ -1555,11 +1581,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                     },
                   ]
                 : []),
-              {
-                id: "copy-thread-id",
-                title: "Copy thread ID",
-                image: "doc.on.doc",
-              },
+              { id: "copy-thread", title: "Copy thread", image: "text.bubble" },
+              { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
               ...(snoozedRow
                 ? snoozedMenuActions
                 : !props.settlementSupported

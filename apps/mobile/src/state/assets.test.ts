@@ -24,6 +24,8 @@ vi.mock("react", () => ({
 }));
 vi.mock("@effect/atom-react", () => ({
   RegistryContext: {},
+  useAtomMount: () => undefined,
+  useAtomSubscribe: () => undefined,
   useAtomValue: (atom: unknown) =>
     atom === state.assetAtom
       ? AsyncResult.success({ relativeUrl: "/api/assets/image.png", expiresAt: 1 })
@@ -44,6 +46,9 @@ vi.mock("./query", () => ({
 }));
 vi.mock("./projectClones", () => ({ environmentProjectCloneListAtom: () => null }));
 vi.mock("../connection/runtime", () => ({ connectionAtomRuntime: {} }));
+vi.mock("../connection/catalog", () => ({
+  environmentCatalog: { sessionGenerationAtom: () => null },
+}));
 vi.mock("@t3tools/client-runtime/state/assets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@t3tools/client-runtime/state/assets")>()),
   createAssetEnvironmentAtoms: () => ({ createUrl: state.assetQuery }),

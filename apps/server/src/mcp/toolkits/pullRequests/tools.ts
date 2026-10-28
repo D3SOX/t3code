@@ -1,5 +1,6 @@
 import {
   McpCapabilityUnavailableError,
+  OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   PositiveInt,
   PullRequestReviewGuide,
@@ -35,6 +36,7 @@ const guideDependencies = [
 ];
 
 export const PullRequestTargetInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
   threadId: Schema.optional(
     ThreadId.annotate({
       description: "Thread. Default: this thread.",
@@ -212,9 +214,14 @@ const PullRequestIdentity = {
   url: Schema.String,
 };
 
+/** A delegated child's report is how its parent learns the PR, so the link result asks for it. */
+export const CHILD_PULL_REQUEST_REPORT_NEXT =
+  "End your reply with: PR <full URL>, head <SHA>, checks and reviews <state>.";
+
 export const LinkPullRequestResult = Schema.Struct({
   ...PullRequestIdentity,
   alreadyLinked: Schema.Boolean,
+  next: Schema.optional(Schema.String),
 });
 export type LinkPullRequestResult = typeof LinkPullRequestResult.Type;
 
@@ -295,6 +302,7 @@ const UnlinkPullRequestTool = Tool.make("unlink_pull_request", {
 const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
   description: `List the pull requests linked to a thread (omit threadId for this thread) with their last known host state, and how they chain into stacks (bottom to top). ${PR_LINKING_GUIDANCE}`,
   parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId.annotate({ description: "Thread. Default: this thread." })),
   }),
   success: ListThreadPullRequestsResult,
@@ -373,6 +381,7 @@ const WritePullRequestGuidesTool = Tool.make("write_pull_request_guides", {
   description:
     "Write review guides for up to 20 PRs (the tour in the PR Guide tab). Returns once runs start. Each run takes minutes in a temporary checkout. A run for the same head is joined. Read with `read_pull_request_guide`. Fails while guides are off.",
   parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
     pullRequests: Schema.Array(GuideTarget).check(Schema.isMinLength(1), Schema.isMaxLength(20)),
   }),
   success: WritePullRequestGuidesResult,
@@ -388,7 +397,10 @@ const WritePullRequestGuidesTool = Tool.make("write_pull_request_guides", {
 const ReadPullRequestGuideTool = Tool.make("read_pull_request_guide", {
   description:
     "Read a PR's stored review guide and run state. `guide` is null when none exists. Never starts a run.",
-  parameters: GuideTarget,
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    ...GuideTarget.fields,
+  }),
   success: ReadPullRequestGuideResult,
   failure: PullRequestToolError,
   dependencies: guideDependencies,

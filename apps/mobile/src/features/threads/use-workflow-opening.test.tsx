@@ -21,10 +21,7 @@ it("does not request a pending creation's conversation before it exists", () => 
   const environmentId = EnvironmentId.make("environment");
   const threadId = ThreadId.make("pending-thread");
   function Probe({ delivered }: { delivered: boolean }) {
-    const opening = useWorkflowOpening(
-      delivered ? environmentId : null,
-      delivered ? threadId : null,
-    );
+    const opening = useWorkflowOpening(delivered ? { environmentId, threadId } : null);
     return <span>{opening === null ? "Ordinary conversation" : "Workflow"}</span>;
   }
   const container = document.createElement("div");

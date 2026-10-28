@@ -1,8 +1,8 @@
+import * as Option from "effect/Option";
 import { EnvironmentId, RunId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -19,8 +19,8 @@ vi.mock("react-native", () => ({
 vi.mock("../../components/ui/AppText", () => ({
   AppText: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("../../state/use-thread-detail", () => ({
-  useThreadDetail: ({ threadId }: { threadId: string | null }) => ({
+vi.mock("../../state/threads", () => ({
+  useEnvironmentThread: (_environmentId: string | null, threadId: string | null) => ({
     data: threadId === null ? Option.none() : Option.some(harness.loadSnapshot(threadId)),
   }),
 }));

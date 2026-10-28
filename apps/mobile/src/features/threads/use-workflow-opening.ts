@@ -4,7 +4,7 @@ import {
   resolveWorkflowOpening,
   workflowOpeningParentThreadId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
 import { Atom } from "effect/reactivity";
 
@@ -13,7 +13,9 @@ import { environmentThreadDetails } from "../../state/threads";
 const EMPTY_THREAD_ATOM = Atom.make<EnvironmentThread | null>(null);
 
 /** The parent's detail loads only for a workflow. */
-export function useWorkflowOpening(environmentId: EnvironmentId | null, threadId: ThreadId | null) {
+export function useWorkflowOpening(ref: ScopedThreadRef | null) {
+  const environmentId = ref?.environmentId ?? null;
+  const threadId = ref?.threadId ?? null;
   const threadAtom =
     environmentId === null || threadId === null
       ? EMPTY_THREAD_ATOM

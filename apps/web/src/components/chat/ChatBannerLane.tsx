@@ -3,7 +3,6 @@ import type {
   ProviderInstanceId,
   ServerProvider,
   ThreadId,
-  ModelCapacityRetry,
 } from "@t3tools/contracts";
 import type { Dispatch, SetStateAction } from "react";
 import { ProviderStatusBanner } from "./ProviderStatusBanner";
@@ -66,3 +65,5 @@ export function ChatBannerLane(props: {
     </div>
   );
 }
+
+import type { ModelCapacityRetry } from "@t3tools/shared/modelCapacityRetry";

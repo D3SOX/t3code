@@ -3,6 +3,8 @@ import { AsyncResult } from "effect/reactivity";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
+import { Platform } from "react-native";
+import { AndroidNavigationAppearanceSection } from "./appearance/sections/AndroidNavigationAppearanceSection";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -30,6 +32,7 @@ export function SettingsAppearanceRouteScreen() {
         <ThemeAppearanceSection />
         <EnvironmentIdentificationSection />
         <ThreadDisplaySettingsSection />
+        {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />
         <TerminalAppearanceSection />
         <CodeAppearanceSection />

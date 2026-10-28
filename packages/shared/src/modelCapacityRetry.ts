@@ -1,4 +1,4 @@
-import { ModelCapacityRetry, type OrchestrationV2TurnItem, type RunId } from "@t3tools/contracts";
+import type { OrchestrationV2TurnItem, RunId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 export function getModelCapacityRetry(
@@ -31,6 +31,8 @@ export function getModelCapacityRetry(
   }
   return null;
 }
+
+export type ModelCapacityRetry = NonNullable<ReturnType<typeof getModelCapacityRetry>>;
 
 export function capacityRetryLabel(retry: ModelCapacityRetry, now: number) {
   if (retry.retryAt === null) return `Retrying model (attempt ${retry.attempt})…`;

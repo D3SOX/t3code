@@ -51,6 +51,7 @@ describe("queued message file edits", () => {
     store.setPrompt(threadTarget, "Current draft");
     expect(
       restoreQueuedMessage({
+        threadId: threadTarget.threadId,
         target: threadTarget,
         text: "Queued message",
         images: [image],

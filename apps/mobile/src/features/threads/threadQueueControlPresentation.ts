@@ -6,8 +6,8 @@ export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = "Remove queued message"
 export interface ThreadQueueRowControls {
   readonly canDismiss: boolean;
   readonly canEdit: boolean;
-  readonly canMoveDown: boolean;
   readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
   readonly canSend: boolean;
   readonly dismissAccessibilityLabel: string;
   readonly displayText: string;
@@ -18,24 +18,30 @@ export function resolveThreadQueueRowControls(input: {
   readonly busy: boolean;
   readonly canPromoteToSteer: boolean;
   readonly canSendNow: boolean;
-  readonly canReorder: boolean;
-  readonly index: number;
+  /** Something else holds the composer, such as an open question. */
+  readonly editBlocked?: boolean;
   readonly isEditing?: boolean;
   /** A guest's message keeps the guest's words; the owner can cancel it, not rewrite it. */
   readonly isGuestMessage?: boolean;
-  readonly queuedCount: number;
+  readonly canReorder?: boolean;
+  readonly index?: number;
+  readonly queuedCount?: number;
   readonly text: string;
 }): ThreadQueueRowControls {
   const mutationEnabled = !input.busy;
   const isEditing = input.isEditing === true;
 
   return {
+    canMoveDown:
+      mutationEnabled &&
+      input.canReorder === true &&
+      (input.index ?? 0) < (input.queuedCount ?? 0) - 1,
+    canMoveUp: mutationEnabled && input.canReorder === true && (input.index ?? 0) > 0,
     canDismiss: !input.busy,
     // Re-opening the row already in the composer would reload it and throw
     // away whatever has been typed since.
-    canEdit: mutationEnabled && !isEditing && input.isGuestMessage !== true,
-    canMoveDown: mutationEnabled && input.canReorder && input.index < input.queuedCount - 1,
-    canMoveUp: mutationEnabled && input.canReorder && input.index > 0,
+    canEdit:
+      mutationEnabled && !isEditing && input.isGuestMessage !== true && input.editBlocked !== true,
     canSend: mutationEnabled && (input.canPromoteToSteer || input.canSendNow) && !isEditing,
     dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
     // Editing and sending keep the original text so quoted citations stay linked.
@@ -63,7 +69,6 @@ export function buildCancelQueuedRunCommand(input: {
     },
   };
 }
-
 export function resolveQueueDragBeforeRunId(
   rows: ReadonlyArray<{ id: RunId; y?: number; height?: number }>,
   runId: RunId,
