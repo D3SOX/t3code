@@ -3,8 +3,11 @@ import { Link } from "@tanstack/react-router";
 import * as DateTime from "effect/DateTime";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { GuestMessageName } from "./guestMessageStyle";
-import { TimelineRowTimestamp } from "./TimelineRowParts";
-import { FoldedMessageHeader, useScheduledTaskTitle } from "./TimelineUserMessageRow";
+import {
+  FoldedMessageHeader,
+  useScheduledTaskTitle,
+  TimelineRowTimestamp,
+} from "./UserMessagePresentation";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
@@ -610,7 +613,7 @@ function QueuedMessage(props: {
   const bodyVisible = fold === null || expanded;
 
   return (
-    <>
+    <div className="group/queued flex min-w-0 flex-1 flex-col gap-1">
       {attribution === "t3code" ? (
         <p className="me-1 text-2xs text-muted-foreground/70">Sent by T3 Code</p>
       ) : null}
@@ -620,7 +623,7 @@ function QueuedMessage(props: {
       {/* Dashed and unfilled: a turn that has not been sent yet. */}
       <div
         className={cn(
-          "flex min-w-0 max-w-[80%] flex-col rounded-2xl border border-dashed text-sm",
+          "flex min-w-0 max-w-full flex-col rounded-2xl border border-dashed text-sm",
           props.isEditing
             ? "border-primary/60 text-foreground"
             : attribution === "guest"
@@ -703,6 +706,6 @@ function QueuedMessage(props: {
         ) : null}
         {props.children}
       </div>
-    </>
+    </div>
   );
 }

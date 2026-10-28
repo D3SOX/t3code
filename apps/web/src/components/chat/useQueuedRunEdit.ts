@@ -212,6 +212,7 @@ export function useQueuedRunEdit(input: {
     reportFailure: false,
   });
   const currentThreadIdRef = useRef(activeThreadId);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publishes the committed thread for asynchronous queue commands to reject navigation races.
   useEffect(() => {
     currentThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);

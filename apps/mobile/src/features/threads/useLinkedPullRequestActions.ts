@@ -18,7 +18,7 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { AuthOrchestrationOperateScope, type ThreadPullRequestLink } from "@t3tools/contracts";
 import * as Clipboard from "expo-clipboard";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Platform } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";

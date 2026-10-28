@@ -129,6 +129,37 @@ const idTableBody = () => {
 };
 
 describe("boundedThreadSnapshotLoader", () => {
+  it.effect.each([404, 200])(
+    "loads the full snapshot when an older server returns HTML with status %s",
+    (status) => {
+      const requests: string[] = [];
+      const fetchFn = ((input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+        return Promise.resolve(
+          url.includes("/bounded")
+            ? new Response("<!doctype html><title>T3 Code</title>", {
+                status,
+                headers: { "content-type": "text/html" },
+              })
+            : Response.json(FULL_SNAPSHOT_BODY),
+        );
+      }) satisfies typeof fetch;
+      return Effect.gen(function* () {
+        const loader = yield* ThreadSnapshotLoader.ThreadSnapshotLoader;
+        const result = yield* loader.load(PREPARED, THREAD_ID);
+        expect(result._tag).toBe("present");
+        if (result._tag === "present") expect(result.snapshot.projection.thread.id).toBe(THREAD_ID);
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toContain(`/api/orchestration/threads/${THREAD_ID}`);
+        expect(requests[1]).not.toContain("/bounded");
+      }).pipe(
+        Effect.provide(
+          Layer.provide(BoundedThreadSnapshotHttp.layer, RpcHttp.layerRemoteHttpClient(fetchFn)),
+        ),
+      );
+    },
+  );
   it.effect.each([
     ["an older server that ignores the opt-in", () => boundedBody(false)],
     ["a server that sends compact turnItems", () => boundedBody(true)],

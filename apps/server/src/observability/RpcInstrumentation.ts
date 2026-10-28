@@ -88,7 +88,6 @@ const RPC_AGGREGATES = {
   [WS_METHODS.notificationsGetConfig]: "notifications",
   [WS_METHODS.notificationsSubscribe]: "notifications",
   [WS_METHODS.notificationsUnsubscribe]: "notifications",
-  [WS_METHODS.scheduledTasksList]: "scheduledTasks",
   [WS_METHODS.scheduledTasksSubscribe]: "scheduledTasks",
   [WS_METHODS.scheduledTasksUpsert]: "scheduledTasks",
   [WS_METHODS.scheduledTasksSetEnabled]: "scheduledTasks",

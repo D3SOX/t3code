@@ -10,7 +10,7 @@ import {
 } from "@t3tools/client-runtime/state/assets";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
-import { useCallback, useContext, useEffect } from "react";
+import { useContext, useEffect } from "react";
 import * as Effect from "effect/Effect";
 import { Atom, AsyncResult } from "effect/reactivity";
 
@@ -60,7 +60,7 @@ export function useAssetUrlState(
       ? EMPTY_ASSET_URL_ATOM
       : assetEnvironment.createUrl({ environmentId, input: { resource } });
   const result = useAtomValue(query);
-  // oxlint-disable-next-line t3code/react-effect-budget -- A new mounted image occurrence must invalidate the external URL cache once.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A new mounted image occurrence must invalidate the external URL cache once.
   useEffect(() => {
     if (blocked !== null || !mutableResource) return;
     const cached = registry.get(query);

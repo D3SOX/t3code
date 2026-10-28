@@ -89,6 +89,15 @@ vi.mock("./queued-run-edit", async (importOriginal) => ({
   endQueuedRunEdit: () => {
     state.queuedEdit = null;
   },
+  startQueuedRunEditSave: () => {
+    const edit = state.queuedEdit;
+    if (edit === null) return null;
+    return (saved: boolean) => {
+      if (state.queuedEdit !== edit) return false;
+      if (saved) state.queuedEdit = null;
+      return true;
+    };
+  },
 }));
 vi.mock("./preferences", async () => {
   const { Atom, AsyncResult } = await import("effect/reactivity");

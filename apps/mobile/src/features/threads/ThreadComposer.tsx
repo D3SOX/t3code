@@ -22,7 +22,6 @@ import {
   type MessageId,
   type ModelSelection,
   type ProviderInteractionMode,
-  type RuntimeMode,
   type ScopedThreadRef,
   type ServerConfig as T3ServerConfig,
   type UsageLimitsReport,

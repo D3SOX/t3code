@@ -700,9 +700,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 }) {
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const titleTypography = useScaledTextRole("body");
-  const metadataTypography = useScaledTextRole("label");
   const projectIconSize = titleTypography.fontSize * 1.25 * fontScale;
-  const machineIconSize = metadataTypography.fontSize * fontScale;
   const titleLineHeight = titleTypography.lineHeight * fontScale;
   const {
     thread,

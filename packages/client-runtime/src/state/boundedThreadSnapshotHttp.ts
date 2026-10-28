@@ -85,9 +85,7 @@ export const layer: Layer.Layer<
           Effect.provideService(HttpClient.HttpClient, httpClient),
           Effect.catchTags({
             EnvironmentResourceNotFoundError: () =>
-              Effect.logDebug(
-                "Full thread snapshot not found over HTTP after bounded fallback.",
-              ).pipe(
+              Effect.logDebug("Bounded thread snapshot not found over HTTP.").pipe(
                 Effect.annotateLogs({ threadId }),
                 Effect.as({
                   _tag: "missing",
@@ -127,14 +125,15 @@ export const layer: Layer.Layer<
           Effect.provideService(HttpClient.HttpClient, httpClient),
           Effect.catchTags({
             EnvironmentResourceNotFoundError: () =>
-              Effect.logDebug(
-                "Full thread snapshot not found over HTTP after bounded fallback.",
-              ).pipe(
+              Effect.logDebug("Bounded thread snapshot not found over HTTP.").pipe(
                 Effect.annotateLogs({ threadId }),
                 Effect.as({
                   _tag: "missing",
                 } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult),
               ),
+            RemoteEnvironmentAuthInvalidJsonError: () => loadFullFallback,
+            RemoteEnvironmentAuthUndeclaredStatusError: (error) =>
+              error.status === 404 ? loadFullFallback : Effect.fail(error),
           }),
           Effect.catchCause((cause) =>
             Effect.logWarning(

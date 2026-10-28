@@ -126,8 +126,6 @@ export function composerSubmissionIntentForKey(input: {
     : "foreground";
 }
 
-const isInlineTokenSegment = (segment: ComposerPromptSegment): boolean => segment.type !== "text";
-
 /** Resolve hints through the same shortcut rules as the editor, including custom bindings. */
 export function composerSubmissionHints(
   input: Omit<Parameters<typeof composerSubmissionIntentForKey>[0], "event"> & {

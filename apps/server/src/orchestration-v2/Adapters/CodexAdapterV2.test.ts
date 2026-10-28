@@ -1520,7 +1520,11 @@ describe("CodexAdapterV2 session initialize", () => {
         beforeEmitInbound === undefined ? {} : { beforeEmitInbound },
       );
       let initializeRequests = 0;
-      let terminate: Effect.Effect<void> = Effect.void;
+      const terminated = yield* Deferred.make<never, CodexError.CodexAppServerError>();
+      const terminate = Deferred.fail(
+        terminated,
+        new CodexError.CodexAppServerProcessExitedError({ code: 0 }),
+      ).pipe(Effect.asVoid);
       const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
         instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
         settings: DEFAULT_CODEX_SETTINGS,
@@ -1532,12 +1536,9 @@ describe("CodexAdapterV2 session initialize", () => {
                 Effect.service(CodexClient.CodexAppServerClient).pipe(Effect.provide(context)),
               ),
               Effect.map((client) => {
-                terminate =
-                  openInput.onTermination?.(
-                    new CodexError.CodexAppServerProcessExitedError({ code: 0 }),
-                  ) ?? Effect.void;
                 return {
                   ...client,
+                  awaitTermination: Deferred.await(terminated),
                   request: (method, params) =>
                     Effect.sync(() => {
                       if (method === "initialize") initializeRequests++;
@@ -1590,7 +1591,7 @@ describe("CodexAdapterV2 session initialize", () => {
       );
       const eventPump = yield* Stream.runDrain(session.events).pipe(Effect.forkScoped);
       yield* session.terminate();
-      yield* Fiber.join(eventPump);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(eventPump)));
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -6547,7 +6548,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             }),
           );
           yield* Deferred.await(retrying);
-          yield* TestClock.adjust("2 seconds");
+          yield* TestClock.adjust("10 seconds");
           if (parentStatus === "interrupted") assert.isEmpty(harness.terminalEvents());
           else {
             yield* harness.awaitTerminal(1);
@@ -6670,7 +6671,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         const root = harness.events.find((event) => event.type === "provider_turn.updated");
         assert.equal(root?.type, "provider_turn.updated");
         if (root?.type !== "provider_turn.updated") return;
-        yield* TestClock.adjust("2 seconds");
+        yield* TestClock.adjust("10 seconds");
         yield* Deferred.await(starting);
         const stopping = yield* harness.runtime
           .interruptTurn({

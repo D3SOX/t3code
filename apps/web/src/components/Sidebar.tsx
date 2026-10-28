@@ -3251,8 +3251,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onNewThreadProjectPicker={handleNewThreadProjectPicker}
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
-              newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={!boringSidebarEnabled && projectGroups.length > 1}
+              newThreadPickerShortcutLabel={newThreadPickerShortcutLabel}
+              showNewThreadPickerHint={!boringSidebarEnabled && projectGroups.length > 1}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {

@@ -195,10 +195,10 @@ describe("searchSettings", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("routes where pull requests open to integrations", () => {
+  it("routes where pull requests open to diffs", () => {
     expect(searchSettings("open pull requests in")[0]).toMatchObject({
       id: "pull-request-link-target",
-      to: "/settings/integrations",
+      to: "/settings/diffs",
     });
   });
 });

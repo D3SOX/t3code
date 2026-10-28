@@ -134,6 +134,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     openQuestionCount: pendingQuestions?.userInputs.length ?? 0,
   });
   const order = queuedRuns.map(({ run }) => run.id).join(",");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancels the native drag animation when remote queue updates invalidate its measured positions.
   useEffect(() => {
     if (drag.current && drag.current.order !== order) {
       drag.current = null;
@@ -144,6 +145,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
     }
   }, [order, translation]);
   const hadQueuedRuns = useRef(queuedRuns.length > 0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Closes the native queue sheet after its last queued message is delivered or removed.
   useEffect(() => {
     if (queuedRuns.length > 0) {
       hadQueuedRuns.current = true;

@@ -1,11 +1,8 @@
 import { ActiveNewTaskContext } from "../../state/active-new-task";
 import * as Dialog from "../../components/ui/Dialog";
-import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
-import { useEnvironmentPresentation } from "../../state/presentation";
-import { environmentSession } from "../../state/session";
 import { useAtomSet } from "@effect/atom-react";
 import { updateMobilePreferencesAtom } from "../../state/preferences";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import type {
   EnvironmentId,
@@ -49,7 +46,6 @@ import {
   type ComposerDraftInsertion,
   type ComposerDraftWorkspaceSelection,
   composerDraftsLoadedAtom,
-  composerDraftsAtom,
   createNewTaskDraft,
   getComposerDraftSnapshot,
   isNewTaskDraftKey,
@@ -633,26 +629,6 @@ export function NewTaskFlowProvider(
     savePreferences({
       lastThreadProject: { environmentId: project.environmentId, projectId: project.id },
     });
-  };
-
-  const openDraft = (draftKey: string): boolean => {
-    const draft = appAtomRegistry.get(composerDraftsAtom)[draftKey];
-    const stamp = draft?.project;
-    if (!isNewTaskDraftKey(draftKey) || !stamp) return false;
-    if (
-      !projects.some(
-        (project) =>
-          project.environmentId === stamp.environmentId && project.id === stamp.projectId,
-      )
-    )
-      return false;
-    updateFlow({
-      draftKey,
-      environmentId: stamp.environmentId,
-      projectKey: scopedProjectKey(stamp.environmentId, stamp.projectId),
-    });
-    savePreferences({ lastThreadProject: stamp });
-    return true;
   };
 
   const selectEnvironment = (environmentId: EnvironmentId) => {

@@ -173,10 +173,13 @@ export function codexRateLimitsToUpdate(
   const credits = codexCredits(snapshot.credits);
   const previousCredits = codexCredits(previous?.credits);
   const creditsChanged =
-    credits != null &&
-    (credits.balance !== previousCredits?.balance ||
-      credits.unlimited !== previousCredits?.unlimited ||
-      credits.hasCredits !== previousCredits?.hasCredits);
+    credits !== undefined &&
+    (credits === null
+      ? previousCredits !== null
+      : previousCredits == null ||
+        credits.balance !== previousCredits.balance ||
+        credits.unlimited !== previousCredits.unlimited ||
+        credits.hasCredits !== previousCredits.hasCredits);
   return windows.length > 0 || creditsChanged
     ? { windows, ...(creditsChanged ? { credits } : {}) }
     : undefined;

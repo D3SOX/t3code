@@ -1,6 +1,5 @@
 import type { MenuAction } from "@react-native-menu/menu";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
-import { useCallback, useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { ThreadListToolbar } from "./ThreadListToolbar";
 import type { HomeHeaderProps } from "./HomeHeader.types";

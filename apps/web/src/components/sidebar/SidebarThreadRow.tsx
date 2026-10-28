@@ -1558,7 +1558,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {showThreadBranches && thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="flex min-w-0 flex-1 text-muted-foreground/40 redesign:text-inherit">
+                  <span className="flex min-w-0 flex-1 ">
                     <MiddleTruncate value={thread.branch} showTitle={false} />
                   </span>
                 </>
@@ -1567,11 +1567,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <EnvironmentMachineIcon
                     aria-hidden
                     kind={props.environmentMachine}
-                    className="size-3 shrink-0 text-muted-foreground/40 redesign:text-inherit"
+                    className="size-3 shrink-0 "
                   />
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground/40 redesign:text-inherit">
-                    {props.scratchMachineLabel}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate ">{props.scratchMachineLabel}</span>
                 </>
               ) : showThreadBranches ? (
                 <span className="flex-1" />

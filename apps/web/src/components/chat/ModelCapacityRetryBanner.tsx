@@ -25,7 +25,7 @@ function CapacityRetryBanner({
   onCancel: () => void;
 }) {
   const [now, setNow] = useState(Date.now);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to the wall clock while a retry countdown is visible.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribe to the wall clock while a retry countdown is visible.
   useEffect(() => {
     if (!retry.retryAt) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
