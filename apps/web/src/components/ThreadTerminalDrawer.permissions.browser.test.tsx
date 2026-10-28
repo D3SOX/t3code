@@ -61,10 +61,14 @@ vi.mock(import("../state/use-atom-command"), async (original) => ({
   useAtomCommand: ((command: unknown) =>
     command === "resize" ? state.resize : state.otherCommand) as never,
 }));
-vi.mock(import("../state/terminalSessions"), async (original) => ({
-  ...(await original()),
-  useAttachedTerminalSession: (() => session) as never,
-}));
+vi.mock(import("../state/terminalSessions"), async (original) => {
+  const { Atom } = await import("effect/reactivity");
+  const sessionAtom = Atom.make(() => session);
+  return {
+    ...(await original()),
+    attachedTerminalSessionAtom: (() => sessionAtom) as never,
+  };
+});
 vi.mock(import("~/terminal/ghostty/surface"), async (original) => ({
   ...(await original()),
   GhosttyTerminalSurface: { create: state.createSurface } as never,

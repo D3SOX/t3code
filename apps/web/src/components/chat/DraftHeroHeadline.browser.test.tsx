@@ -29,6 +29,9 @@ vi.mock("~/hooks/useScratchProject", () => ({
   }),
 }));
 vi.mock("~/hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
+vi.mock("~/hooks/useStartTriage", () => ({ isTriagePrompt: () => false }));
+vi.mock("~/commandPaletteBus", () => ({ openCommandPalette: vi.fn() }));
+vi.mock("./TriageDraftHero", () => ({ TriageDraftHero: () => null }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("~/state/server", () => ({ primaryServerKeybindingsAtom: {} }));
 vi.mock("~/keybindings", () => ({ shortcutLabelForCommand: () => null }));
