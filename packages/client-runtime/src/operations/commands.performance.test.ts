@@ -223,8 +223,8 @@ describe("routine command transport budget", () => {
       if (command.type !== "message.dispatch") {
         return yield* Effect.die(`Expected message.dispatch, received ${command.type}`);
       }
-      if (!("sequence" in receipt)) {
-        return yield* Effect.die("Expected a dispatch receipt");
+      if ("projection" in receipt) {
+        throw new Error("Expected a dispatch receipt");
       }
       const { deliveryIntent: _deliveryIntent, ...formerCommand } = command;
 

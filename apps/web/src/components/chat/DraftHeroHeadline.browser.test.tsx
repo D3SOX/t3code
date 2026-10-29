@@ -9,13 +9,16 @@ const state = vi.hoisted(() => ({
 
 vi.mock("~/composerDraftStore", () => ({
   composerDraftHasUserContent: () => true,
-  useComposerDraftStore: (select: (store: Record<string, unknown>) => unknown) =>
-    select({
-      setLogicalProjectDraftThreadId: state.setDraftProject,
-      getComposerDraft: () => null,
-      applyStickyState: vi.fn(),
-      setModelSelection: vi.fn(),
-    }),
+  useComposerDraftStore: Object.assign(
+    (select: (store: Record<string, unknown>) => unknown) =>
+      select({
+        setLogicalProjectDraftThreadId: state.setDraftProject,
+        getComposerDraft: () => null,
+        applyStickyState: vi.fn(),
+        setModelSelection: vi.fn(),
+      }),
+    { getState: () => ({ stickyActiveProvider: null }) },
+  ),
 }));
 vi.mock("~/hooks/useSettings", () => ({
   useClientSettings: (select: (settings: Record<string, unknown>) => unknown) =>
@@ -42,6 +45,7 @@ vi.mock("~/logicalProject", () => ({
 vi.mock("~/state/entities", () => ({ useProjects: () => [], useThreadShells: () => [] }));
 vi.mock("~/state/environments", () => ({
   useEnvironments: () => ({ environments: [] }),
+  useEnvironmentProviders: () => new Map(),
   usePrimaryEnvironmentId: () => null,
 }));
 vi.mock("~/sidebarProjectGrouping", () => ({

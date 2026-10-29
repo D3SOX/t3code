@@ -61,7 +61,10 @@ function MenuIcon(props: {
 }
 
 export function MenuPopupItems(
-  props: Pick<MenuPopupProps, "menuWidth" | "actions" | "title" | "parent" | "onPress" | "onBack">,
+  props: Pick<
+    MenuPopupProps,
+    "menuWidth" | "actions" | "title" | "parent" | "onPress" | "onBack" | "renderActionIcon"
+  >,
 ) {
   const { appearance, themeVariables: colors } = useAppearancePreferences();
   const { scale, menuItemHeight, iconSize } = useAndroidControlSizing();

@@ -928,6 +928,76 @@ export const GitHubHost = TrimmedNonEmptyString.pipe(
   Schema.decodeTo(Schema.String, SchemaTransformation.toLowerCase()),
 );
 
+// Final once shipped: older builds drop entries whose key fails here, and erase them on their next save.
+// Unlike provider slugs it may start with a digit, so a provider named "1Password" fits.
+const SecretProviderSlug = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(64),
+  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+);
+
+export const SecretProviderId = SecretProviderSlug.pipe(Schema.brand("SecretProviderId"));
+export type SecretProviderId = typeof SecretProviderId.Type;
+
+export const SecretProviderKind = SecretProviderSlug.pipe(Schema.brand("SecretProviderKind"));
+export type SecretProviderKind = typeof SecretProviderKind.Type;
+
+const ONE_PASSWORD_ACCOUNT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Any value `op --account` accepts: shorthand, sign-in address, account ID, or user ID.
+ * It is passed to the CLI as an argument, so it can never start with `-`.
+ */
+export const OnePasswordAccount = Schema.String.check(
+  Schema.isMaxLength(253),
+  Schema.makeFilter((value: string) =>
+    ONE_PASSWORD_ACCOUNT_PATTERN.test(value)
+      ? true
+      : "1Password account must be a shorthand, sign-in address, or ID with no spaces.",
+  ),
+).pipe(Schema.brand("OnePasswordAccount"));
+export type OnePasswordAccount = typeof OnePasswordAccount.Type;
+
+export const SecretProviderLabel = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
+
+export const OnePasswordSecretProviderConfig = Schema.Struct({
+  account: OnePasswordAccount,
+});
+export type OnePasswordSecretProviderConfig = typeof OnePasswordSecretProviderConfig.Type;
+
+/** Kinds decode their own config; unknown-kind envelopes round-trip verbatim across versions. */
+export const SecretProviderConfig = Schema.Struct({
+  kind: SecretProviderKind,
+  label: TrimmedNonEmptyString,
+  config: Schema.optionalKey(Schema.Unknown),
+});
+export type SecretProviderConfig = typeof SecretProviderConfig.Type;
+
+/** Kinds this build can resolve. Their `config` holds no credentials, so clients may read it. */
+const SECRET_PROVIDER_KIND_CONFIG_GUARDS: Readonly<Record<string, (config: unknown) => boolean>> = {
+  one_password: Schema.is(OnePasswordSecretProviderConfig),
+};
+
+export function isKnownSecretProviderKind(kind: string): boolean {
+  return Object.hasOwn(SECRET_PROVIDER_KIND_CONFIG_GUARDS, kind);
+}
+
+// Limits that may change later are enforced on writes only, never on the stored envelope.
+// Writes must be a kind this build knows with a config it accepts, so an older server
+// rejects a newer kind instead of storing what it cannot check.
+const SecretProviderConfigWrite = Schema.Struct({
+  ...SecretProviderConfig.fields,
+  label: SecretProviderLabel,
+}).check(
+  Schema.makeFilter((entry) => {
+    if (!isKnownSecretProviderKind(entry.kind)) {
+      return `Unsupported secret provider kind: ${entry.kind}.`;
+    }
+    return SECRET_PROVIDER_KIND_CONFIG_GUARDS[entry.kind]!(entry.config)
+      ? true
+      : `Invalid ${entry.kind} secret provider config.`;
+  }),
+);
+
 /** Hosts own their settings schema. Unknown hosts retain their blobs; secret values stay in the server store behind redaction markers. */
 export const SourceControlHostSettings = Schema.Record(Schema.String, Schema.Unknown);
 export type SourceControlHostSettings = typeof SourceControlHostSettings.Type;
@@ -1152,6 +1222,16 @@ export const ProjectSettingsOverrides = Schema.Struct({
 } satisfies Record<ProjectScopedServerSettingKey | "providerInstances", unknown>);
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
+// Whole-entry writers must round-trip unknown keys; keep the type closed to catch misspellings.
+export const keepUnknownOverrideKeys = <Entry extends Schema.Struct<Schema.Struct.Fields>>(
+  entry: Entry,
+): Schema.Codec<
+  Entry["Type"],
+  Entry["Encoded"],
+  Entry["DecodingServices"],
+  Entry["EncodingServices"]
+> => Schema.StructWithRest(entry, [Schema.Record(Schema.String, Schema.Unknown)]);
+
 /** True if null stores an override; otherwise null removes it. */
 export function isNullableProjectSettingsOverride(key: ProjectScopedServerSettingKey): boolean {
   return NULLABLE_PROJECT_SETTINGS_OVERRIDES.has(key);
@@ -1282,10 +1362,11 @@ export const ServerSettings = Schema.Struct({
   defaultRuntimeMode: RuntimeMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE)),
   ),
-  /** Project overrides are authoritative; legacy per-feature maps remain derived views for older clients. */
-  projectSettingsOverrides: Schema.Record(ProjectId, ProjectSettingsOverrides).pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
-  ),
+
+  projectSettingsOverrides: Schema.Record(
+    ProjectId,
+    keepUnknownOverrideKeys(ProjectSettingsOverrides),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** Fold once so restarts cannot undo later UI resets. */
   projectSettingsFolded: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Server-authoritative device access gates agent tools and CLI injection without disabling the user's Device panel. */
@@ -1424,6 +1505,9 @@ export const ServerSettings = Schema.Struct({
   ),
   // User-chosen ids preserve rows across edits; undecodable entries round-trip untouched.
   usageLimitSources: Schema.Record(UsageLimitSourceId, UsageLimitSourceConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  secretProviders: Schema.Record(SecretProviderId, SecretProviderConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   /** Allows this server to read the Cursor CLI's macOS Keychain login for account usage. */
@@ -1705,10 +1789,12 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Record(
       ProjectId,
       Schema.NullOr(
-        Schema.Struct({
-          ...ProjectSettingsOverrides.fields,
-          sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSettings),
-        }),
+        keepUnknownOverrideKeys(
+          Schema.Struct({
+            ...ProjectSettingsOverrides.fields,
+            sourceControlWritingStyle: Schema.optionalKey(SourceControlWritingStyleSettings),
+          }),
+        ),
       ),
     ),
   ),
@@ -1780,6 +1866,9 @@ export const ServerSettingsPatch = Schema.Struct({
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
   ),
+  secretProviders: Schema.optionalKey(
+    Schema.Record(SecretProviderId, Schema.NullOr(SecretProviderConfigWrite)),
+  ),
   cursorKeychainUsageEnabled: Schema.optionalKey(Schema.Boolean),
   /** Each entry replaces one model's rates; `null` restores automatic pricing. */
   usagePriceOverrides: Schema.optionalKey(
@@ -1800,7 +1889,12 @@ export function requiredScopesForServerSettingsPatch(
   let changesSettings = false;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if (key === "providers" || key === "providerInstances" || key === "usageLimitSources") {
+    if (
+      key === "providers" ||
+      key === "providerInstances" ||
+      key === "usageLimitSources" ||
+      key === "secretProviders"
+    ) {
       changesProviders = true;
     } else {
       changesSettings = true;
