@@ -322,7 +322,7 @@
         and check that its fingerprint is
         <code>5A4D 66D6 9437 77AD 48A5 F169 9728 12D8 A4CF BA4D</code>:
       </p>
-      <pre><code>wget -O t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
+      <pre><code>curl -fsSL -o t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
 gpg --show-keys --fingerprint t3code-d3sox.asc</code></pre>
       <p>Only after the fingerprint matches, trust the key for packages from this repository:</p>
       <pre><code>sudo pacman-key --add t3code-d3sox.asc

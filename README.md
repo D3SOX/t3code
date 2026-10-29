@@ -62,8 +62,13 @@ The [nightly releases](https://github.com/D3SOX/t3code/releases) include a signe
 The same releases contain a signed `t3code-d3sox-git` package. For automatic updates through pacman, import the [repository signing key](./packaging/aur/t3code-d3sox-git/signing-key.asc) and verify its fingerprint is `5A4D 66D6 9437 77AD 48A5 F169 9728 12D8 A4CF BA4D`:
 
 ```bash
-wget -O t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
+curl -fsSL -o t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
 gpg --show-keys --fingerprint t3code-d3sox.asc
+```
+
+Only after the fingerprint matches, trust the key for packages from this repository:
+
+```bash
 sudo pacman-key --add t3code-d3sox.asc
 sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D
 ```
