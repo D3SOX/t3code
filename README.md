@@ -76,7 +76,7 @@ sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D
 Configure the repository and install the package:
 
 ```bash
-grep -q '^[[:space:]]*\[t3code-d3sox\][[:space:]]*$' /etc/pacman.conf ||
+pacman-conf --repo-list | grep -qxF 't3code-d3sox' ||
   printf '%s\n' '' '[t3code-d3sox]' 'SigLevel = Required' \
     'Server = https://t3code.d3sox.me/arch/$arch' |
   sudo tee -a /etc/pacman.conf >/dev/null
