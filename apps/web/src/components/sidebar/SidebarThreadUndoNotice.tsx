@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 
 import {
   threadUndoLabel,
-  threadUndoNoticeSummary,
   undoLatestThreadAction,
   useThreadUndoNotice,
 } from "../../hooks/showThreadUndoNotice";

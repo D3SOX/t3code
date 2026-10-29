@@ -148,6 +148,7 @@ vi.mock("./threads", async () => {
     environmentThreadDetails: {
       queueWorkflowAtom: () => Atom.make({ canPromoteToSteer: state.running }),
       checkpointSummariesAtom: () => Atom.make([]),
+      sequenceAtom: () => Atom.make(0),
       pendingRequestsAtom: () => Atom.make(state.pendingRequests),
     },
     threadEnvironment: {

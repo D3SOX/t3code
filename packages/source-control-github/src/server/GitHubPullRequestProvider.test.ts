@@ -16,6 +16,8 @@ import { gitHubViewerPermissions, loginAvatarUrl, make } from "./GitHubPullReque
 import type { GitHubReviewThreadComments } from "./gitHubPullRequestJson.ts";
 
 const coreFields = {
+  maintainerCanModify: true,
+  canEditMaintainerEdits: false,
   reviewRequestTeams: [],
   checksTruncated: false,
   requiredCheckContexts: [],
@@ -206,6 +208,7 @@ describe("gitHubViewerPermissions", () => {
       });
 
       expect(detail.viewerPermissions).toEqual({
+        maintainerEdits: false,
         actions: ["ready", "draft", "close", "reopen"],
         comment: true,
         resolve: false,
