@@ -2421,7 +2421,8 @@ export default function ChatView(props: ChatViewProps) {
   const {
     acknowledgeActiveThreadWoke,
     activeBranchMismatchKey,
-    backgroundWorkNow,
+    attentionNow,
+    workNow,
     childInputNow,
     goalNow,
     handleSwitchCheckoutToThread,
@@ -3077,10 +3078,7 @@ export default function ChatView(props: ChatViewProps) {
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
   const shownThreadSyncPhase = activeEnvironmentUnavailable ? null : delayedThreadSyncPhase;
   const hasThreadNow =
-    childInputNow !== null ||
-    backgroundWorkNow !== null ||
-    goalNow !== null ||
-    shownThreadSyncPhase !== null;
+    attentionNow !== null || workNow !== null || goalNow !== null || shownThreadSyncPhase !== null;
   const scrollToEndSummary = childInputNow === null ? null : "Subagent waiting";
   const timelineFooter =
     pendingHandoff === null &&
@@ -3100,8 +3098,8 @@ export default function ChatView(props: ChatViewProps) {
         )}
         <ThreadNow
           key={routeThreadKey}
-          attention={childInputNow}
-          work={backgroundWorkNow}
+          attention={attentionNow}
+          work={workNow}
           syncPhase={shownThreadSyncPhase}
           goal={goalNow}
         />
