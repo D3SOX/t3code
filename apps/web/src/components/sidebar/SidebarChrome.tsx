@@ -303,10 +303,12 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
-    <SidebarFooter>
-      <SidebarThreadUndoNotice />
-      <SidebarProviderUpdatePill />
-      <SidebarUpdateArchitectureWarning />
+    <SidebarFooter className="relative">
+      <div className="pointer-events-none absolute inset-x-[var(--sidebar-content-inset)] bottom-full z-20 flex flex-col gap-2 pb-2 empty:hidden [&>*]:pointer-events-auto">
+        <SidebarThreadUndoNotice />
+        <SidebarProviderUpdatePill />
+        <SidebarUpdateArchitectureWarning />
+      </div>
       <SidebarUtilityMenu />
     </SidebarFooter>
   );
