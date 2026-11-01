@@ -1002,6 +1002,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               yield* setStreamError(
                 "This thread was not found on the host. Reopen it to try again.",
               );
+              if (resumeCache?.owner === owner) resumeCache.snapshot = undefined;
               return yield* Effect.never;
             }
             case "unavailable": {

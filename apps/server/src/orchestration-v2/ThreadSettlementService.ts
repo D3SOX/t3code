@@ -385,12 +385,29 @@ export const make = Effect.gen(function* () {
     // a source-control lookup can delay or fail an otherwise eligible thread.
     const lookupCandidates = (yield* Effect.forEach(
       candidates,
-      (thread) => settleThread(thread, null),
+      (thread) => {
+        const projectSettings = resolveProjectSettings(settings, thread.projectId).settings;
+        // Skip no-op decisions; actual settlement still reads fresh settings before dispatch.
+        const settledAt = resolveAutoSettlementAt({
+          thread,
+          pullRequest: null,
+          nowMs,
+          autoSettleAfterDays: projectSettings.sidebarAutoSettleAfterDays,
+          autoSettleOnMerge: projectSettings.sidebarAutoSettleOnMerge,
+          autoSettleKeepPullRequests: projectSettings.sidebarAutoSettleKeepPullRequests,
+        });
+        return settledAt === null ? Effect.succeed(thread) : settleThread(thread, null);
+      },
       { concurrency: 8 },
     ))
       .filter((thread) => thread !== null)
-      .filter((thread) => visibleThreadPullRequests(thread.pullRequests ?? []).length === 0);
-    // Use the same cwd as the sidebar so both paths share GitManager's PR cache.
+      .filter((thread) => visibleThreadPullRequests(thread.pullRequests ?? []).length === 0)
+      .filter(
+        (thread) =>
+          thread.branch !== null ||
+          thread.linkedPullRequest != null ||
+          thread.branchPullRequest != null,
+      );
     const lookupCwdByThreadId = new Map<string, string>();
     yield* Effect.forEach(
       lookupCandidates,

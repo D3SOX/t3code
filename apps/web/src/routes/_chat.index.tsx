@@ -47,10 +47,15 @@ function IndexDraftLanding() {
   const mostRecentProject =
     projects.find(
       (project) =>
+        project.archivedAt == null &&
         project.environmentId === lastNewThreadProjectRef?.environmentId &&
         project.id === lastNewThreadProjectRef.projectId,
     ) ??
-    sortScopedProjectsForSidebar(projects, threads, "updated_at")[0] ??
+    sortScopedProjectsForSidebar(
+      projects.filter((project) => project.archivedAt == null),
+      threads,
+      "updated_at",
+    )[0] ??
     null;
   const attempt = startState.retryRequest;
 

@@ -2,7 +2,10 @@ import { useActiveNewTask } from "../../state/active-new-task";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
-import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
+import {
+  pickableProjectGroups,
+  resolveScratchProjectScopeKey,
+} from "@t3tools/client-runtime/state/project-grouping";
 import {
   useAppearancePreferences,
   useAndroidFloatingTabs,
@@ -43,7 +46,7 @@ import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { useThreadListNow } from "./use-thread-list-now";
 import { usePendingThreadOrder } from "../../state/thread-order";
-import { threadListEnvironmentsAtom } from "../../state/server";
+import { threadListEnvironmentsAtom } from "../../state/presentation";
 import { usePendingNewTasks, type PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
@@ -81,6 +84,7 @@ import {
 } from "./thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
 import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
+import { ThreadPrDemandProvider } from "../../state/thread-pr-demand";
 import {
   isThreadListV2ListItem,
   threadListV2ListItemsAreEqual,
@@ -123,10 +127,15 @@ interface ThreadNavigationSidebarProps {
 
 /** iOS gives this sidebar an inert native stack so its column owns a real navigation bar. */
 export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
-  if (Platform.OS !== "ios") {
-    return <ThreadNavigationSidebarPane {...props} nativeChrome={false} />;
-  }
-  return <NativeSidebarContainer {...props} />;
+  return (
+    <ThreadPrDemandProvider visible={props.visible}>
+      {Platform.OS !== "ios" ? (
+        <ThreadNavigationSidebarPane {...props} nativeChrome={false} />
+      ) : (
+        <NativeSidebarContainer {...props} />
+      )}
+    </ThreadPrDemandProvider>
+  );
 }
 function NativeSidebarContainer(props: ThreadNavigationSidebarProps) {
   return (
@@ -225,7 +234,7 @@ function ThreadNavigationSidebarPane(
       }),
     [projects, options.selectedEnvironmentId, options.projectGroupingMode],
   );
-  const projectFilterOptions = projectScopes.map((scope) => ({
+  const projectFilterOptions = pickableProjectGroups(projectScopes).map((scope) => ({
     key: scope.key,
     label: scope.title,
     project: scope.representative,
@@ -245,8 +254,9 @@ function ThreadNavigationSidebarPane(
       ),
     [projectScopes],
   );
+  // An archived project's filter reads as all projects, matching the filter menu.
   const selectedProjectScope =
-    projectScopes.find((scope) => scope.key === resolvedProjectKey) ?? null;
+    pickableProjectGroups(projectScopes).find((scope) => scope.key === resolvedProjectKey) ?? null;
   const threadSearch = useThreadSearch(
     searchEnvironmentIds,
     props.searchQuery,

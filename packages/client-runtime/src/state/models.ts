@@ -314,6 +314,7 @@ export function presentThreadShell(
       thread.pendingRuntimeRequest !== null &&
       thread.pendingRuntimeRequest.kind !== "user_input" &&
       thread.pendingRuntimeRequest.kind !== "auth_refresh",
+    // Async questions count too, so a thread with any open question leaves Working.
     hasPendingUserInput: thread.pendingRuntimeRequest?.kind === "user_input",
     pendingSubagentRequest,
     pendingGuestMessageCount: thread.pendingGuestMessageCount ?? 0,
