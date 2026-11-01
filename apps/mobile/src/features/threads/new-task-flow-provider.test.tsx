@@ -108,6 +108,12 @@ vi.mock("../../state/workspace", () => ({
 }));
 vi.mock("../../state/shell", () => ({ useEnvironmentShellReadiness: () => ({}) }));
 vi.mock("../../lib/clock", () => ({ useNowMinuteMs: () => 0 }));
+vi.mock("../../state/preferences", () => ({
+  updateMobilePreferencesAtom: Atom.writable(
+    () => null,
+    () => {},
+  ),
+}));
 
 import { NewTaskFlowProvider, useNewTaskFlow } from "./new-task-flow-provider";
 

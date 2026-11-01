@@ -32,6 +32,9 @@ vi.mock("~/hooks/useScratchProject", () => ({
   }),
 }));
 vi.mock("~/hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
+vi.mock("~/hooks/useProjectGroupUpdate", () => ({
+  useProjectPin: () => ({ canPinProjectGroup: () => false, toggleProjectGroupPin: vi.fn() }),
+}));
 vi.mock("~/hooks/useStartTriage", () => ({ isTriagePrompt: () => false }));
 vi.mock("~/commandPaletteBus", () => ({ openCommandPalette: vi.fn() }));
 vi.mock("./TriageDraftHero", () => ({ TriageDraftHero: () => null }));
@@ -75,6 +78,10 @@ vi.mock("~/sidebarProjectGrouping", () => ({
 }));
 vi.mock("../Sidebar.logic", () => ({ sortLogicalProjectsForSidebar: (groups: unknown) => groups }));
 vi.mock("../ProjectFavicon", () => ({ ProjectFavicon: () => null }));
+vi.mock("../ProjectPinButton", () => ({
+  ProjectPinButton: () => null,
+  isProjectPinShortcut: () => false,
+}));
 vi.mock("../ProjectEnvironmentBadge", () => ({ ProjectEnvironmentBadge: () => null }));
 vi.mock("../ui/combobox", () => {
   const Wrapper = ({ children }: { children: React.ReactNode }) => <>{children}</>;
