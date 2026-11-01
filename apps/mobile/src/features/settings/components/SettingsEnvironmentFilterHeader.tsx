@@ -2,7 +2,8 @@ import type { NativeStackHeaderItem } from "@react-navigation/native-stack";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { Platform, Pressable } from "react-native";
 
-import { Menu } from "../../../components/ui/Menu";
+import { AndroidAnchoredMenu } from "../../../components/ui/AndroidAnchoredMenu";
+import { ProjectFavicon } from "../../../components/ProjectFavicon";
 import { SymbolView } from "../../../components/ui/AppSymbol";
 import { ENVIRONMENT_MACHINE_SYMBOLS } from "../../../components/EnvironmentMachineSymbol";
 import { NativeStackScreenOptions } from "../../../native/StackHeader";
@@ -132,10 +133,7 @@ export function AndroidSettingsEnvironmentFilter() {
       : "line.3.horizontal.decrease.circle.fill";
 
   return (
-    <Menu
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel="Filter settings environments and projects"
+    <AndroidAnchoredMenu
       title="Settings scope"
       actions={[
         {
@@ -164,6 +162,14 @@ export function AndroidSettingsEnvironmentFilter() {
           state: selectedProjectKey === group.key ? ("on" as const) : ("off" as const),
         })),
       ]}
+      renderActionIcon={(action, size) => {
+        const project = selectableProjectGroups.find(
+          (group) => action.id === `project:${group.key}`,
+        )?.representative;
+        return project ? (
+          <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+        ) : null;
+      }}
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "all") selectAll();
         else if (nativeEvent.event === "project:all") selectProject(null);
@@ -187,6 +193,6 @@ export function AndroidSettingsEnvironmentFilter() {
       >
         <SymbolView name={filterIcon} size={22} tintColorClassName="accent-icon" />
       </Pressable>
-    </Menu>
+    </AndroidAnchoredMenu>
   );
 }

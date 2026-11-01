@@ -642,7 +642,7 @@ export function NewTaskFlowProvider(
       projectKey: scopedProjectKey(project.environmentId, project.id),
     });
     savePreferences({
-      lastThreadProject: { environmentId: project.environmentId, projectId: project.id },
+      lastNewThreadProjectRef: { environmentId: project.environmentId, projectId: project.id },
     });
   };
 

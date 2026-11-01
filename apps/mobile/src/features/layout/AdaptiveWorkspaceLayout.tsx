@@ -587,7 +587,7 @@ function AdaptiveWorkspaceLayoutContent(
         requestId: uuidv4(),
         useLastProject: saved?.useLastProjectForNewThreads,
         currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
-        lastProject: saved?.lastThreadProject ?? saved?.lastNewThreadProjectRef ?? undefined,
+        lastProject: saved?.lastNewThreadProjectRef ?? saved?.lastThreadProject ?? undefined,
       }),
     );
   };

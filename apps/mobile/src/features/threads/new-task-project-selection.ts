@@ -133,7 +133,7 @@ export function newTaskDestination(options: {
   const project =
     options.useLastProject === false
       ? undefined
-      : (find(options.currentProject) ?? find(options.lastProject));
+      : (find(options.lastProject) ?? find(options.currentProject));
   return project
     ? {
         draft: {

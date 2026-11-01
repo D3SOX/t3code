@@ -8,7 +8,7 @@ import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavi
 import { submittedThreadParams } from "./thread-route-state";
 import { ThreadScreenBinding, ThreadScreenFallback } from "./ThreadScreenHost";
 import { draftThreadShell } from "./draft-thread-shell";
-import { useRememberThreadProject } from "./useRememberThreadProject";
+import { useRememberNewThreadProject } from "./useRememberNewThreadProject";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { connectionTone } from "../connection/connectionTone";
 import { AppBar } from "../../components/ui/AppBar";
@@ -164,7 +164,7 @@ export function NewTaskDraftScreen(props: {
   const { getShare, isLoading: isIncomingShareInboxLoading } = useIncomingShare();
   const { projectScopes, selectedProject, selectedProjectKey, setProject } = flow;
   // selectedProject falls back to the environment's first project; remember only a chosen one.
-  useRememberThreadProject(
+  useRememberNewThreadProject(
     selectedProject &&
       selectedProjectKey === scopedProjectKey(selectedProject.environmentId, selectedProject.id)
       ? selectedProject
