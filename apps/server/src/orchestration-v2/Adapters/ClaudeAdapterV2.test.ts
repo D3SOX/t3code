@@ -831,6 +831,32 @@ describe("ClaudeAdapterV2 session permissions", () => {
         destination: "session",
       },
     ]);
+
+    // Under an administrator's ceiling a suggested mode switch is dropped; the rule stays.
+    const managed = ClaudeAdapterV2.permissionResultFromDecision({
+      toolName: "Edit",
+      decision: "acceptForSession",
+      toolInput: {},
+      toolUseID: "tool-2",
+      managedCeiling: true,
+      suggestions: [
+        { type: "setMode", mode: "acceptEdits", destination: "session" },
+        {
+          type: "addRules",
+          rules: [{ toolName: "Edit" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ],
+    });
+    assert.deepEqual(managed.behavior === "allow" ? managed.updatedPermissions : undefined, [
+      {
+        type: "addRules",
+        rules: [{ toolName: "Edit" }],
+        behavior: "allow",
+        destination: "session",
+      },
+    ]);
   });
 
   it("adds a whole-tool session rule when Claude offers no suggestion", () => {
@@ -12967,6 +12993,67 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           }),
         );
         yield* harness.awaitTerminal(1);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("keeps a foreground fork running past the placeholder result for its own launch", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-foreground-fork"),
+            text: "Fork this.",
+            attachments: [],
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeSubagentTaskStartedFrame({
+            taskId: "agent-fork",
+            toolUseId: "toolu-fork",
+            uuid: "00000000-0000-4000-8000-000000000901",
+          }),
+        );
+        // Claude Code opens a foreground fork's own stream with a placeholder result for its launch.
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "toolu-fork",
+                  content: "Fork started — that fork is you.",
+                },
+              ],
+            },
+            parent_tool_use_id: "toolu-fork",
+            uuid: "00000000-0000-4000-8000-000000000902",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeSubagentNotificationFrame({
+            taskId: "agent-fork",
+            toolUseId: "toolu-fork",
+            summary: "FORK-DONE",
+            uuid: "00000000-0000-4000-8000-000000000903",
+          }),
+        );
+        let settled = yield* Queue.take(harness.subagentReceipts);
+        while (settled.subagent.status === "running") {
+          settled = yield* Queue.take(harness.subagentReceipts);
+        }
+        assert.equal(settled.subagent.result, "FORK-DONE");
       }).pipe(
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),

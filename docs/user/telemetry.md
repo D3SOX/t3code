@@ -17,6 +17,9 @@ Relay connection traces sent to Axiom also require this opt-in. Relay tracing st
 `T3CODE_OTEL_SDK_DISABLED` or `OTEL_SDK_DISABLED` disables OpenTelemetry export.
 The web app in a browser, including one the `t3` CLI opens, does not read these variables.
 
+An administrator can turn product events and relay tracing off for every user on a machine with
+a [managed policy](./managed-policy.md#other-capabilities).
+
 The desktop app reads `T3CODE_TELEMETRY_ENABLED` from your shell profile, such as `~/.zshrc`, on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 

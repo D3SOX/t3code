@@ -151,7 +151,7 @@ describe("local agent notifications", () => {
         },
       })),
     };
-    // Nonblocking requests stay working; blocking questions should notify.
+    expect(track(environmentId, waiting)).toMatchObject([{ alert_title: "Waiting for input" }]);
     expect(track(environmentId, waiting)).toEqual([]);
     const blocking = {
       ...waiting,
@@ -160,7 +160,6 @@ describe("local agent notifications", () => {
         pendingRuntimeRequest: { ...t.pendingRuntimeRequest, blocking: true },
       })),
     };
-    expect(track(environmentId, blocking)).toMatchObject([{ alert_title: "Waiting for input" }]);
     expect(track(environmentId, blocking)).toEqual([]);
   });
 });

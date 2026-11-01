@@ -47,6 +47,7 @@ import { consumeCloudReplayGuards } from "./CloudLink.ts";
 import { pendingServiceUpdateExists } from "./updateHandoff.ts";
 import { managedTunnelStartupAction } from "./managedTunnelStartup.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 
 const storeFailure = (tag: "AlreadyExists" | "PermissionDenied") =>
   new ServerSecretStore.SecretStorePersistError({
@@ -176,7 +177,7 @@ describe("releaseManagedTunnelOnShutdown", () => {
     (harness: ReleaseHarness) =>
     <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
-        Effect.provide(CloudLink.layer),
+        Effect.provide(CloudLink.layer.pipe(Layer.provide(ManagedPolicy.layerTest()))),
         Effect.provideService(
           ConnectReachability.ConnectReachability,
           ConnectReachability.ConnectReachability.of({

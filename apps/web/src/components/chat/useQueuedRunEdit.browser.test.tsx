@@ -223,6 +223,7 @@ describe("useQueuedRunEdit", () => {
       await act(() => requireHook(hook).beginEdit(request));
       const update = screen.getByRole("button", { name: "Update queued message" });
       await expect.element(update).toBeEnabled();
+      mocks.editQueuedRun.mockClear();
       await update.click();
       await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
       expect(mocks.editQueuedRun).toHaveBeenCalledWith(
@@ -257,6 +258,7 @@ describe("useQueuedRunEdit", () => {
       }),
     );
     await act(() => requireHook(hook).removeEditingAttachment("removed"));
+    mocks.editQueuedRun.mockClear();
     await screen.getByRole("button", { name: "Update queued message" }).click();
     await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
     expect(mocks.editQueuedRun).toHaveBeenCalledWith(

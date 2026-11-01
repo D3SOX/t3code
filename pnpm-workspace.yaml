@@ -230,6 +230,8 @@ minimumReleaseAgeExclude:
 
 overrides:
   prosemirror-view: 1.42.9
+  prosemirror-model: 1.25.12
+  prosemirror-transform: 1.12.4
   mdast-util-from-markdown: 2.1.0
   micromark-util-types: "catalog:"
   # Pin every patched package, including transitive dependencies, so lockfile-free

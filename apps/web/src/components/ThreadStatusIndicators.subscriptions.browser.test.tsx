@@ -127,7 +127,9 @@ it("keeps a long PR hover list in the viewport and lets the last row be selected
     expect(lastRow.getBoundingClientRect().top).toBeGreaterThan(
       popup().getBoundingClientRect().bottom,
     );
-    await userEvent.wheel(popup(), { delta: { y: 10_000 } });
+    await userEvent.wheel(popup().querySelector<HTMLElement>(".overflow-y-auto")!, {
+      delta: { y: 10_000 },
+    });
     await expect
       .poll(() => lastRow.getBoundingClientRect().bottom)
       .toBeLessThanOrEqual(popup().getBoundingClientRect().bottom);

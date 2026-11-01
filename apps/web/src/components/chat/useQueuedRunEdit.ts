@@ -291,7 +291,9 @@ export function useQueuedRunEdit(input: {
     const target = queuedEditDraftTarget(routeThreadRef, request.runId);
     const text = stripAttachmentOnlyBootstrapPrompt(request.text);
     const store = useComposerDraftStore.getState();
-    if (!store.getComposerDraft(target)) store.setPrompt(target, text);
+    if (storedEdit?.runId !== request.runId || !store.getComposerDraft(target)) {
+      store.setPrompt(target, text);
+    }
     const threadRef = { environmentId, threadId: activeThreadId };
     queuedRunEdits.begin(
       editKey,
