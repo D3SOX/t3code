@@ -9,13 +9,14 @@ import {
   type OlderSettledScope,
 } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
-import { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { environmentCatalog } from "../connection/catalog";
 import { olderSettledThreads, threadFamilies } from "./threads";
 import { environmentShell } from "./shell";
 
@@ -27,12 +28,7 @@ export async function withAllOlderSettledThreads<A>(
 ) {
   using resources = new DisposableStack();
   const pages = Number.MAX_SAFE_INTEGER;
-  for (const scope of scopes) {
-    if (
-      appAtomRegistry.get(environmentShell.stateValueAtom(scope.environmentId)).status !== "live"
-    ) {
-      throw new Error("Connect all selected environments before archiving settled threads.");
-    }
+  const readiness = scopes.map((scope) => {
     const atom = olderSettledThreads.pagesAtom(scope, pages);
     resources.defer(appAtomRegistry.mount(atom));
     resources.defer(
@@ -43,19 +39,53 @@ export async function withAllOlderSettledThreads<A>(
         olderSettledThreads.pageRowsAtom(scope, pages),
       ),
     );
-    const result = await Effect.runPromise(
-      AtomRegistry.toStream(appAtomRegistry, atom).pipe(
-        Stream.filter((value) => value.status !== "pending"),
-        Stream.runHead,
-        Effect.map(Option.getOrThrow),
-      ),
-    );
-    if (
-      result.status === "failed" ||
-      appAtomRegistry.get(environmentShell.stateValueAtom(scope.environmentId)).status !== "live"
-    )
-      throw new Error("Could not load all settled threads.");
-  }
+    const ready = Atom.make((get) => {
+      const connection = get(environmentCatalog.stateAtom(scope.environmentId));
+      const shell = get(environmentShell.stateValueAtom(scope.environmentId));
+      if (AsyncResult.isFailure(connection)) return AsyncResult.failure(connection.cause);
+      if (!AsyncResult.isSuccess(connection)) return AsyncResult.initial();
+      // "available" is also the connection atom's initial placeholder.
+      if (connection.value.phase === "available" || connection.value.phase === "connecting") {
+        return AsyncResult.initial();
+      }
+      if (connection.value.phase !== "connected") {
+        return AsyncResult.failure(
+          Cause.fail(
+            new Error("Connect all selected environments before archiving settled threads."),
+          ),
+        );
+      }
+      if (Option.isSome(shell.error)) {
+        return AsyncResult.failure(
+          Cause.fail(new Error("Could not synchronize selected environment data.")),
+        );
+      }
+      if (
+        shell.generation === 0 ||
+        Option.isNone(shell.snapshot) ||
+        (shell.status !== "live" && shell.status !== "synchronizing")
+      )
+        return AsyncResult.initial();
+      const result = get(atom);
+      if (result.status === "pending") return AsyncResult.initial();
+      if (result.status === "failed") {
+        return AsyncResult.failure(Cause.fail(new Error("Could not load all settled threads.")));
+      }
+      return AsyncResult.success(result);
+    });
+    resources.defer(appAtomRegistry.mount(ready));
+    return ready;
+  });
+  const allReady = Atom.make((get) => {
+    const states = readiness.map((atom) => get(atom));
+    for (const state of states) {
+      if (AsyncResult.isFailure(state)) return AsyncResult.failure(state.cause);
+    }
+    return states.every(AsyncResult.isSuccess)
+      ? AsyncResult.success(undefined)
+      : AsyncResult.initial();
+  });
+  await Effect.runPromise(AtomRegistry.getResult(appAtomRegistry, allReady));
   return await operation();
 }
 
