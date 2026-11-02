@@ -4,7 +4,6 @@ import {
   shouldShowCollapsedSidebarThread,
   resolveThreadLastVisitedAt,
 } from "./Sidebar.logic";
-import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
@@ -429,15 +428,9 @@ function useSidebarThreads(input: {
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && folderGroups === null;
   const environmentConnections = useEnvironmentConnectionSummaries();
-  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
   const disconnectedEnvironmentIds = new Set(
     environmentConnections
-      .filter((environment) =>
-        isSidebarEnvironmentDisconnected(
-          environment.connectionState,
-          liveShellEnvironmentIds.has(environment.environmentId),
-        ),
-      )
+      .filter((environment) => isSidebarEnvironmentDisconnected(environment.connectionState))
       .map((environment) => environment.environmentId),
   );
   const inboxReturnsVersion = useSyncExternalStore(

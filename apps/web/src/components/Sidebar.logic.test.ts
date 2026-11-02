@@ -1134,20 +1134,16 @@ describe("Working shelf (beta)", () => {
   });
 
   it.each([
-    ["connected", true, false],
-    ["connected", false, true],
-    ["connecting", false, false],
-    ["reconnecting", false, true],
-    ["offline", false, true],
-    ["error", false, true],
-    ["unsupported", false, true],
-    ["available", false, true],
-  ] as const)(
-    "lists threads outside the shelf on a %s environment: %s",
-    (phase, shellIsLive, disconnected) => {
-      expect(isSidebarEnvironmentDisconnected(phase, shellIsLive)).toBe(disconnected);
-    },
-  );
+    ["connected", false],
+    ["connecting", false],
+    ["reconnecting", true],
+    ["offline", true],
+    ["error", true],
+    ["unsupported", true],
+    ["available", true],
+  ] as const)("lists threads outside the shelf on a %s environment: %s", (phase, disconnected) => {
+    expect(isSidebarEnvironmentDisconnected(phase)).toBe(disconnected);
+  });
 
   it("lists a running thread outside the shelf while its environment is disconnected", () => {
     const thread = { ...idle, runtime, environmentId: localEnvironmentId };
@@ -1159,6 +1155,9 @@ describe("Working shelf (beta)", () => {
       });
 
     expect(shelve([])).toBe(true);
+    expect(shelve(isSidebarEnvironmentDisconnected("connected") ? [localEnvironmentId] : [])).toBe(
+      true,
+    );
     expect(shelve([localEnvironmentId])).toBe(false);
     expect(shelve([])).toBe(true);
     expect(shelve([EnvironmentId.make("environment-other")])).toBe(true);
