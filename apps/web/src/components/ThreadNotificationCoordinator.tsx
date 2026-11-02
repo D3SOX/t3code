@@ -5,6 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/models";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import type { AnyRouter } from "@tanstack/react-router";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
@@ -45,6 +46,8 @@ interface NotificationState extends ThreadNotificationObservation {
   readonly status: SidebarThreadStatus;
 }
 
+type ToastId = ReturnType<typeof toastManager.add>;
+
 interface WatchedEnvironment {
   unsubscribe: () => void;
   previous: Map<ThreadId, NotificationState>;
@@ -60,7 +63,10 @@ export function startThreadNotifications(
   registry: AtomRegistry.AtomRegistry,
   router: AnyRouter,
 ): () => void {
-  const pending = new Map<string, { environmentId: EnvironmentId; notification: Notification }>();
+  const pending = new Map<
+    string,
+    { environmentId: EnvironmentId; threadId: ThreadId; notification: Notification }
+  >();
   const watched = new Map<EnvironmentId, WatchedEnvironment>();
   const unread = new Set<string>();
   const notifiedUsageLimits = new Map<
@@ -99,11 +105,44 @@ export function startThreadNotifications(
     dismissViewed();
   };
 
-  const trackNotification = (environmentId: EnvironmentId, notification: Notification) => {
+  const trackNotification = (
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+    notification: Notification,
+  ) => {
     pending.get(notification.tag)?.notification.close();
-    pending.set(notification.tag, { environmentId, notification });
+    pending.set(notification.tag, { environmentId, threadId, notification });
     unread.add(notification.tag);
     setNotificationBadge(unread.size);
+  };
+  // Toast ids by thread key, so hiding a thread can close its open toasts.
+  const openToasts = new Map<string, Array<ToastId>>();
+  const forgetToast = (key: string, toastId: ToastId) => {
+    const remaining = (openToasts.get(key) ?? []).filter((id) => id !== toastId);
+    if (remaining.length === 0) openToasts.delete(key);
+    else openToasts.set(key, remaining);
+  };
+  // A notification shown before the tag filter turned on must not stay on screen. While hiding,
+  // one whose thread left the live list (archived) cannot be judged, so it closes too.
+  const closeHiddenPending = () => {
+    const hidden = registry.get(environmentThreadShells.hiddenThreadKeysAtom);
+    const live = registry.get(environmentThreadShells.anyEnvironmentHidingAtom)
+      ? new Set(registry.get(environmentThreadShells.threadRefsAtom).map(threadKey))
+      : null;
+    const shouldClose = (key: string) => hidden.has(key) || (live !== null && !live.has(key));
+    for (const [key, toastIds] of openToasts) {
+      if (!shouldClose(key)) continue;
+      for (const toastId of toastIds) toastManager.close(toastId);
+      openToasts.delete(key);
+    }
+    const count = pending.size;
+    for (const [tag, entry] of pending) {
+      if (!shouldClose(threadKey(entry))) continue;
+      entry.notification.close();
+      pending.delete(tag);
+      unread.delete(tag);
+    }
+    if (count !== pending.size) setNotificationBadge(unread.size);
   };
   const clearPending = () => {
     for (const { notification } of pending.values()) notification.close();
@@ -119,6 +158,12 @@ export function startThreadNotifications(
     kind: ThreadNotificationKind,
   ) => {
     const { thread, status, raw: rawThread } = state;
+    if (
+      registry
+        .get(environmentThreadShells.hiddenThreadKeysAtom)
+        .has(threadKey({ environmentId, threadId: thread.id }))
+    )
+      return;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
     const active = (router.state.matches.at(-1)?.params ?? {}) as {
       environmentId?: string;
@@ -171,10 +216,16 @@ export function startThreadNotifications(
       );
     }
     if (showToast) {
+      const toastKey = threadKey({ environmentId, threadId: thread.id });
       const previousToastId = pendingToasts.get(threadNotificationTag(environmentId, thread.id));
       if (previousToastId) toastManager.close(previousToastId);
-      const toastId = toastManager.add({
+      const toastId: ToastId = toastManager.add({
         timeout: 0,
+        onRemove: (): void => {
+          forgetToast(toastKey, toastId);
+          const tag = threadNotificationTag(environmentId, thread.id);
+          if (pendingToasts.get(tag) === toastId) pendingToasts.delete(tag);
+        },
         type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
         title,
         description: thread.title,
@@ -213,6 +264,7 @@ export function startThreadNotifications(
         },
       });
       pendingToasts.set(threadNotificationTag(environmentId, thread.id), toastId);
+      openToasts.set(toastKey, [...(openToasts.get(toastKey) ?? []), toastId]);
       return;
     }
     if (!showNotification) return;
@@ -224,7 +276,7 @@ export function startThreadNotifications(
         // Windows drops clicks after a toast moves into Notification Center.
         requireInteraction: kind === "completion" && isWindowsPlatform(navigator.platform),
       });
-      trackNotification(environmentId, notification);
+      trackNotification(environmentId, thread.id, notification);
       notification.addEventListener("click", () => {
         notification.close();
         if (window.desktopBridge?.focusWindow) {
@@ -438,6 +490,7 @@ export function startThreadNotifications(
   const clearToasts = () => {
     for (const toast of pendingToasts.values()) toastManager.close(toast);
     pendingToasts.clear();
+    openToasts.clear();
   };
   const onSettings = () => {
     if (!getClientSettings().inAppNotificationsEnabled) clearToasts();
@@ -455,6 +508,11 @@ export function startThreadNotifications(
   window.addEventListener("focus", dismissViewed);
   document.addEventListener("visibilitychange", dismissViewed);
   const unsubscribeRoute = router.subscribe?.("onResolved", dismissViewed);
+  const unsubscribeHidden = [
+    registry.subscribe(environmentThreadShells.hiddenThreadKeysAtom, closeHiddenPending),
+    registry.subscribe(environmentThreadShells.anyEnvironmentHidingAtom, closeHiddenPending),
+    registry.subscribe(environmentThreadShells.threadRefsAtom, closeHiddenPending),
+  ];
   onSettings();
 
   return () => {
@@ -464,6 +522,7 @@ export function startThreadNotifications(
     clearToasts();
     unsubscribeSettings();
     unsubscribeEnvironmentIds();
+    for (const unsubscribe of unsubscribeHidden) unsubscribe();
     for (const entry of watched.values()) entry.unsubscribe();
     watched.clear();
     stopModeListeners();

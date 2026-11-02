@@ -45,7 +45,7 @@ vi.mock("~/logicalProject", () => ({
   selectProjectGroupingSettings: () => ({}),
   deriveLogicalProjectKeyFromSettings: () => "project-a",
 }));
-vi.mock("~/state/entities", () => ({ useProjects: () => [], useThreadShells: () => [] }));
+vi.mock("~/state/entities", () => ({ useProjects: () => [], useVisibleThreadShells: () => [] }));
 vi.mock("~/state/environments", () => ({
   useEnvironments: () => ({ environments: [] }),
   useEnvironmentProviders: () => new Map(),
