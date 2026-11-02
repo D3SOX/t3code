@@ -8,6 +8,7 @@ import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
+  settlePromise,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
@@ -578,20 +579,23 @@ type LogicalSidebarProject = SidebarProject & {
 
 type ThreadTraversalDirection = "previous" | "next";
 
-/** Bulk archival always asks, independently of single-thread confirmation settings. */
 export async function archiveSettledThreadEntries<TEntry>(input: {
   readonly entries: readonly TEntry[];
-  readonly loadEntries?: () => Promise<readonly TEntry[]>;
-  readonly confirm: (count: number) => Promise<boolean>;
   readonly archive: (entry: TEntry) => Promise<AtomCommandResult<unknown, unknown> | null>;
-}) {
-  const entries = input.loadEntries ? await input.loadEntries() : input.entries;
-  if (entries.length === 0 || !(await input.confirm(entries.length))) return null;
-  for (const entry of entries) {
-    const result = await input.archive(entry);
-    if (result?._tag === "Failure") return result;
-  }
-  return null;
+}): Promise<AsyncResult.Failure<unknown, unknown> | null> {
+  let next = 0;
+  let failure: AsyncResult.Failure<unknown, unknown> | null = null;
+  await Promise.all(
+    Array.from({ length: Math.min(8, input.entries.length) }, async () => {
+      while (next < input.entries.length && failure === null) {
+        const entry = input.entries[next++]!;
+        const outcome = await settlePromise(() => input.archive(entry));
+        const result = outcome._tag === "Failure" ? outcome : outcome.value;
+        if (result?._tag === "Failure") failure ??= result;
+      }
+    }),
+  );
+  return failure;
 }
 
 /**

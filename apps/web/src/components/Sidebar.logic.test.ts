@@ -74,64 +74,52 @@ import {
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
 describe("archiveSettledThreadEntries", () => {
-  it.each([false, true])(
-    "requires confirmation before archiving the entire section: %s",
-    async (confirmed) => {
-      const entries = Array.from({ length: 519 }, (_, index) => `thread-${index}`);
-      const archived: string[] = [];
-      const counts: number[] = [];
-      await archiveSettledThreadEntries({
-        entries: entries.slice(0, 44),
-        loadEntries: async () => entries,
-        confirm: async (count) => {
-          counts.push(count);
-          return confirmed;
-        },
-        archive: async (entry) => {
-          archived.push(entry);
-          return AsyncResult.success(undefined);
-        },
-      });
-      expect(counts).toEqual([519]);
-      expect(archived).toEqual(confirmed ? entries : []);
-    },
-  );
-  it("leaves remaining threads intact after a failed archive", async () => {
+  it("archives the entire section with bounded concurrent requests", async () => {
+    const entries = Array.from({ length: 548 }, (_, index) => `thread-${index}`);
+    const archived: string[] = [];
+    let release!: () => void;
+    let started!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let active = 0;
+    let maxActive = 0;
+    const operation = archiveSettledThreadEntries({
+      entries,
+      archive: async (entry) => {
+        archived.push(entry);
+        active++;
+        maxActive = Math.max(maxActive, active);
+        started();
+        await pending;
+        active--;
+        return AsyncResult.success(undefined);
+      },
+    });
+    await firstStarted;
+    const firstWave = archived.length;
+    release();
+    expect(await operation).toBeNull();
+    expect(firstWave).toBe(8);
+    expect(maxActive).toBe(8);
+    expect(archived).toEqual(entries);
+  });
+  it("drains in-flight requests and leaves later threads intact after a failed archive", async () => {
     const archived: string[] = [];
     const failure = AsyncResult.failure(Cause.fail(new Error("Archive failed")));
     expect(
       await archiveSettledThreadEntries({
-        entries: ["first", "second"],
-        confirm: async () => true,
+        entries: Array.from({ length: 20 }, (_, index) => `thread-${index}`),
         archive: async (entry) => {
           archived.push(entry);
           return failure;
         },
       }),
     ).toBe(failure);
-    expect(archived).toEqual(["first"]);
-  });
-  it("does not archive a partial list when loading the rest fails", async () => {
-    const archived: string[] = [];
-    const confirmed: number[] = [];
-    await expect(
-      archiveSettledThreadEntries({
-        entries: ["loaded"],
-        loadEntries: async () => {
-          throw new Error("Page failed");
-        },
-        confirm: async (count) => {
-          confirmed.push(count);
-          return true;
-        },
-        archive: async (entry) => {
-          archived.push(entry);
-          return AsyncResult.success(undefined);
-        },
-      }),
-    ).rejects.toThrow("Page failed");
-    expect(confirmed).toEqual([]);
-    expect(archived).toEqual([]);
+    expect(archived).toEqual(Array.from({ length: 8 }, (_, index) => `thread-${index}`));
   });
 });
 

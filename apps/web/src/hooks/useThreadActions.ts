@@ -4,7 +4,11 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -21,7 +25,7 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 
-import { pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { archiveSettledThreadEntries, pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -54,7 +58,7 @@ import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
-import { showThreadUndoNotice } from "./showThreadUndoNotice";
+import { showThreadUndoNotice, showThreadUndoNotices } from "./showThreadUndoNotice";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
@@ -375,6 +379,10 @@ export function useThreadActions() {
     target: ScopedThreadRef,
     opts: {
       onArchived?: () => void;
+      batch?: {
+        environments: Set<EnvironmentId>;
+        notices: Parameters<typeof showThreadUndoNotice>[0][];
+      };
     } = {},
   ) => {
     const resolved = resolveThreadTarget(target);
@@ -412,9 +420,10 @@ export function useThreadActions() {
     if (wokeAt !== null) {
       markThreadVisited(scopedThreadKey(threadRef), wokeAt);
     }
-    refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+    if (opts.batch) opts.batch.environments.add(threadRef.environmentId);
+    else refreshArchivedThreadsForEnvironment(threadRef.environmentId);
     opts.onArchived?.();
-    showThreadUndoNotice({
+    const notice: Parameters<typeof showThreadUndoNotice>[0] = {
       action: "Archived",
       claim: action,
       undo: () =>
@@ -422,7 +431,9 @@ export function useThreadActions() {
           navigate: shouldNavigateToDraft,
         }),
       failureTitle: "Failed to undo archive",
-    });
+    };
+    if (opts.batch) opts.batch.notices.push(notice);
+    else showThreadUndoNotice(notice);
 
     if (shouldNavigateToDraft && router.state.location.href === requestingRouteHref) {
       const navigationResult = await settlePromise(() =>
@@ -434,6 +445,43 @@ export function useThreadActions() {
       return archiveResult;
     }
     return archiveResult;
+  };
+  const archiveSettledThreads = (
+    targets: readonly ScopedThreadRef[],
+    opts: {
+      settledBefore: ReadonlyMap<EnvironmentId, string>;
+      onArchived?: (target: ScopedThreadRef) => void;
+    },
+  ) => {
+    const batch = {
+      environments: new Set<EnvironmentId>(),
+      notices: [] as Parameters<typeof showThreadUndoNotice>[0][],
+    };
+    return archiveSettledThreadEntries({
+      entries: targets,
+      archive: async (target) => {
+        const thread = readThreadShell(target);
+        if (
+          !thread ||
+          thread.archivedAt !== null ||
+          thread.settledOverride !== "settled" ||
+          (thread.settledAt !== null &&
+            thread.settledAt > (opts.settledBefore.get(target.environmentId) ?? "")) ||
+          effectiveSnoozed(thread, { now: new Date().toISOString() }) ||
+          !threadRuntimeCanArchive(thread.runtime)
+        )
+          return null;
+        return archiveThread(target, {
+          batch,
+          onArchived: () => opts.onArchived?.(target),
+        });
+      },
+    }).finally(() => {
+      for (const environmentId of batch.environments) {
+        refreshArchivedThreadsForEnvironment(environmentId);
+      }
+      showThreadUndoNotices(batch.notices);
+    });
   };
   const deleteThread = async (
     target: ScopedThreadRef,
@@ -960,6 +1008,7 @@ export function useThreadActions() {
   };
   return {
     archiveThread,
+    archiveSettledThreads,
     unarchiveThread,
     deleteThread,
     confirmAndDeleteThread,
