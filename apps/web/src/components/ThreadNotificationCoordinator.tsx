@@ -357,7 +357,8 @@ export function startThreadNotifications(
           ? `${thread.latestRun?.runId ?? ""}:${status}`
           : null;
       const completedAt = Date.parse(thread.latestRun?.completedAt ?? "");
-      const settled = status === "ready" && thread.latestRun?.status === "completed";
+      const completed = thread.latestRun?.status === "completed";
+      const settled = status === "ready" && completed;
       const state = {
         raw: rawThread,
         subagentRequest,
@@ -365,7 +366,7 @@ export function startThreadNotifications(
         status,
         attention,
         settled,
-        completedAt: settled && Number.isFinite(completedAt) ? completedAt : null,
+        completedAt: completed && Number.isFinite(completedAt) ? completedAt : null,
       };
       next.set(thread.id, state);
       changed.push([prior, state]);

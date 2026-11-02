@@ -9,12 +9,55 @@ import {
   type OlderSettledScope,
 } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+import { AtomRegistry } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { olderSettledThreads, threadFamilies } from "./threads";
+import { environmentShell } from "./shell";
 
 const NO_PAGES: ReadonlyMap<EnvironmentId, number> = new Map();
+
+export async function withAllOlderSettledThreads<A>(
+  scopes: ReadonlyArray<OlderSettledScope>,
+  operation: () => Promise<A>,
+) {
+  using resources = new DisposableStack();
+  const pages = Number.MAX_SAFE_INTEGER;
+  for (const scope of scopes) {
+    if (
+      appAtomRegistry.get(environmentShell.stateValueAtom(scope.environmentId)).status !== "live"
+    ) {
+      throw new Error("Connect all selected environments before archiving settled threads.");
+    }
+    const atom = olderSettledThreads.pagesAtom(scope, pages);
+    resources.defer(appAtomRegistry.mount(atom));
+    resources.defer(
+      threadFamilies.mountRows(
+        appAtomRegistry,
+        scope.environmentId,
+        olderSettledThreads.rowsKey(scope, pages),
+        olderSettledThreads.pageRowsAtom(scope, pages),
+      ),
+    );
+    const result = await Effect.runPromise(
+      AtomRegistry.toStream(appAtomRegistry, atom).pipe(
+        Stream.filter((value) => value.status !== "pending"),
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
+      ),
+    );
+    if (
+      result.status === "failed" ||
+      appAtomRegistry.get(environmentShell.stateValueAtom(scope.environmentId)).status !== "live"
+    )
+      throw new Error("Could not load all settled threads.");
+  }
+  return await operation();
+}
 
 /**
  * The Settled shelf for one scope when shells leave older settled threads out: which rows it may

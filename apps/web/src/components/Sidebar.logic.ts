@@ -581,11 +581,13 @@ type ThreadTraversalDirection = "previous" | "next";
 /** Bulk archival always asks, independently of single-thread confirmation settings. */
 export async function archiveSettledThreadEntries<TEntry>(input: {
   readonly entries: readonly TEntry[];
+  readonly loadEntries?: () => Promise<readonly TEntry[]>;
   readonly confirm: (count: number) => Promise<boolean>;
   readonly archive: (entry: TEntry) => Promise<AtomCommandResult<unknown, unknown> | null>;
 }) {
-  if (input.entries.length === 0 || !(await input.confirm(input.entries.length))) return null;
-  for (const entry of input.entries) {
+  const entries = input.loadEntries ? await input.loadEntries() : input.entries;
+  if (entries.length === 0 || !(await input.confirm(entries.length))) return null;
+  for (const entry of entries) {
     const result = await input.archive(entry);
     if (result?._tag === "Failure") return result;
   }

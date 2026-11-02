@@ -58,6 +58,16 @@ describe("createThreadNotificationGate", () => {
     observe({ ...completed(1) });
     vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS * 2);
     expect(notify).toHaveBeenCalledTimes(1);
+
+    observe({ ...completed(2), settled: false });
+    observe(completed(2));
+    vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS * 2);
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    observe(working);
+    observe(completed(3));
+    vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS);
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it("notifies attention at once and replaces a pending completion", () => {

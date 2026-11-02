@@ -603,21 +603,33 @@ describe("thread notifications", () => {
     });
   });
 
-  it("waits for background work to finish before alerting completion", async () => {
-    await using harness = setup();
-    const { render, complete } = harness;
-    await render();
-    state.background = [{ taskId: "watch", kind: "monitor", awaited: true }];
-    await complete();
-    expect(state.add).not.toHaveBeenCalled();
-    state.background = [{ taskId: "dev", kind: "command" }];
-    await render();
-    expect(state.add).not.toHaveBeenCalled();
-    state.background = [];
-    await render();
-    expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Thread completed" }),
-    );
-  });
+  it.each([true, false])(
+    "waits for the agent after background work with focus=%s",
+    async (focused) => {
+      await using harness = setup();
+      const { render, complete } = harness;
+      state.mode = "notifications-and-sound";
+      state.focused = focused;
+      await render();
+      state.background = [{ taskId: "watch", kind: "monitor", awaited: true }];
+      await complete();
+      expect(state.add).not.toHaveBeenCalled();
+      state.background = [{ taskId: "dev", kind: "command" }];
+      await render();
+      expect(state.add).not.toHaveBeenCalled();
+      state.background = [];
+      await render();
+      await render();
+      expect(state.add).not.toHaveBeenCalled();
+      expect(state.notification).not.toHaveBeenCalled();
+      expect(state.sound).not.toHaveBeenCalled();
+
+      state.completedAt = null;
+      await render();
+      state.completedAt = "2026-09-13T11:00:00.000Z";
+      await render();
+      expect(focused ? state.add : state.notification).toHaveBeenCalledOnce();
+      expect(state.sound).toHaveBeenCalledExactlyOnceWith("completion", expect.any(Function));
+    },
+  );
 });

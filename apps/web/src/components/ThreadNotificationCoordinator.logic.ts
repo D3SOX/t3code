@@ -40,8 +40,8 @@ export function createThreadNotificationGate<Key>(
     ): void {
       if (next.settled && next.completedAt !== null) lastSettled.set(key, next.completedAt);
       if (!next.settled || options.archived || options.quiet) cancel(key);
-      // The first sighting, archived threads, and stopped or silent runs never notify completion.
-      if (!prior || options.archived || options.quiet) skip(key, next.completedAt);
+      // A run blocked by background work must not notify later when its continuation is still due.
+      if (!prior || !next.settled || options.archived || options.quiet) skip(key, next.completedAt);
       if (!prior || options.archived) return;
       if (next.attention && next.attention !== prior.attention) {
         // Attention replaces the completion before it, so that run must not notify later.

@@ -428,7 +428,7 @@ describe("createOlderSettledThreadAtoms", () => {
     }),
   );
 
-  it.effect("reads pages in order until a short one, and retries a failed page", () =>
+  it.effect.each([2, Number.MAX_SAFE_INTEGER])("reads %s pages and retries", (limit) =>
     Effect.gen(function* () {
       const { replies, requests, atoms, registry, setShell, until } = yield* makeAtoms();
       const scope = { environmentId, projectIds: null };
@@ -459,7 +459,7 @@ describe("createOlderSettledThreadAtoms", () => {
           counts: [],
         }),
       );
-      const twoPages = atoms.pagesAtom(scope, 2);
+      const twoPages = atoms.pagesAtom(scope, limit);
       registry.mount(twoPages);
       const done = yield* until(twoPages, (pages) => pages.reads.length === 2);
       expect(done.frontier).toBeNull();

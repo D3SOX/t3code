@@ -159,8 +159,12 @@ import {
 import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentProjects } from "../state/projects";
-import { threadEnvironment } from "../state/threads";
-import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
+import { environmentThreadShells, threadEnvironment } from "../state/threads";
+import {
+  withAllOlderSettledThreads,
+  useOlderSettledShelf,
+  useOlderSettledShelfGrowth,
+} from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
@@ -2368,16 +2372,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const handleSettledContextMenu = useStableCallback(async (position: { x: number; y: number }) => {
     const api = readLocalApi();
     if (!api) return;
+    const scopes = olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys).filter(
+      ({ environmentId, projectIds }) =>
+        settledThreads.some((thread) => thread.environmentId === environmentId) ||
+        [...(olderSettledShelf.environments.get(environmentId)?.older?.counts ?? [])].some(
+          ([projectId, count]) =>
+            count > 0 && (projectIds === null || projectIds.includes(projectId)),
+        ),
+    );
     const targets = settledThreads.map((thread) => scopeThreadRef(thread.environmentId, thread.id));
     const clicked = await settlePromise(() =>
       api.contextMenu.show(
         [
           {
             id: "archive-all",
-            label: `Archive all (${targets.length})`,
+            label: `Archive all (${settledCount})`,
             disabled:
-              targets.length === 0 ||
-              !canOperateThreads(settledThreads) ||
+              settledCount === 0 ||
+              !canOperateThreads(scopes) ||
               settledThreads.some((thread) => !threadRuntimeCanArchive(thread.runtime)),
           },
         ],
@@ -2387,28 +2399,53 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (
       clicked._tag === "Failure" ||
       clicked.value !== "archive-all" ||
-      !checkThreadOperations(settledThreads)
+      !checkThreadOperations(scopes)
     )
       return;
-    const failure = await archiveSettledThreadEntries({
-      entries: targets,
-      confirm: async (count) => {
-        const result = await settlePromise(() =>
-          api.dialogs.confirm(`Archive all ${count} settled thread${count === 1 ? "" : "s"}?`),
-        );
-        return result._tag === "Success" && result.value;
-      },
-      archive: async (threadRef) => {
-        // The set is captured before confirmation; newly settled threads are
-        // excluded, and threads that wake while the dialog is open are kept.
-        if (!settledThreadKeysRef.current.has(scopedThreadKey(threadRef))) return null;
-        const current = readThreadShell(threadRef);
-        if (!current || !checkThreadOperations([current])) return null;
-        return archiveThread(threadRef, {
-          onArchived: () => removeFromSelection([scopedThreadKey(threadRef)]),
-        });
-      },
-    });
+    const outcome = await settlePromise(() =>
+      withAllOlderSettledThreads(scopes, () =>
+        archiveSettledThreadEntries({
+          entries: targets,
+          loadEntries: async () => {
+            const now = new Date().toISOString();
+            const allSettled = filterSidebarV2VisibleThreads(
+              appAtomRegistry.get(environmentThreadShells.quietThreadShellsAtom),
+              scopedProjectKeys,
+              delegatedUnderParent,
+            ).filter(
+              (thread) =>
+                thread.settledOverride === "settled" && !effectiveSnoozed(thread, { now }),
+            );
+            if (!checkThreadOperations(allSettled)) return [];
+            return allSettled.map((thread) => scopeThreadRef(thread.environmentId, thread.id));
+          },
+          confirm: async (count) => {
+            const result = await settlePromise(() =>
+              api.dialogs.confirm(`Archive all ${count} settled thread${count === 1 ? "" : "s"}?`),
+            );
+            return result._tag === "Success" && result.value;
+          },
+          archive: async (threadRef) => {
+            // The set is captured before confirmation; newly settled threads are
+            // excluded, and threads that wake while the dialog is open are kept.
+            const current = readThreadShell(threadRef);
+            if (
+              !current ||
+              current.archivedAt !== null ||
+              current.settledOverride !== "settled" ||
+              effectiveSnoozed(current, { now: new Date().toISOString() }) ||
+              !threadRuntimeCanArchive(current.runtime)
+            )
+              return null;
+            if (!checkThreadOperations([current])) return null;
+            return archiveThread(threadRef, {
+              onArchived: () => removeFromSelection([scopedThreadKey(threadRef)]),
+            });
+          },
+        }),
+      ),
+    );
+    const failure = outcome._tag === "Failure" ? outcome : outcome.value;
     if (failure !== null && !isAtomCommandInterrupted(failure)) {
       const error = squashAtomCommandFailure(failure);
       toastManager.add(
