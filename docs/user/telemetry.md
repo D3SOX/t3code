@@ -6,11 +6,12 @@ When enabled, the server sends product usage events to `ingest.t3.codes` with ha
 and installation identifiers. These identify your T3 Connect account, signed-in OpenAI and
 Claude accounts, and each connected device. The endpoint keeps a copy of each
 event and forwards events to PostHog. Events include the provider, model, reasoning effort,
-permission mode, turn result, duration, release channel, and main-agent token totals when
-available.
+permission mode, turn and request results, duration, release channel, and token counts when
+available. Child-agent token counts are reported separately from the main agent's. Model names
+are sent only when they appear in a provider's public model list.
 
 Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
-raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
+raw provider events, or child-agent output.
 
 Unset the variable or set it to `false` to stop product events from being recorded or sent.
 Relay connection traces sent to Axiom also require this opt-in. Relay tracing stops when

@@ -314,22 +314,24 @@ it.effect.each(["root", "nested", "worktree"] as const)(
     }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("invalidates origin remote cache when a driver mutation adds origin", () =>
-  Effect.gen(function* () {
-    const driver = yield* GitVcsDriver.GitVcsDriver;
-    const cwd = yield* makeTmpDir();
-    const remote = yield* makeTmpDir("git-vcs-driver-remote-");
-    yield* initRepoWithCommit(cwd);
-    yield* git(remote, ["init", "--bare"]);
+it.effect.each(["origin", "github"] as const)(
+  "recognizes %s as the primary remote after a driver mutation",
+  (remoteName) =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      const remote = yield* makeTmpDir("git-vcs-driver-remote-");
+      yield* initRepoWithCommit(cwd);
+      yield* git(remote, ["init", "--bare"]);
 
-    const before = yield* driver.statusDetailsLocal(cwd);
-    assert.equal(before.hasOriginRemote, false);
+      assert.equal((yield* driver.statusDetailsLocal(cwd)).hasOriginRemote, false);
+      assert.equal((yield* driver.listRefs({ cwd })).hasPrimaryRemote, false);
 
-    yield* driver.ensureRemote({ cwd, preferredName: "origin", url: remote });
+      yield* driver.ensureRemote({ cwd, preferredName: remoteName, url: remote });
 
-    const after = yield* driver.statusDetailsLocal(cwd);
-    assert.equal(after.hasOriginRemote, true);
-  }).pipe(Effect.provide(layerTest)),
+      assert.equal((yield* driver.statusDetailsLocal(cwd)).hasOriginRemote, true);
+      assert.equal((yield* driver.listRefs({ cwd })).hasPrimaryRemote, true);
+    }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect.each([
@@ -5087,6 +5089,31 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("stops a selected-file commit when another process holds the index lock", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const head = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* writeTextFile(cwd, "a.txt", "a\n");
+        yield* writeTextFile(cwd, "staged.txt", "staged\n");
+        yield* git(cwd, ["add", "staged.txt"]);
+        const lockPath = (yield* Path.Path).join(cwd, ".git", "index.lock");
+        yield* (yield* FileSystem.FileSystem).writeFileString(lockPath, "");
+        const { driver } = yield* makeDriverReleasingLock(
+          (args) => args.includes("reset"),
+          lockPath,
+        );
+
+        const error = yield* driver
+          .commit(cwd, "Add a", "", { stage: { filePaths: ["a.txt"] } })
+          .pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.commit.reset");
+        assert.equal(yield* git(cwd, ["rev-parse", "HEAD"]), head);
+        assert.equal(yield* git(cwd, ["diff", "--cached", "--name-only"]), "staged.txt");
+      }),
+    );
+
     it.effect.each([
       { location: "root", ref: "refs/heads/MERGE_HEAD" },
       { location: "nested", ref: "refs/heads/MERGE_HEAD" },
@@ -5576,6 +5603,55 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         assert.isNull(yield* driver.fetchWorktreeBaseCommit({ cwd, refName: initialBranch }));
         yield* git(cwd, ["remote", "remove", "origin"]);
         assert.isNull(yield* driver.fetchWorktreeBaseCommit({ cwd, refName: initialBranch }));
+      }),
+    );
+
+    it.effect("fetches a worktree base without downloading tags", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const remote = yield* makeTmpDir("git-remote-");
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(remote, ["init", "--bare"]);
+        yield* git(cwd, ["remote", "add", "origin", remote]);
+        yield* git(cwd, ["push", "-u", "origin", initialBranch]);
+        const localHead = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["commit", "--allow-empty", "-m", "tagged release"]);
+        const remoteHead = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["tag", "v1"]);
+        yield* git(cwd, ["push", "origin", initialBranch, "v1"]);
+        yield* git(cwd, ["tag", "-d", "v1"]);
+        yield* git(cwd, ["reset", "--hard", localHead]);
+        yield* git(cwd, ["update-ref", "-d", `refs/remotes/origin/${initialBranch}`]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        assert.deepEqual(yield* driver.fetchWorktreeBaseCommit({ cwd, refName: initialBranch }), {
+          commitSha: remoteHead,
+          remoteRefName: `origin/${initialBranch}`,
+        });
+        assert.equal(yield* git(cwd, ["tag", "--list", "v1"]), "");
+      }),
+    );
+
+    it.effect("fetches the remote a caller already resolved for the worktree base", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const remote = yield* makeTmpDir("git-remote-");
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(remote, ["init", "--bare"]);
+        yield* git(cwd, ["remote", "add", "origin", remote]);
+        yield* git(cwd, ["push", "origin", initialBranch]);
+        const head = yield* git(cwd, ["rev-parse", "HEAD"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        assert.isNull(yield* driver.fetchWorktreeBaseCommit({ cwd, refName: "unpublished" }));
+        assert.deepEqual(
+          yield* driver.fetchWorktreeBaseCommit({
+            cwd,
+            refName: "unpublished",
+            remote: { remoteName: "origin", branchName: initialBranch },
+          }),
+          { commitSha: head, remoteRefName: `origin/${initialBranch}` },
+        );
       }),
     );
 
