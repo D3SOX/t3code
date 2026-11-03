@@ -59,7 +59,6 @@ import {
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
-import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -1431,7 +1430,6 @@ export function useComposerSend(input: ComposerSendInput) {
               releaseDraftAttachments(composerAttachmentsSnapshot);
             }
             acknowledgeActiveThreadWoke();
-            void recordPromptSent(environmentId);
             // A draft still on screen finalizes once its thread route takes over.
             if (sentDraftThreadRef) {
               if (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey) {
