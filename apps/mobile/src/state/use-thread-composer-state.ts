@@ -523,6 +523,7 @@ export function useThreadComposerState() {
       text: string,
       hasAttachmentsOrContext: boolean,
     ) => Promise<boolean | "responded">,
+    onWillEnqueue?: () => void,
   ) => {
     if (
       selectedThreadShell &&
@@ -689,6 +690,7 @@ export function useThreadComposerState() {
     const metadata = makeQueuedMessageMetadata();
     const messageId = MessageId.make(metadata.messageId);
     // A new send supersedes the reason the previous one bounced back.
+    onWillEnqueue?.();
     clearThreadComposerError(threadKey);
     // The queue publishes synchronously; failed writes restore content without replacing newer draft edits.
     const enqueuePromise = enqueueThreadOutboxMessage({

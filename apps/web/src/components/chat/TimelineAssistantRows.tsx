@@ -118,13 +118,6 @@ export function AssistantTimelineRow({
             showCopyButton={row.showAssistantCopyButton}
             copyStreaming={row.assistantCopyStreaming}
           />
-        ) : row.showAssistantTimestamp ? (
-          <AssistantMessageMeta
-            className="mt-1.5"
-            message={row.message}
-            showCopyButton={false}
-            copyStreaming={row.assistantCopyStreaming}
-          />
         ) : null}
       </div>
     </>

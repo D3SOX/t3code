@@ -1,8 +1,7 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
-import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { act, fakeTimers } from "../../test/render";
+import { act } from "../../test/render";
 import type { AnyRouter } from "@tanstack/react-router";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -199,7 +198,6 @@ import { startThreadNotifications } from "./ThreadNotificationCoordinator";
 function setup() {
   const registry = AtomRegistry.make();
   let stop: (() => void) | null = null;
-  let timers: Disposable | null = null;
   const routes = new Set<() => void>();
   const router = {
     state: {
@@ -224,10 +222,8 @@ function setup() {
       });
     if (!started) {
       stop = startThreadNotifications(registry, router);
-      timers = fakeTimers();
     } else {
       for (const listener of routes) listener();
-      await act(() => vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS));
     }
   };
   const complete = async () => {
@@ -275,7 +271,6 @@ function setup() {
       stop = null;
     },
     async [Symbol.asyncDispose]() {
-      timers?.[Symbol.dispose]();
       stop?.();
       registry.dispose();
       vi.restoreAllMocks();

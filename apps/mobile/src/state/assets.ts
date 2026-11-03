@@ -7,6 +7,7 @@ import {
   createProjectFaviconUrlAtomFamily,
   EMPTY_ASSET_URL_ATOM,
   isMutableAssetResource,
+  makeRevisionedAssetUrlFamily,
 } from "@t3tools/client-runtime/state/assets";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
@@ -36,9 +37,16 @@ export const projectFaviconUrlAtom = createProjectFaviconUrlAtomFamily({
   projectClones: environmentProjectCloneListAtom,
 });
 
+const revisionedAssetUrl = makeRevisionedAssetUrlFamily(assetEnvironment.createUrl);
+
+/**
+ * Pass `revision` for a host file whose bytes can change under the same path; each new
+ * revision re-mints the URL so the image reloads.
+ */
 export function useAssetUrlState(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
+  revision?: string | null,
 ): AssetUrlState {
   const registry = useContext(RegistryContext);
   const fileAccessSession = useEnvironmentQuery(
@@ -58,14 +66,16 @@ export function useAssetUrlState(
   const query =
     blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
-      : assetEnvironment.createUrl({ environmentId, input: { resource } });
+      : revision === undefined
+        ? assetEnvironment.createUrl({ environmentId, input: { resource } })
+        : revisionedAssetUrl({ environmentId, input: { resource }, revision });
   const result = useAtomValue(query);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A new mounted image occurrence must invalidate the external URL cache once.
   useEffect(() => {
-    if (blocked !== null || !mutableResource) return;
+    if (blocked !== null || !mutableResource || revision !== undefined) return;
     const cached = registry.get(query);
     if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
-  }, [blocked, mutableResource, query, registry]);
+  }, [blocked, mutableResource, query, registry, revision]);
   const shared =
     blocked ??
     assetUrlStateFromResult(

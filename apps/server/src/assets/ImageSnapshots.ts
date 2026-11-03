@@ -1,5 +1,5 @@
 import type { ThreadId } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -25,8 +25,8 @@ const sourceDirectory = Effect.fn("ImageSnapshots.sourceDirectory")(function* (
   const path = yield* Path.Path;
   const directory = imageSnapshotsDirectory(config.attachmentsDir, threadId, path);
   if (directory === null) return null;
-  const crypto = yield* Crypto.Crypto;
-  const key = Hex.encode(yield* crypto.digest("SHA-256", new TextEncoder().encode(sourcePath)));
+  const digest = yield* Digest.Digest;
+  const key = Hex.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(sourcePath)));
   return path.join(directory, key);
 });
 
@@ -44,11 +44,11 @@ export const captureImageSnapshot = Effect.fn("ImageSnapshots.capture")(function
   if (directory === null) return null;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const info = input.file.info;
   const revision = Hex.encode(
-    yield* crypto.digest(
-      "SHA-256",
+    yield* digest.digest(
+      Digest.sha256,
       new TextEncoder().encode(
         [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(":"),
       ),

@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -76,7 +76,7 @@ const make = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const projects = yield* ProjectService.ProjectService;
   const http = yield* HttpClient.HttpClient;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const mutex = yield* Semaphore.make(1);
   let config: typeof StoredConfig.Type | undefined;
   const read = Effect.fn("UnifiedPushNotifications.read")(function* () {
@@ -180,9 +180,11 @@ const make = Effect.gen(function* () {
         .map((s) => s.sessionId),
     );
     const alertId = Buffer.from(
-      yield* crypto.digest("SHA-256", new TextEncoder().encode(`${threadId}:${identity}`)),
+      yield* digest.digest(Digest.sha256, new TextEncoder().encode(`${threadId}:${identity}`)),
     ).toString("hex");
-    const topic = Buffer.from(yield* crypto.digest("SHA-256", new TextEncoder().encode(threadId)))
+    const topic = Buffer.from(
+      yield* digest.digest(Digest.sha256, new TextEncoder().encode(threadId)),
+    )
       .toString("base64url")
       .slice(0, 32);
     for (const subscription of stored.subscriptions) {
