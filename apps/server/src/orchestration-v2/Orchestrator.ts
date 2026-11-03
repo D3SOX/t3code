@@ -13107,15 +13107,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "thread.auto-settle": {
         // Recheck live state; changes and explicit overrides take precedence over the sweep snapshot.
-        const thread = yield* projectionStore
-          .getThread(command.threadId)
+        const candidates = yield* projectionStore
+          .getSettlementCandidates(command.threadId)
           .pipe(
             Effect.mapError(
               (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
             ),
           );
+        const thread = candidates[0];
         if (
+          thread === undefined ||
           thread.settledOverride !== null ||
+          backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
           visibleThreadPullRequests(thread.pullRequests ?? []).some(
             (link) => link.watch !== undefined,
           ) ||
