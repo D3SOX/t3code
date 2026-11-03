@@ -154,7 +154,8 @@
         </li>
         <li>
           Local image previews refresh when an agent updates the file and shows it again, or when
-          you reopen its preview.
+          you reopen its preview. Thread previews keep saved copies so older images remain available
+          after their source files are removed.
         </li>
       </ul>
 
@@ -165,13 +166,23 @@
           notifications or sounds. Image-only replies and errors still alert normally.
         </li>
         <li>
-          Short PR-monitoring updates do not send completion alerts, play sounds, or mark the thread
-          Done while monitoring continues.
+          Short PR-monitoring updates and intermediate background-job completions do not send
+          completion alerts, play sounds, or mark the thread Done while work continues.
+        </li>
+        <li>
+          Awaited background tasks resume the agent even if another notification arrives first.
+          Automatic settlement waits until pending background work finishes, and task completion can
+          wake a settled thread.
         </li>
         <li>
           Missing required checks stay pending, including checks that appear later. When the
           remaining CI checks finish, PR monitoring wakes the agent even if it already reported that
-          the required checks passed.
+          the required checks passed. Overlapping CI runs remain pending until they finish, and CI
+          notifications for outdated commits are ignored.
+        </li>
+        <li>
+          On web and desktop, the same provider usage limit alerts once per environment instead of
+          once per affected thread.
         </li>
         <li>
           Agent instructions limit PR links to the task's pull requests. Incidental release-note
@@ -192,8 +203,8 @@
           even if the window is minimized or hidden.
         </li>
         <li>
-          In-app completion notifications disappear when you view their thread. They stay hidden
-          while you view it.
+          In-app notifications disappear when you open their thread, including through the Open
+          action on a background-thread notification. They stay hidden while you view it.
         </li>
       </ul>
 
@@ -205,26 +216,29 @@
           are viewing stay visible in collapsed sections.
         </li>
         <li>
-          Turn off Show thread branches under Appearance in Settings for more compact thread rows
-          and more room for thread titles.
-        </li>
-        <li>
           You can rearrange Active threads with the Working section enabled, and your order stays
           saved.
         </li>
         <li>
-          The new-thread button remembers your last project, including one selected in the
-          new-thread composer. On web and desktop, right-click or Shift-click the sidebar button to
-          choose another project. All clients show the selected project's icon beside its name in
-          the composer.
+          The sidebar distinguishes background work from active agent turns and shows pending input
+          while the agent is still running. Working threads stay in their section during
+          synchronization.
+        </li>
+        <li>
+          The new-thread button remembers the project last selected for a new thread. Opening
+          another chat does not change that choice. On web and desktop, right-click or Shift-click
+          the sidebar button to choose another project. All clients show the selected project's icon
+          beside its name in the composer.
         </li>
         <li>
           On web and desktop, when a sidebar action takes you out of the current thread, you return
           to a new-thread draft in the same project instead of opening another thread.
         </li>
         <li>
-          On web and desktop, right-click the Settled section to archive all settled threads. This
-          always asks for confirmation, even when individual archive confirmations are turned off.
+          On web and desktop, right-click the Settled section to archive all settled threads,
+          including older threads that are not currently loaded. Several threads archive at once,
+          with one undo action for the batch. This always asks for confirmation, even when
+          individual archive confirmations are turned off.
         </li>
         <li>
           Search archived threads under Settings by thread title, branch, project name or path, or
@@ -247,17 +261,45 @@
         </li>
       </ul>
 
-      <h3>Mobile and accounts</h3>
+      <h3>Appearance</h3>
       <ul>
+        <li>
+          Choose T3 Code Dim under Appearance in Settings for the previous gray dark-theme colors on
+          every client.
+        </li>
+        <li>
+          Turn off Show thread branches under Appearance in Settings for more compact thread rows
+          and more room for thread titles.
+        </li>
         <li>
           Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under
           Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your
           device saves the choice.
         </li>
+      </ul>
+
+      <h3>Mobile and accounts</h3>
+      <ul>
+        <li>
+          Android offers local notifications without Google services. Enable Background connection
+          under Notifications in Settings to keep alerts and live agent updates working after
+          switching apps. It shows an ongoing notification and stops when you remove T3 from
+          recents.
+        </li>
+        <li>
+          Optional UnifiedPush delivers encrypted notifications through a compatible distributor
+          without Google services or a T3 Connect account. Paired hosts must support UnifiedPush.
+        </li>
+        <li>
+          Usage shows remaining Codex credits as whole numbers with thousands separators on every
+          client when the provider reports a balance.
+        </li>
         <li>
           The Android usage widget shows each Codex or Claude subscription separately. It does not
-          average accounts into one bar or show account emails on the home screen.
+          average accounts into one bar or show account emails on the home screen. Tap its refresh
+          prompt to open Usage in the app.
         </li>
+        <li>Mobile project filters and the Settings scope picker show project icons.</li>
         <li>The Android composer keeps the cursor visible as long messages wrap onto new lines.</li>
         <li>
           Mobile marks threads with unsent drafts with a yellow pen and a subtle highlight, as
@@ -276,12 +318,29 @@
         </li>
       </ul>
 
+      <h3>Connections and recovery</h3>
+      <ul>
+        <li>
+          Background services installed through the desktop CLI use the installed fork runtime and
+          follow desktop updates.
+        </li>
+        <li>
+          After host updates or service restarts, clients retry temporary tunnel errors instead of
+          staying offline until refreshed.
+        </li>
+        <li>
+          After a Codex process exits unexpectedly, you can send another turn without restarting the
+          host.
+        </li>
+      </ul>
+
       <h3>Privacy</h3>
       <ul>
         <li>
-          Product usage collection is off unless you set <code>T3CODE_TELEMETRY_ENABLED=true</code>
-          on the server.
+          Product usage collection is off unless you set
+          <code>T3CODE_TELEMETRY_ENABLED=true</code> on the server.
         </li>
+        <li>The app no longer asks you to star its GitHub repository.</li>
       </ul>
 
       <h2>Android nightly</h2>

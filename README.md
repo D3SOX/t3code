@@ -11,45 +11,63 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Send and interrupt buttons show a loading indicator while requests are pending. You can submit another message while an earlier send is pending.
 - Images the agent opens have their own timeline rows, even when the turn is collapsed. Open a row to see its preview, then click the preview to see the full image.
 - Images and videos the agent cites have previews below its message on all clients. Videos have playback controls and do not autoplay.
-- Local image previews refresh when an agent updates the file and shows it again, or when you reopen its preview.
+- Local image previews refresh when an agent updates the file and shows it again, or when you reopen its preview. Thread previews keep saved copies so older images remain available after their source files are removed.
 
 ## PRs and notifications
 
 - Empty or whitespace-only final replies do not mark the thread Done or trigger completion notifications or sounds. Image-only replies and errors still alert normally.
-- Short PR-monitoring updates do not send completion alerts, play sounds, or mark the thread Done while monitoring continues.
-- Missing required checks stay pending, including checks that appear later. When the remaining CI checks finish, PR monitoring wakes the agent even if it already reported that the required checks passed.
+- Short PR-monitoring updates and intermediate background-job completions do not send completion alerts, play sounds, or mark the thread Done while work continues.
+- Awaited background tasks resume the agent even if another notification arrives first. Automatic settlement waits until pending background work finishes, and task completion can wake a settled thread.
+- Missing required checks stay pending, including checks that appear later. When the remaining CI checks finish, PR monitoring wakes the agent even if it already reported that the required checks passed. Overlapping CI runs remain pending until they finish, and CI notifications for outdated commits are ignored.
+- On web and desktop, the same provider usage limit alerts once per environment instead of once per affected thread.
 - Agent instructions limit PR links to the task's pull requests. Incidental release-note edits, labels, and coordination updates do not qualify.
 - PR links open in your system browser by default. On desktop, right-click a link to open it in T3 Code instead. If a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
 - Returning to the desktop app clears the viewed thread's system notification and resets the app's unread badge. Other threads' notifications stay in your system history until you open those threads.
 - Clicking a desktop notification brings T3 Code to the foreground and opens its thread, even if the window is minimized or hidden.
-- In-app completion notifications disappear when you view their thread. They stay hidden while you view it.
+- In-app notifications disappear when you open their thread, including through the Open action on a background-thread notification. They stay hidden while you view it.
 
 ## Navigation and terminals
 
 - You can collapse the Pinned and Active sections of the thread list. Each client remembers your choice. Both sections start expanded. Done threads, Input threads, and the thread you are viewing stay visible in collapsed sections.
-- Turn off Show thread branches under Appearance in Settings for more compact thread rows and more room for thread titles.
 - You can rearrange Active threads with the Working section enabled, and your order stays saved.
-- The new-thread button remembers your last project, including one selected in the new-thread composer. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
+- The sidebar distinguishes background work from active agent turns and shows pending input while the agent is still running. Working threads stay in their section during synchronization.
+- The new-thread button remembers the project last selected for a new thread. Opening another chat does not change that choice. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
 - On web and desktop, when a sidebar action takes you out of the current thread, you return to a new-thread draft in the same project instead of opening another thread.
-- On web and desktop, right-click the Settled section to archive all settled threads. This always asks for confirmation, even when individual archive confirmations are turned off.
+- On web and desktop, right-click the Settled section to archive all settled threads, including older threads that are not currently loaded. Several threads archive at once, with one undo action for the batch. This always asks for confirmation, even when individual archive confirmations are turned off.
 - Search archived threads under Settings by thread title, branch, project name or path, or environment name.
 - In Source Control settings, you can turn off automatic thread titles and worktree branch names for an environment or a project. New worktree branches have no prefix by default. You can set a prefix in the same settings.
 - Click a terminal path to open a file in T3 Code or a workspace folder in its file explorer. This also works on remote machines. Hold Ctrl or Shift to select path text without opening it. Right-click a URL or path for Copy link or Copy path.
 - Ctrl+Shift+W closes the focused terminal. Terminal close confirmation is off by default. You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to the terminal.
 
+## Appearance
+
+- Choose T3 Code Dim under Appearance in Settings for the previous gray dark-theme colors on every client.
+- Turn off Show thread branches under Appearance in Settings for more compact thread rows and more room for thread titles.
+- Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your device saves the choice.
+
 ## Mobile and accounts
 
-- Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your device saves the choice.
-- The Android usage widget shows each Codex or Claude subscription separately. It does not average accounts into one bar or show account emails on the home screen.
+- Android offers local notifications without Google services. Enable Background connection under Notifications in Settings to keep alerts and live agent updates working after switching apps. It shows an ongoing notification and stops when you remove T3 from recents.
+- Optional UnifiedPush delivers encrypted notifications through a compatible distributor without Google services or a T3 Connect account. Paired hosts must support UnifiedPush.
+- Usage shows remaining Codex credits as whole numbers with thousands separators on every client when the provider reports a balance.
+- The Android usage widget shows each Codex or Claude subscription separately. It does not average accounts into one bar or show account emails on the home screen. Tap its refresh prompt to open Usage in the app.
+- Mobile project filters and the Settings scope picker show project icons.
 - The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - Mobile marks threads with unsent drafts with a yellow pen and a subtle highlight, as upstream does on web and desktop. Send or remove the draft to clear the indicator.
 - Switching Codex accounts in a thread keeps its agent-session context.
 - If Codex archives an idle session, your next follow-up unarchives it and retries once with the same conversation and context. You do not need to run `codex unarchive`. Update the host server to use this fix.
 - Codex model-capacity failures retry after 10 seconds, then 20, 40, and so on. All clients show a countdown and a Cancel retry button. Retries keep your context and count as one T3 turn for checkpoint restore. Update the client and host server to use this feature.
 
+## Connections and recovery
+
+- Background services installed through the desktop CLI use the installed fork runtime and follow desktop updates.
+- After host updates or service restarts, clients retry temporary tunnel errors instead of staying offline until refreshed.
+- After a Codex process exits unexpectedly, you can send another turn without restarting the host.
+
 ## Privacy
 
 - Product usage collection is off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
+- The app no longer asks you to star its GitHub repository.
 
 ## Android nightly
 
