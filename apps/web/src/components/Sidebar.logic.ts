@@ -190,9 +190,9 @@ export function resolveSidebarThreadSection(input: {
   return "active";
 }
 
-// Keep cached placement on the first connection attempt, matching mobile's threadRouteIsHydrating.
+// Connection retries do not invalidate the cached working state.
 export function isSidebarEnvironmentDisconnected(phase: EnvironmentConnectionPhase): boolean {
-  return phase !== "connecting" && phase !== "connected";
+  return phase !== "connecting" && phase !== "reconnecting" && phase !== "connected";
 }
 
 export function belongsInSidebarWorkingShelf<T extends { readonly environmentId: EnvironmentId }>(

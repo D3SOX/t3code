@@ -1148,7 +1148,7 @@ describe("Working shelf (beta)", () => {
   it.each([
     ["connected", false],
     ["connecting", false],
-    ["reconnecting", true],
+    ["reconnecting", false],
     ["offline", true],
     ["error", true],
     ["unsupported", true],
