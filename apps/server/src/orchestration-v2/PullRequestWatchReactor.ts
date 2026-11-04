@@ -580,10 +580,10 @@ export const make = Effect.gen(function* () {
     }
     readFailures.delete(group.key);
     const [detail, activity] = read.value;
-    const headSha = detail.headSha ?? null;
     for (const target of group.targets) {
       const life = lifeOf(target);
       // The first read only learns the head, so it is not a push.
+      const headSha = detail.headSha ?? life.headSha;
       const pushed = life.headSha !== null && headSha !== life.headSha;
       lives.set(lifeKey(target), {
         ...life,

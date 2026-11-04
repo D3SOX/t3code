@@ -21,7 +21,7 @@ import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-scree
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { Button } from "../../components/ui/Button";
-import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Menu } from "../../components/ui/Menu";
@@ -739,7 +739,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             sheetCornerRadius: 28,
           }}
         />
-        <AndroidSheetHeader title="Queued" onBack={() => navigation.goBack()} />
+        <AppBar sheet title="Queued" onBack={() => navigation.goBack()} />
         <ScreenContent insetHorizontal={layout.usesSplitView}>{content}</ScreenContent>
       </View>
     </GestureHandlerRootView>

@@ -1,4 +1,5 @@
 import type {
+  EnvironmentId,
   OrchestrationV2ProviderFailureClass,
   ProviderInstanceId,
   ServerProvider,
@@ -16,6 +17,7 @@ import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadE
 export function ChatBannerLane(props: {
   modelCapacityRetry: ModelCapacityRetry | null;
   onCancelCapacityRetry: () => void;
+  environmentId: EnvironmentId;
   providerStatus: ServerProvider | null;
   providerStatusBannerKey: string | null;
   setDismissedProviderStatusBannerKey: Dispatch<SetStateAction<string | null>>;
@@ -44,6 +46,7 @@ export function ChatBannerLane(props: {
   return (
     <div className="chat-banner-lane pointer-events-none absolute top-0 z-30 flex flex-col">
       <ProviderStatusBanner
+        environmentId={props.environmentId}
         status={providerStatus}
         onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
         onOpenProviderSetup={onOpenProviderSetup}

@@ -99,7 +99,7 @@ export function HomeHeader(props: HomeHeaderProps) {
           ) : null;
         }}
         filterCustomized={hasCustomListOptions}
-        onFilterAction={handleMenuAction}
+        onFilterSelect={(event) => handleMenuAction({ nativeEvent: { event } })}
         onOpenEnvironments={props.onOpenEnvironments}
       />
     </>
