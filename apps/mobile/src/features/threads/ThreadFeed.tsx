@@ -1825,9 +1825,20 @@ function renderFeedEntry(
     );
   }
   if (entry.type === "viewed-image") {
+    const expanded = props.expandedWorkRows[entry.id] ?? false;
     return (
       <View className="mb-2 px-0.5">
-        <View className="min-h-8 flex-row items-center gap-1.5">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Viewed image: ${entry.imagePath}`}
+          accessibilityState={{ expanded }}
+          accessibilityHint={`Double tap to ${expanded ? "hide" : "show"} the image preview.`}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            props.onToggleWorkRow(entry.id, entry.id);
+          }}
+          className="min-h-8 flex-row items-center gap-1.5"
+        >
           <View className="h-6 w-6 shrink-0 items-center justify-center">
             <SymbolView
               name={{
@@ -1843,16 +1854,24 @@ function renderFeedEntry(
           <Text className="min-w-0 flex-1 text-sm text-foreground-muted" numberOfLines={1}>
             {entry.imagePath}
           </Text>
-        </View>
-        <MarkdownImageAvailableWidthContext value={Math.max(0, props.markdownContentWidth - 28)}>
-          <View className="ml-7 pb-1">
-            {props.renderViewedImage({
-              href: entry.imagePath,
-              alt: null,
-              title: null,
-            })}
-          </View>
-        </MarkdownImageAvailableWidthContext>
+          <ThreadDisclosureChevron
+            expanded={expanded}
+            collapsedDirection="right"
+            size={12}
+            tintColor={iconSubtleColor}
+          />
+        </Pressable>
+        {expanded ? (
+          <MarkdownImageAvailableWidthContext value={Math.max(0, props.markdownContentWidth - 28)}>
+            <View className="ml-7 pb-1">
+              {props.renderViewedImage({
+                href: entry.imagePath,
+                alt: null,
+                title: null,
+              })}
+            </View>
+          </MarkdownImageAvailableWidthContext>
+        ) : null}
       </View>
     );
   }
