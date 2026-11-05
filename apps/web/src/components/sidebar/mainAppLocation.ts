@@ -1,12 +1,10 @@
 import { useNavigate, type AnyRouter } from "@tanstack/react-router";
 
 import { GUEST_PAGE_PATH } from "../../guestPage";
+import { isAppModalPage } from "../../appHistory";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
 
-/** Settings and Usage open as modals over the last main-app view. */
-export function isAppModalPage(pathname: string) {
-  return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
-}
+export { isAppModalPage } from "../../appHistory";
 
 export function isSidebarUtilityPage(pathname: string) {
   return pathname.startsWith("/projects/") || pathname === "/pull-requests";

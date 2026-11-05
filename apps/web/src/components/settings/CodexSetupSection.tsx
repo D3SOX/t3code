@@ -15,6 +15,7 @@ import type {
 import { codexAuthHandoffUrl } from "@t3tools/shared/codexAuthHandoff";
 import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
 import { isLoopbackHost } from "@t3tools/shared/preview";
+import { useRouter } from "@tanstack/react-router";
 import { CheckIcon, ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
 import {
   Children,
@@ -266,6 +267,7 @@ function ManagedCodexSetup({
   readonly allowExistingCli?: boolean;
 }) {
   const target = { environmentId, input: { instanceId } };
+  const router = useRouter();
   const authQuery = useEnvironmentQuery(serverEnvironment.providerAuthState(target));
   const installQuery = useEnvironmentQuery(serverEnvironment.providerInstallState(target));
   const [handoff, setHandoff] = useState<{
@@ -299,7 +301,10 @@ function ManagedCodexSetup({
   const importProfile = useAtomCommand(serverEnvironment.chatGptImportProfile, options);
   const clientCallback = !handoff && prefersClientCallback(local);
   const remoteWeb = clientCallback && !window.desktopBridge;
-  const returnUrl = new URL(window.location.href);
+  const returnUrl = new URL(
+    router.history.createHref(router.state.location.href),
+    window.location.href,
+  );
   if (returnUrl.pathname === "/welcome") returnUrl.hash = `agents:${environmentId}`;
   if (returnUrl.pathname === "/settings/providers")
     returnUrl.searchParams.set("instanceId", instanceId);
@@ -480,7 +485,10 @@ function ManagedCodexSetup({
     if (pendingRef.current) return;
     setTransferFailed(false);
     setRequestedMethodId(methodId);
-    const returnUrl = new URL(window.location.href);
+    const returnUrl = new URL(
+      router.history.createHref(router.state.location.href),
+      window.location.href,
+    );
     if (returnUrl.pathname === "/welcome") returnUrl.hash = `agents:${environmentId}`;
     if (returnUrl.pathname === "/settings/providers")
       returnUrl.searchParams.set("instanceId", instanceId);
