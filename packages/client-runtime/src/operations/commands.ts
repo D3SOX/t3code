@@ -32,7 +32,7 @@ import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2Pend
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
-import * as Data from "effect/Data";
+import * as Schema from "effect/Schema";
 
 import { getInitialServerConfig, request } from "../rpc/client.ts";
 
@@ -288,7 +288,10 @@ const dispatch = (command: OrchestrationV2Command) =>
 const getProjection = (threadId: ThreadId) =>
   request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId });
 
-class NextToolQueueUnavailableError extends Data.TaggedError("NextToolQueueUnavailableError") {
+class NextToolQueueUnavailableError extends Schema.TaggedError<NextToolQueueUnavailableError>()(
+  "NextToolQueueUnavailableError",
+  {},
+) {
   override get message() {
     return "This timing requires an updated D3SOX fork server. Use Queue or Steer on upstream servers.";
   }

@@ -51,6 +51,15 @@ const encodeData = Schema.encodeSync(
 const failure = () =>
   new PushNotificationError({ message: "Could not update push notification registration." });
 
+class UnifiedPushRequestError extends Schema.TaggedError<UnifiedPushRequestError>()(
+  "UnifiedPushRequestError",
+  { cause: Schema.Defect() },
+) {
+  override get message() {
+    return "Could not prepare push notification delivery.";
+  }
+}
+
 export class UnifiedPushNotifications extends Context.Service<
   UnifiedPushNotifications,
   {
@@ -200,25 +209,27 @@ const make = Effect.gen(function* () {
         alert_path: state.deepLink,
         alert_group: state.environmentId,
       });
-      const details = yield* Effect.try(() =>
-        webPush.generateRequestDetails(
-          {
-            endpoint: subscription.endpoint,
-            keys: { p256dh: subscription.publicKey, auth: subscription.auth },
-          },
-          payload,
-          {
-            TTL: 600,
-            urgency: "high",
-            topic,
-            vapidDetails: {
-              subject: "https://d3sox.me/t3code/",
-              publicKey: stored.publicKey,
-              privateKey: stored.privateKey,
+      const details = yield* Effect.try({
+        try: () =>
+          webPush.generateRequestDetails(
+            {
+              endpoint: subscription.endpoint,
+              keys: { p256dh: subscription.publicKey, auth: subscription.auth },
             },
-          },
-        ),
-      );
+            payload,
+            {
+              TTL: 600,
+              urgency: "high",
+              topic,
+              vapidDetails: {
+                subject: "https://d3sox.me/t3code/",
+                publicKey: stored.publicKey,
+                privateKey: stored.privateKey,
+              },
+            },
+          ),
+        catch: (cause) => new UnifiedPushRequestError({ cause }),
+      });
       const response = yield* http
         .execute(
           HttpClientRequest.post(details.endpoint).pipe(

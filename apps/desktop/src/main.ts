@@ -111,11 +111,12 @@ const layerDesktopEnvironment = Layer.unwrap(
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const processEnvironment = yield* HostProcess.Environment;
     return DesktopSshEnvironment.layer({
       resolveCliRunner: Effect.succeed(
         resolveDesktopSshCliRunner({
           appVersion: environment.appVersion,
-          archiveVersionOverride: process.env.T3CODE_SSH_ARCHIVE_VERSION,
+          archiveVersionOverride: processEnvironment.T3CODE_SSH_ARCHIVE_VERSION,
           devRemoteT3ServerEntryPath: environment.devRemoteT3ServerEntryPath,
           isDevelopment: environment.isDevelopment,
           nodeEngineRange: serverPackageJson.engines.node,
