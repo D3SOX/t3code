@@ -14,6 +14,7 @@ import {
   ForwardCompatibleNullable,
   ForwardCompatibleOptional,
   OmittedWhenNull,
+  EnvironmentId,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -514,6 +515,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
   startThreadsInBackground: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  defaultScratchEnvironmentId: Schema.NullOr(EnvironmentId).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   followUpBehavior: Schema.Literals(["queue", "next-tool", "steer"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("next-tool" as const)),
   ),
@@ -1970,6 +1974,7 @@ export const ClientSettingsPatch = Schema.Struct({
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   startThreadsInBackground: Schema.optionalKey(Schema.Boolean),
+  defaultScratchEnvironmentId: Schema.optionalKey(Schema.NullOr(EnvironmentId)),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "next-tool", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),

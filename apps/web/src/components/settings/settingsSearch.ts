@@ -607,6 +607,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["new thread enter send stay draft foreground"],
   },
   {
+    id: "no-project-machine",
+    title: "Machine for threads without a project",
+    to: "/settings/general",
+    searchTerms: ["default preferred machine environment no project scratch desktop laptop remote"],
+  },
+  {
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/chat",

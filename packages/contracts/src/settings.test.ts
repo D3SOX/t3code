@@ -350,9 +350,15 @@ describe("ClientSettings sidebar", () => {
   it("defaults terminal confirmation off and background thread creation on", () => {
     expect(decodeClientSettings({}).confirmTerminalClose).toBe(false);
     expect(decodeClientSettings({}).startThreadsInBackground).toBe(true);
+    expect(decodeClientSettings({}).defaultScratchEnvironmentId).toBeNull();
     const settings = { confirmTerminalClose: true, startThreadsInBackground: false };
     expect(decodeClientSettingsPatch(settings)).toEqual(settings);
     expect(decodeClientSettings(settings)).toMatchObject(settings);
+    for (const defaultScratchEnvironmentId of ["desktop", null]) {
+      const preference = { defaultScratchEnvironmentId };
+      expect(decodeClientSettingsPatch(preference)).toEqual(preference);
+      expect(encodeClientSettings(decodeClientSettings(preference))).toMatchObject(preference);
+    }
   });
 });
 
