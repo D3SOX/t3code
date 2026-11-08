@@ -79,6 +79,183 @@ const remark = (
 const noRemarks: ReadonlyArray<PullRequestComment> = [];
 
 describe("evaluatePullRequestWatch", () => {
+  it("wakes when remaining CI finishes after an earlier failure", () => {
+    const running = detail({
+      checks: [check("android (31, shard 8/8)", "failure"), check("android (36)", "pending")],
+    });
+    const early = evaluatePullRequestWatch(watch(), running, noRemarks);
+    assert.deepEqual(early.changes, [{ kind: "checks-failed", failed: [running.checks[0]!] }]);
+    const finished = detail({
+      checks: [running.checks[0]!, check("android (36)", "success")],
+    });
+    const report = evaluatePullRequestWatch(early.next, finished, noRemarks);
+    assert.deepEqual(report.changes, [
+      { kind: "checks-completed", count: 2, failed: [running.checks[0]!] },
+    ]);
+    assert.deepEqual(evaluatePullRequestWatch(report.next, finished, noRemarks).changes, []);
+  });
+
+  it("deduplicates failed completion across empty reads, reruns, later checks, and pushes", () => {
+    const failed = check("lint", "failure");
+    const finished = detail({ checks: [failed, check("test", "success")] });
+    const reported = evaluatePullRequestWatch(watch(), finished, noRemarks);
+    assert.equal(reported.changes.length, 1);
+    const unreadable = evaluatePullRequestWatch(reported.next, detail({ checks: [] }), noRemarks);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        unreadable.next,
+        { ...finished, checks: finished.checks.toReversed() },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const pending = evaluatePullRequestWatch(
+      reported.next,
+      detail({ checks: [failed, check("test", "pending")] }),
+      noRemarks,
+    );
+    assert.deepEqual(pending.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(pending.next, finished, noRemarks).changes, [
+      { kind: "checks-completed", count: 2, failed: [failed] },
+    ]);
+    const late = evaluatePullRequestWatch(
+      reported.next,
+      detail({ checks: [...finished.checks, check("package", "success")] }),
+      noRemarks,
+    );
+    assert.deepEqual(late.changes, [{ kind: "checks-completed", count: 3, failed: [failed] }]);
+    const pushed = evaluatePullRequestWatch(
+      reported.next,
+      { ...finished, headSha: "bbbbbbbbbb" },
+      noRemarks,
+    );
+    assert.deepEqual(pushed.changes, [{ kind: "checks-failed", failed: [failed] }]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(pushed.next, { ...finished, headSha: "bbbbbbbbbb" }, noRemarks)
+        .changes,
+      [],
+    );
+  });
+
+  it("wakes when remaining CI finishes after required checks passed", () => {
+    const green = detail({
+      checks: [{ ...check("lint", "success"), required: true }, check("iOS", "pending")],
+    });
+    const early = evaluatePullRequestWatch(watch(), green, noRemarks);
+    const finished = evaluatePullRequestWatch(
+      early.next,
+      {
+        ...green,
+        checks: green.checks.map((check) => ({ ...check, status: "success" })),
+      },
+      noRemarks,
+    );
+    assert.deepEqual(finished.changes, [{ kind: "checks-passed", count: 2, required: false }]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        finished.next,
+        {
+          ...green,
+          checks: green.checks.map((check) => ({ ...check, status: "success" })),
+        },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const pushed = evaluatePullRequestWatch(
+      finished.next,
+      { ...green, headSha: "bbbbbbbbbb" },
+      noRemarks,
+    );
+    assert.equal(pushed.changes.length, 1);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        pushed.next,
+        {
+          ...green,
+          headSha: "bbbbbbbbbb",
+          checks: green.checks.map((check) => ({ ...check, status: "success" })),
+        },
+        noRemarks,
+      ).changes,
+      [{ kind: "checks-passed", count: 2, required: false }],
+    );
+  });
+
+  it("reports a fifth required aggregate even when it starts and finishes between sweeps", () => {
+    const checks = [
+      "Analyze (actions)",
+      "Analyze (javascript-typescript)",
+      "Release Note",
+      "lint",
+    ].map((name) => ({ ...check(name, "success"), required: true }));
+    const early = evaluatePullRequestWatch(
+      watch(),
+      detail({ checks: [...checks, check("iOS", "pending")] }),
+      noRemarks,
+    );
+    const late = detail({
+      checks: [...checks, { ...check("e2e", "success"), required: true }, check("iOS", "pending")],
+    });
+    const aggregate = evaluatePullRequestWatch(early.next, late, noRemarks);
+    assert.deepEqual(aggregate.changes, [{ kind: "checks-passed", count: 5, required: true }]);
+    assert.deepEqual(evaluatePullRequestWatch(aggregate.next, late, noRemarks).changes, []);
+  });
+
+  it("keeps a missing required aggregate pending and wakes once it finishes", () => {
+    const checks = [
+      "Analyze (actions)",
+      "Analyze (javascript-typescript)",
+      "Release Note",
+      "lint",
+    ].map((name) => ({ ...check(name, "success"), required: true }));
+    const pending = detail({ checks: [...checks, { ...check("e2e", "pending"), required: true }] });
+    const waiting = evaluatePullRequestWatch(watch(), pending, noRemarks);
+    assert.deepEqual(waiting.changes, []);
+    const finished = evaluatePullRequestWatch(
+      waiting.next,
+      {
+        ...pending,
+        checks: pending.checks.map((check) => ({ ...check, status: "success" })),
+      },
+      noRemarks,
+    );
+    assert.deepEqual(finished.changes, [{ kind: "checks-passed", count: 5, required: true }]);
+  });
+
+  it("deduplicates reordered checks and reports a rerun or later completed check", () => {
+    const green = detail({
+      checks: [{ ...check("lint", "success"), required: true }, check("iOS", "success")],
+    });
+    const first = evaluatePullRequestWatch(watch(), green, noRemarks);
+    assert.equal(first.changes.length, 1);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        first.next,
+        { ...green, checks: green.checks.toReversed() },
+        noRemarks,
+      ).changes,
+      [],
+    );
+    const unreadable = evaluatePullRequestWatch(first.next, detail({ checks: [] }), noRemarks);
+    assert.deepEqual(evaluatePullRequestWatch(unreadable.next, green, noRemarks).changes, []);
+    const rerun = evaluatePullRequestWatch(
+      first.next,
+      { ...green, checks: [green.checks[0]!, check("iOS", "pending")] },
+      noRemarks,
+    );
+    assert.deepEqual(rerun.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(rerun.next, green, noRemarks).changes, [
+      { kind: "checks-passed", count: 2, required: false },
+    ]);
+    const late = evaluatePullRequestWatch(
+      first.next,
+      { ...green, checks: [...green.checks, check("performance", "success")] },
+      noRemarks,
+    );
+    assert.deepEqual(late.changes, [{ kind: "checks-passed", count: 3, required: false }]);
+  });
+
   it("reports each failure at once, even while another check never finishes", () => {
     const bot = check("CodeRabbit", "pending");
     const first = detail({ checks: [check("lint", "failure"), check("test", "pending"), bot] });
@@ -145,87 +322,7 @@ describe("evaluatePullRequestWatch", () => {
     ]);
   });
 
-  // regression: #23712 required checks woke the agent early and the rest finishing never did
-  it("wakes again when the other checks finish after the required ones passed", () => {
-    const required = (name: string, status: PullRequestCheck["status"]) => ({
-      ...check(name, status),
-      required: true,
-    });
-    const early = detail({
-      checks: [required("test", "success"), check("e2e", "pending")],
-    });
-    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
-    assert.deepEqual(first.changes, [{ kind: "checks-passed", count: 1, required: true }]);
-
-    const done = detail({
-      checks: [required("test", "success"), check("e2e", "success")],
-    });
-    const final = evaluatePullRequestWatch(first.next, done, noRemarks);
-    assert.deepEqual(
-      final.changes.map((change) => change.kind),
-      ["checks-passed"],
-    );
-    assert.deepEqual(evaluatePullRequestWatch(final.next, done, noRemarks).changes, []);
-    // A later advisory job running and passing is not more news.
-    const botPending = detail({ checks: [...done.checks, check("bot", "pending")] });
-    const churn = evaluatePullRequestWatch(final.next, botPending, noRemarks);
-    assert.deepEqual(churn.changes, []);
-    const botDone = detail({ checks: [...done.checks, check("bot", "success")] });
-    assert.deepEqual(evaluatePullRequestWatch(churn.next, botDone, noRemarks).changes, []);
-
-    // A pending check that turns required on the next read still finishes with one wake.
-    const promoted = detail({
-      checks: [required("test", "success"), required("e2e", "success")],
-    });
-    const gated = evaluatePullRequestWatch(first.next, promoted, noRemarks);
-    assert.deepEqual(gated.changes, [{ kind: "checks-passed", count: 2, required: true }]);
-    assert.deepEqual(evaluatePullRequestWatch(gated.next, promoted, noRemarks).changes, []);
-
-    // Nothing else was pending when the required ones passed, so nothing more is owed.
-    const green = evaluatePullRequestWatch(watch(), done, noRemarks);
-    assert.deepEqual(green.changes, [{ kind: "checks-passed", count: 1, required: true }]);
-    assert.deepEqual(evaluatePullRequestWatch(green.next, botDone, noRemarks).changes, []);
-  });
-
-  it("reports an owed non-required failure once after the required notice", () => {
-    const required = { ...check("test", "success"), required: true };
-    const early = detail({ checks: [required, check("e2e", "pending")] });
-    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
-    assert.deepEqual(first.changes, [{ kind: "checks-passed", count: 1, required: true }]);
-    const failed = detail({ checks: [required, check("e2e", "failure")] });
-    const failure = evaluatePullRequestWatch(first.next, failed, noRemarks);
-    assert.deepEqual(failure.changes, [
-      { kind: "checks-failed", failed: [check("e2e", "failure")] },
-    ]);
-    const repeated = evaluatePullRequestWatch(failure.next, failed, noRemarks);
-    assert.deepEqual(repeated.changes, []);
-    const recovered = detail({ checks: [required, check("e2e", "success")] });
-    const final = evaluatePullRequestWatch(repeated.next, recovered, noRemarks);
-    assert.deepEqual(final.changes, [{ kind: "checks-passed", count: 2, required: false }]);
-    assert.deepEqual(evaluatePullRequestWatch(final.next, recovered, noRemarks).changes, []);
-  });
-
-  it("clears old-head owed checks when a new head is pushed", () => {
-    const required = { ...check("test", "success"), required: true };
-    const early = detail({ checks: [required, check("e2e", "pending")] });
-    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
-    assert.deepEqual(first.next.owedChecks, ["e2e"]);
-    const unreadHead = detail({ headSha: "bbbbbbbbbb", checks: [] });
-    const unread = evaluatePullRequestWatch(first.next, unreadHead, noRemarks);
-    assert.deepEqual(unread.changes, []);
-    assert.deepEqual(unread.next.owedChecks, []);
-    const pushed = detail({ ...unreadHead, checks: [required] });
-    const newHead = evaluatePullRequestWatch(unread.next, pushed, noRemarks);
-    assert.deepEqual(newHead.changes, [{ kind: "checks-passed", count: 1, required: true }]);
-    assert.deepEqual(newHead.next.owedChecks, []);
-    const lateResult = detail({ ...pushed, checks: [required, check("e2e", "success")] });
-    const final = evaluatePullRequestWatch(newHead.next, lateResult, noRemarks);
-    assert.deepEqual(final.changes, []);
-    assert.deepEqual(evaluatePullRequestWatch(final.next, lateResult, noRemarks).changes, []);
-  });
-
-  // regression: #16208 PR watches burned GitHub's rate limit and gave up
-  it("does not report passed again for a new passed check where none is required", () => {
+  it("reports the expanded completed CI set once where none is required", () => {
     const first = evaluatePullRequestWatch(
       watch(),
       detail({ checks: [check("test", "success")] }),
@@ -233,14 +330,17 @@ describe("evaluatePullRequestWatch", () => {
     );
     assert.deepEqual(first.changes, [{ kind: "checks-passed", count: 1, required: false }]);
     const both = detail({ checks: [check("test", "success"), check("lint", "success")] });
-    assert.deepEqual(evaluatePullRequestWatch(first.next, both, noRemarks).changes, []);
+    const expanded = evaluatePullRequestWatch(first.next, both, noRemarks);
+    assert.deepEqual(expanded.changes, [{ kind: "checks-passed", count: 2, required: false }]);
+    assert.deepEqual(evaluatePullRequestWatch(expanded.next, both, noRemarks).changes, []);
   });
 
-  it("does not wake a watch saved before passed checks were recorded", () => {
+  it("reports all CI once for a watch saved before completion sets were recorded", () => {
     const green = detail({ checks: [{ ...check("test", "success"), required: true }] });
     const told = watch({ headSha: "aaaaaaaaaa", passed: true });
     const saved = evaluatePullRequestWatch(told, green, noRemarks);
-    assert.deepEqual(saved.changes, []);
+    assert.deepEqual(saved.changes, [{ kind: "checks-passed", count: 1, required: false }]);
+    assert.deepEqual(evaluatePullRequestWatch(saved.next, green, noRemarks).changes, []);
     assert.deepEqual(saved.next.passedChecks, ["test"]);
   });
 
@@ -342,6 +442,8 @@ describe("evaluatePullRequestWatch", () => {
       remark("reviewer", "2026-10-02T12:06:00Z", body),
     ]);
     const { text } = pullRequestWatchMessage({
+      host: "github",
+      repository: "o/r",
       number: 1,
       url: "https://github.com/o/r/pull/1",
       baseBranch: "main",
@@ -434,5 +536,64 @@ describe("evaluatePullRequestWatch", () => {
   it("never reports missing checks on a host where an empty list says nothing", () => {
     const silent = detail({ capabilities: capabilities(false), checks: [] });
     assert.isTrue(anHourLater(watch(), silent).every((kinds) => kinds.length === 0));
+  });
+});
+
+describe("pullRequestWatchMessage", () => {
+  it("distinguishes finished CI with outstanding failures from passing CI", () => {
+    const report = evaluatePullRequestWatch(
+      watch({ headSha: "aaaaaaaaaa", failedChecks: ["lint"] }),
+      detail({ checks: [check("lint", "failure"), check("test", "success")] }),
+      noRemarks,
+    );
+    const message = pullRequestWatchMessage({
+      host: "github.com",
+      repository: "o/r",
+      number: 12,
+      url: "https://github.com/o/r/pull/12",
+      baseBranch: "main",
+      headSha: report.next.headSha,
+      report,
+    });
+    assert.include(
+      message.text,
+      "All 2 checks finished on aaaaaaa; 1 check still needs attention:",
+    );
+    assert.include(message.text, "lint (failure) https://ci.example/lint");
+    assert.equal(message.notification.outcome, "failed");
+    assert.equal(message.notification.summary, "#12: checks finished with failures");
+  });
+
+  it("tells the agent what changed and marks failures for the timeline", () => {
+    const report = evaluatePullRequestWatch(
+      watch(),
+      detail({ checks: [check("lint", "failure")] }),
+      [remark("reviewer", "2026-10-02T12:10:00Z", "<!-- bot -->Needs a test.")],
+    );
+    const message = pullRequestWatchMessage({
+      host: "github.com",
+      repository: "o/r",
+      number: 12,
+      url: "https://github.com/o/r/pull/12",
+      baseBranch: "main",
+      headSha: report.next.headSha,
+      report,
+    });
+    assert.include(message.text, "- Checks failed on aaaaaaa:\n  - lint https://ci.example/lint");
+    assert.include(message.text, '  - reviewer on src/index.ts: "Needs a test."');
+    assert.include(message.text, "unwatch_pull_request");
+    assert.deepEqual(message.notification, {
+      source: {
+        kind: "monitor",
+        pullRequest: {
+          host: "github.com",
+          repository: "o/r",
+          number: 12,
+          headSha: report.next.headSha,
+        },
+      },
+      outcome: "failed",
+      summary: "#12: checks failed, new comments",
+    });
   });
 });

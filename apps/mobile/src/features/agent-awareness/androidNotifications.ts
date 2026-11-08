@@ -3,11 +3,108 @@ import { requireOptionalNativeModule } from "expo";
 import { Linking, Platform } from "react-native";
 
 interface AndroidAgentNotifications {
+  getUnifiedPushState?(): AndroidPushState;
+  setPushTransport?(transport: AndroidPushTransport): void;
+  enableUnifiedPush?(distributor: string, deviceId: string, scheme: string): void;
+  disableUnifiedPush?(): void;
+  registerUnifiedPush?(environmentId: string, vapid: string): void;
+  forgetUnifiedPushHost?(environmentId: string): void;
+  enableLocalNotifications?(deviceId: string, scheme: string): void;
+  disableLocalNotifications?(): void;
+  setLocalBackgroundEnabled?(enabled: boolean): void;
+  setLocalActivityEnabled?(enabled: boolean): void;
+  resumeLocalNotifications?(deviceId: string, scheme: string): void;
+  notifyLocal?(data: Record<string, string>): void;
+  addListener?(event: "unifiedPushChanged", listener: () => void): { remove(): void };
   configure(deviceId: string, userId: string, scheme: string, ongoingEnabled: boolean): void;
   clear(): void;
   setThreadOnScreen?(path: string | null): void;
   openLiveUpdateSettings?(): boolean;
   showShowcaseActivity?(scheme: string, data: Record<string, string>): void;
+}
+
+export type AndroidPushTransport = "local" | "unifiedpush" | "fcm";
+interface AndroidPushState {
+  transport: AndroidPushTransport;
+  enabled: boolean;
+  localEnabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundRunning: boolean;
+  localActivityEnabled: boolean;
+  distributor: string | null;
+  distributors: readonly { id: string; label: string }[];
+  subscriptions: Record<
+    string,
+    { vapid: string; endpoint?: string; publicKey?: string; auth?: string; error?: string }
+  >;
+}
+export function getAndroidPushState(): AndroidPushState {
+  return (
+    native?.getUnifiedPushState?.() ?? {
+      transport: "fcm",
+      enabled: false,
+      localEnabled: false,
+      backgroundEnabled: false,
+      backgroundRunning: false,
+      localActivityEnabled: true,
+      distributor: null,
+      distributors: [],
+      subscriptions: {},
+    }
+  );
+}
+export function subscribeAndroidPushState(listener: () => void): () => void {
+  const subscription = native?.addListener?.("unifiedPushChanged", listener);
+  return () => subscription?.remove();
+}
+export function setAndroidPushTransport(transport: AndroidPushTransport): void {
+  native?.setPushTransport?.(transport);
+}
+export function enableAndroidUnifiedPush(distributor: string, deviceId: string): void {
+  native?.enableUnifiedPush?.(distributor, deviceId, appScheme());
+}
+export function disableAndroidUnifiedPush(): void {
+  native?.disableUnifiedPush?.();
+}
+export function registerAndroidUnifiedPush(environmentId: string, vapid: string): void {
+  native?.registerUnifiedPush?.(environmentId, vapid);
+}
+export function forgetAndroidUnifiedPushHost(environmentId: string): void {
+  native?.forgetUnifiedPushHost?.(environmentId);
+}
+export function enableAndroidLocalNotifications(deviceId: string): void {
+  native?.enableLocalNotifications?.(deviceId, appScheme());
+}
+export function disableAndroidLocalNotifications(): void {
+  native?.disableLocalNotifications?.();
+}
+export function setAndroidLocalBackgroundEnabled(enabled: boolean): void {
+  native?.setLocalBackgroundEnabled?.(enabled);
+}
+export function setAndroidLocalActivityEnabled(enabled: boolean): void {
+  native?.setLocalActivityEnabled?.(enabled);
+}
+export function resumeAndroidLocalNotifications(deviceId: string): void {
+  native?.resumeLocalNotifications?.(deviceId, appScheme());
+}
+
+/** React Native keeps background timers active for the lifetime of this native service. */
+export function androidLocalConnectionTask(): Promise<void> {
+  return new Promise((resolve) => {
+    const unsubscribe = subscribeAndroidPushState(() => {
+      if (!getAndroidPushState().backgroundRunning) {
+        unsubscribe();
+        resolve();
+      }
+    });
+    if (!getAndroidPushState().backgroundRunning) {
+      unsubscribe();
+      resolve();
+    }
+  });
+}
+export function notifyAndroidLocal(data: Record<string, string>): void {
+  native?.notifyLocal?.(data);
 }
 
 const native =

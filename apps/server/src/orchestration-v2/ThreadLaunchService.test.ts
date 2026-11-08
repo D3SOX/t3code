@@ -1065,6 +1065,31 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("leaves temporary branch names intact when automatic naming is disabled", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ serverSettings: { autoGenerateBranchNames: false } });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:no-branch-name",
+          thread: "thread:no-branch-name",
+          message: "Build the feature",
+          workspace: {
+            type: "existing_worktree",
+            worktreePath: "/repo-worktrees/t3code-abcd1234",
+            branch: "t3code/abcd1234",
+          },
+        }),
+      );
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(projection.thread.branch, "t3code/abcd1234");
+      assert.equal(harness.renameBranch.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
 it.effect.each(["stable", "upstream/release"])(
   "launches from %s with the fetched commit and remote PR base",
   (baseRef) =>

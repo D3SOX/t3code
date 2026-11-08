@@ -71,18 +71,17 @@ import {
 } from "./thread-outbox-model";
 import { flushThreadOutbox, threadOutboxManager } from "./thread-outbox";
 import { composerDraftEnvironmentId } from "../lib/composerAttachmentUploadQueue";
-
 const COMPOSER_DRAFTS_SCHEMA_VERSION = 1;
 const COMPOSER_DRAFTS_DIRECTORY = "composer-drafts";
 const COMPOSER_DRAFTS_FILE = "drafts.json";
 const PERSIST_DEBOUNCE_MS = 200;
-
 export const composerContextImportsAtom = Atom.make<Record<string, boolean>>({}).pipe(
   Atom.keepAlive,
 );
-
 export function setComposerContextImporting(draftKey: string, importing: boolean): void {
-  const next = { ...appAtomRegistry.get(composerContextImportsAtom) };
+  const next = {
+    ...appAtomRegistry.get(composerContextImportsAtom),
+  };
   if (importing) next[draftKey] = true;
   else delete next[draftKey];
   appAtomRegistry.set(composerContextImportsAtom, next);
@@ -142,7 +141,10 @@ export function useComposerDraftResetGeneration(draftKey: string | null): () => 
 export function rememberComposerDraftSelection(
   draftKey: string,
   text: string,
-  selection: { start: number; end: number },
+  selection: {
+    start: number;
+    end: number;
+  },
 ): void {
   appAtomRegistry.set(composerDraftSelectionAtom(draftKey), { text, ...selection });
 }
@@ -175,25 +177,28 @@ export function useComposerDraftSelection(
   );
   return draftKey === null ? null : matchingComposerDraftSelection(selection, text);
 }
-
 export interface ComposerDraftInsertion {
   readonly text: string;
   readonly start: number;
   readonly end: number;
 }
-
 export function captureComposerDraftInsertion(
   draftKey: string,
-  selection?: { start: number; end: number },
+  selection?: {
+    start: number;
+    end: number;
+  },
 ): ComposerDraftInsertion {
   const { text } = getComposerDraftSnapshot(draftKey);
   return {
     text,
     ...(selection ??
-      readComposerDraftSelection(draftKey, text) ?? { start: text.length, end: text.length }),
+      readComposerDraftSelection(draftKey, text) ?? {
+        start: text.length,
+        end: text.length,
+      }),
   };
 }
-
 function contextInsertionRange(
   draftKey: string,
   draft: ComposerDraft,
@@ -203,9 +208,11 @@ function contextInsertionRange(
   // Append after text edits during writes; caret-only moves preserve the captured insertion range.
   const selection = captured?.text === draft.text ? captured : null;
   const start = Math.max(0, Math.min(selection?.start ?? draft.text.length, draft.text.length));
-  return { start, end: Math.max(start, Math.min(selection?.end ?? start, draft.text.length)) };
+  return {
+    start,
+    end: Math.max(start, Math.min(selection?.end ?? start, draft.text.length)),
+  };
 }
-
 function draftWithoutInsertionSelection(
   draftKey: string,
   draft: ComposerDraft,
@@ -215,21 +222,18 @@ function draftWithoutInsertionSelection(
   const text = `${draft.text.slice(0, start)} ${draft.text.slice(end)}`;
   return withReferencedContextFiles(draft, text, referencedComposerContext(text, draft.context));
 }
-
 export function countComposerDraftAttachmentsAfterSelection(
   draftKey: string,
   target: ComposerDraftInsertion,
 ): number {
   return getComposerDraftAfterSelection(draftKey, target).attachments.length;
 }
-
 export function getComposerDraftAfterSelection(
   draftKey: string,
   target: ComposerDraftInsertion,
 ): ComposerDraft {
   return draftWithoutInsertionSelection(draftKey, getComposerDraftSnapshot(draftKey), target);
 }
-
 function withReferencedContextFiles(
   draft: ComposerDraft,
   text: string,
@@ -263,7 +267,10 @@ export function createComposerDraftContextHistory() {
   const restoreContext = createComposerContextHistory();
   const files = new Map<
     string,
-    { attachment: FileBackedComposerAttachment; release: () => void }
+    {
+      attachment: FileBackedComposerAttachment;
+      release: () => void;
+    }
   >();
   return {
     restore(text: string, draft: ComposerDraft) {
@@ -300,10 +307,19 @@ export function createComposerDraftContextHistory() {
         const saved = files.get(record.attachmentId)?.attachment;
         liveIds.add(record.attachmentId);
         return saved
-          ? [{ ...saved, uploadedAttachmentId: undefined, uploadEnvironmentId: undefined }]
+          ? [
+              {
+                ...saved,
+                uploadedAttachmentId: undefined,
+                uploadEnvironmentId: undefined,
+              },
+            ]
           : [];
       });
-      return { context, attachments };
+      return {
+        context,
+        attachments,
+      };
     },
     dispose() {
       for (const file of files.values()) file.release();
@@ -311,17 +327,18 @@ export function createComposerDraftContextHistory() {
     },
   };
 }
-
 export function setComposerDraftContext(
   draftKey: string,
   context: OrchestrationMessageContext | undefined,
 ): void {
   updateComposerDrafts((current) => ({
     ...current,
-    [draftKey]: { ...normalizeDraft(current[draftKey]), context },
+    [draftKey]: {
+      ...normalizeDraft(current[draftKey]),
+      context,
+    },
   }));
 }
-
 export function insertComposerDraftContext(
   draftKey: string,
   content: {
@@ -344,23 +361,31 @@ export function insertComposerDraftContext(
       return current;
     const nextDraft = draftWithInsertedContext(
       draftKey,
-      { ...draft, attachments: [...draft.attachments, ...attachments] },
+      {
+        ...draft,
+        attachments: [...draft.attachments, ...attachments],
+      },
       content,
       target,
     );
     if (!nextDraft) return current;
     inserted = true;
     removed = draft.attachments.filter((attachment) => !nextDraft.attachments.includes(attachment));
-    return { ...current, [draftKey]: nextDraft };
+    return {
+      ...current,
+      [draftKey]: nextDraft,
+    };
   });
   scheduleUnusedComposerAttachmentCleanup(inserted ? removed : (content.attachments ?? []));
   return inserted;
 }
-
 function draftWithInsertedContext(
   draftKey: string,
   draft: ComposerDraft,
-  content: { text: string; context: OrchestrationMessageContext },
+  content: {
+    text: string;
+    context: OrchestrationMessageContext;
+  },
   target?: ComposerDraftInsertion,
 ): ComposerDraft | null {
   const { start, end } = contextInsertionRange(draftKey, draft, target);
@@ -370,7 +395,10 @@ function draftWithInsertedContext(
   const text = before + insertion + after;
   const records = new Map(draft.context?.records.map((record) => [record.contextId, record]));
   for (const record of content.context.records) records.set(record.contextId, record);
-  const context = referencedComposerContext(text, { version: 1, records: [...records.values()] });
+  const context = referencedComposerContext(text, {
+    version: 1,
+    records: [...records.values()],
+  });
   if ((context?.records.length ?? 0) > COMPOSER_CONTEXT_MAX_RECORDS) return null;
   rememberComposerDraftSelection(draftKey, text, {
     start: start + insertion.length,
@@ -378,7 +406,6 @@ function draftWithInsertedContext(
   });
   return withReferencedContextFiles(draft, text, context);
 }
-
 export class ComposerDraftPersistenceError extends Schema.TaggedError<ComposerDraftPersistenceError>()(
   "ComposerDraftPersistenceError",
   {
@@ -408,20 +435,17 @@ export interface ComposerDraft {
   readonly workspaceSelection?: ComposerDraftWorkspaceSelection;
   readonly project?: ComposerDraftProject;
 }
-
 export interface ComposerDraftProject {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly createdAt: string;
 }
-
 export interface ComposerDraftContent {
   readonly text: string;
   readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly sourceShareId?: string;
 }
-
 export interface ComposerDraftWorkspaceSelection {
   readonly mode: "local" | "worktree";
   readonly branch: string | null;
@@ -435,7 +459,6 @@ export interface ComposerDraftWorkspaceSelection {
    */
   readonly followsCurrentCheckout?: boolean;
 }
-
 export type ComposerDraftSettingsUpdate = Pick<
   ComposerDraft,
   | "modelSelection"
@@ -445,7 +468,6 @@ export type ComposerDraftSettingsUpdate = Pick<
   | "workspaceSelection"
   | "project"
 >;
-
 const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
   mode: Schema.Literals(["local", "worktree"]),
   branch: Schema.NullOr(Schema.String),
@@ -454,7 +476,6 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
   pullRequestReference: Schema.optional(Schema.String),
   followsCurrentCheckout: Schema.optional(Schema.Boolean),
 });
-
 const ComposerDraftProjectSchema = Schema.Struct({
   environmentId: EnvironmentIdSchema,
   projectId: ProjectIdSchema,
@@ -466,7 +487,6 @@ const PersistedComposerContextSchema = Schema.Struct({
   version: Schema.Literal(1),
   records: ForwardCompatibleArray(ComposerContextRecord),
 });
-
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   context: Schema.optional(PersistedComposerContextSchema),
@@ -479,7 +499,6 @@ const ComposerDraftSchema = Schema.Struct({
   workspaceSelection: Schema.optional(ComposerDraftWorkspaceSelectionSchema),
   project: Schema.optional(ComposerDraftProjectSchema),
 });
-
 const PersistedComposerDraftsSchema = Schema.Struct({
   schemaVersion: Schema.Literal(COMPOSER_DRAFTS_SCHEMA_VERSION),
   drafts: Schema.Record(Schema.String, ComposerDraftSchema),
@@ -501,16 +520,13 @@ const PersistedComposerDraftsSchema = Schema.Struct({
     ),
   ),
 });
-
 const decodePersistedComposerDraftsDocument = Schema.decodeUnknownSync(
   PersistedComposerDraftsSchema,
 );
-
 const EMPTY_DRAFT: ComposerDraft = {
   text: "",
   attachments: [],
 };
-
 export const composerDraftsAtom = Atom.make<Record<string, ComposerDraft>>({}).pipe(
   Atom.keepAlive,
   Atom.withLabel("mobile:composer-drafts"),
@@ -525,47 +541,38 @@ export const composerDraftsLoadedAtom = Atom.make(false).pipe(
   Atom.keepAlive,
   Atom.withLabel("mobile:composer-drafts-loaded"),
 );
-
 export const stickyComposerModelSelectionAtom = Atom.make<ModelSelection | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("mobile:sticky-composer-model-selection"),
 );
-
 export type ModelOptionMemoryState = Readonly<
   Record<string, Readonly<Record<string, ReadonlyArray<ProviderOptionSelection>>>>
 >;
-
 export const modelOptionMemoryAtom = Atom.make<ModelOptionMemoryState>({}).pipe(
   Atom.keepAlive,
   Atom.withLabel("mobile:model-option-memory"),
 );
-
 interface SignedOutDrafts {
   readonly drafts: Record<string, ComposerDraft>;
   readonly queuedMessages: ReadonlyArray<QueuedThreadMessage>;
 }
-
 interface ComposerCloudDraftState {
   readonly accountId: string | null;
   readonly signedOut: Record<string, SignedOutDrafts>;
 }
-
 export const composerCloudDraftsAtom = Atom.make<ComposerCloudDraftState>({
   accountId: null,
   signedOut: {},
 }).pipe(Atom.keepAlive);
-
 let loadPromise: Promise<void> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistRetryNeeded = false;
 const persistenceQueue = new SerializedAsyncQueue();
-
 export function resetComposerDraftsLoadState(): void {
   loadPromise = null;
   appAtomRegistry.set(composerDraftsLoadedAtom, false);
   persistRetryNeeded = false;
 }
-
 function attachmentContextRecord(
   attachment: DraftComposerAttachment,
   contextId = ComposerContextId.make(attachment.id),
@@ -581,8 +588,14 @@ function attachmentContextRecord(
   };
   // Document pickers label images as files; promote the record so every client can open them as images.
   return attachment.type === "image" || imageMimeType(attachment) !== null
-    ? { ...common, kind: "image" as const }
-    : { ...common, kind: "file" as const };
+    ? {
+        ...common,
+        kind: "image" as const,
+      }
+    : {
+        ...common,
+        kind: "file" as const,
+      };
 }
 
 function restoreMissingComposerFileReferences(
@@ -626,9 +639,17 @@ function restoreMissingComposerFileReferences(
     referenced.add(key);
     changed = true;
   }
-  return changed ? { ...draft, text, context: { version: 1, records } } : draft;
+  return changed
+    ? {
+        ...draft,
+        text,
+        context: {
+          version: 1,
+          records,
+        },
+      }
+    : draft;
 }
-
 function normalizeDraft(draft: ComposerDraft | undefined): ComposerDraft {
   if (!draft) {
     return EMPTY_DRAFT;
@@ -639,15 +660,12 @@ function normalizeDraft(draft: ComposerDraft | undefined): ComposerDraft {
     attachments: draft.attachments,
   };
 }
-
 export function getComposerDraftSnapshot(draftKey: string): ComposerDraft {
   return normalizeDraft(appAtomRegistry.get(composerDraftsAtom)[draftKey]);
 }
-
 export function isComposerDraftEmpty(draft: ComposerDraft): boolean {
   return isEmptyDraft(draft);
 }
-
 function isEmptyDraft(draft: ComposerDraft): boolean {
   return (
     draft.text.length === 0 &&
@@ -659,26 +677,27 @@ function isEmptyDraft(draft: ComposerDraft): boolean {
     draft.workspaceSelection === undefined
   );
 }
-
 function withComposerDraft(
   current: Record<string, ComposerDraft>,
   draftKey: string,
   draft: ComposerDraft,
 ): Record<string, ComposerDraft> {
   if (isEmptyDraft(draft) && draft.project === undefined) {
-    const next = { ...current };
+    const next = {
+      ...current,
+    };
     delete next[draftKey];
     return next;
   }
-  return { ...current, [draftKey]: draft };
+  return {
+    ...current,
+    [draftKey]: draft,
+  };
 }
-
 export { isNewTaskDraftKey, newTaskDraftKey } from "./new-task-draft-key";
-
 function newDraftId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
-
 export function migrateLegacyNewTaskDraft(
   key: string,
   draft: ComposerDraft,
@@ -701,7 +720,6 @@ export function migrateLegacyNewTaskDraft(
     },
   ];
 }
-
 export function decodePersistedComposerState(value: unknown): {
   readonly drafts: Record<string, ComposerDraft>;
   readonly stickyModelSelection: ModelSelection | null;
@@ -723,7 +741,10 @@ export function decodePersistedComposerState(value: unknown): {
               draft.runtimeMode === undefined &&
               draft.interactionMode === undefined &&
               draft.workspaceSelection === undefined
-              ? { ...draft, modelSelection: undefined }
+              ? {
+                  ...draft,
+                  modelSelection: undefined,
+                }
               : draft,
             now,
           ),
@@ -753,14 +774,15 @@ export function decodePersistedComposerState(value: unknown): {
     },
   };
 }
-
 async function getComposerDraftsFile() {
   const { Directory, File, Paths } = await import("expo-file-system");
   const directory = new Directory(Paths.document, COMPOSER_DRAFTS_DIRECTORY);
-  directory.create({ idempotent: true, intermediates: true });
+  directory.create({
+    idempotent: true,
+    intermediates: true,
+  });
   return new File(directory, COMPOSER_DRAFTS_FILE);
 }
-
 async function loadPersistedComposerState(): Promise<
   ReturnType<typeof decodePersistedComposerState>
 > {
@@ -772,7 +794,10 @@ async function loadPersistedComposerState(): Promise<
         drafts: {},
         stickyModelSelection: null,
         modelOptionMemory: {},
-        cloudDrafts: { accountId: null, signedOut: {} },
+        cloudDrafts: {
+          accountId: null,
+          signedOut: {},
+        },
       };
     }
     operation = "read";
@@ -788,7 +813,6 @@ async function loadPersistedComposerState(): Promise<
     });
   }
 }
-
 async function writePersistedComposerState(
   drafts: Record<string, ComposerDraft>,
   stickyModelSelection: ModelSelection | null,
@@ -804,11 +828,21 @@ async function writePersistedComposerState(
     const document = {
       schemaVersion: COMPOSER_DRAFTS_SCHEMA_VERSION,
       drafts: nonEmptyDrafts,
-      ...(stickyModelSelection ? { stickyModelSelection } : {}),
-      ...(Object.keys(appAtomRegistry.get(modelOptionMemoryAtom)).length > 0
-        ? { modelOptionMemory: appAtomRegistry.get(modelOptionMemoryAtom) }
+      ...(stickyModelSelection
+        ? {
+            stickyModelSelection,
+          }
         : {}),
-      ...(cloudDrafts.accountId ? { cloudAccountId: cloudDrafts.accountId } : {}),
+      ...(Object.keys(appAtomRegistry.get(modelOptionMemoryAtom)).length > 0
+        ? {
+            modelOptionMemory: appAtomRegistry.get(modelOptionMemoryAtom),
+          }
+        : {}),
+      ...(cloudDrafts.accountId
+        ? {
+            cloudAccountId: cloudDrafts.accountId,
+          }
+        : {}),
       ...(Object.keys(cloudDrafts.signedOut).length > 0
         ? {
             signedOutDrafts: Object.fromEntries(
@@ -865,14 +899,12 @@ export async function flushComposerDrafts(): Promise<void> {
     await persistenceQueue.run(() => Promise.resolve());
   } while (persistTimer !== null || persistRetryNeeded);
 }
-
 function signedOutAttachmentOwners() {
   return Object.values(appAtomRegistry.get(composerCloudDraftsAtom).signedOut).flatMap((saved) => [
     ...Object.values(saved.drafts),
     ...saved.queuedMessages,
   ]);
 }
-
 export function findLocalComposerClipboardAttachment(
   knownEnvironmentIds: Iterable<EnvironmentId>,
   environmentId: EnvironmentId,
@@ -894,7 +926,6 @@ export function findLocalComposerClipboardAttachment(
     .flatMap((message) => message.attachments)
     .find((attachment) => attachment.id === id);
 }
-
 function isComposerAttachmentFileReferenced(fileUri: string): boolean {
   if (isComposerAttachmentFileRetained(fileUri)) {
     return true;
@@ -912,7 +943,6 @@ function isComposerAttachmentFileReferenced(fileUri: string): boolean {
     ),
   );
 }
-
 function isComposerAttachmentUploadReferenced(
   environmentId: EnvironmentId,
   attachmentId: string,
@@ -929,7 +959,6 @@ function isComposerAttachmentUploadReferenced(
     ),
   );
 }
-
 export async function releaseUnusedComposerAttachmentFiles(
   attachments: ReadonlyArray<DraftComposerAttachment>,
 ): Promise<void> {
@@ -962,7 +991,6 @@ export async function releaseUnusedComposerAttachmentFiles(
     return;
   }
   await flushThreadOutbox();
-
   const allFilesReferenced = [...candidates].every(isComposerAttachmentFileReferenced);
   const allUploadsReferenced = [...uploadCandidates].every(([environmentId, attachmentIds]) =>
     [...attachmentIds].every((attachmentId) =>
@@ -972,11 +1000,12 @@ export async function releaseUnusedComposerAttachmentFiles(
   if (allFilesReferenced && allUploadsReferenced) {
     return;
   }
-
   let incomingShareFileUris: ReadonlySet<string>;
   try {
     const { loadIncomingShareDrafts } = await import("../features/sharing/incoming-share-storage");
-    const incomingShares = await loadIncomingShareDrafts({ strict: true });
+    const incomingShares = await loadIncomingShareDrafts({
+      strict: true,
+    });
     incomingShareFileUris = new Set(
       incomingShares.flatMap((share) =>
         share.attachments.flatMap((attachment) =>
@@ -990,7 +1019,6 @@ export async function releaseUnusedComposerAttachmentFiles(
     console.warn("[composer-attachments] could not verify incoming share ownership", error);
     return;
   }
-
   const { removePersistedComposerAttachmentFile } = await import("../lib/composerImages");
   for (const fileUri of candidates) {
     // Re-check immediately before deletion; restores or edits can acquire ownership after scanning.
@@ -1002,7 +1030,6 @@ export async function releaseUnusedComposerAttachmentFiles(
     }
     await removePersistedComposerAttachmentFile(fileUri);
   }
-
   if (uploadCandidates.size > 0) {
     const { releasePendingAttachmentUploads } = await import("../lib/attachmentUpload");
     for (const [environmentId, attachmentIds] of uploadCandidates) {
@@ -1024,7 +1051,6 @@ export async function releaseUnusedComposerAttachmentFiles(
     }
   }
 }
-
 export function scheduleUnusedComposerAttachmentCleanup(
   attachments: ReadonlyArray<DraftComposerAttachment>,
 ): void {
@@ -1040,11 +1066,9 @@ export function scheduleUnusedComposerAttachmentCleanup(
     console.warn("[composer-attachments] could not remove unused files", error);
   });
 }
-
 registerComposerAttachmentUnusedHandler((attachment) => {
   scheduleUnusedComposerAttachmentCleanup([attachment]);
 });
-
 export function schedulePersistComposerState(): void {
   if (persistTimer !== null) {
     clearTimeout(persistTimer);
@@ -1068,7 +1092,6 @@ export function schedulePersistComposerState(): void {
     });
   }, PERSIST_DEBOUNCE_MS);
 }
-
 export function ensureComposerDraftsLoaded(): void {
   if (loadPromise !== null) {
     return;
@@ -1118,19 +1141,16 @@ export function ensureComposerDraftsLoaded(): void {
     );
   });
 }
-
 export async function waitForComposerDraftsLoaded(): Promise<void> {
   ensureComposerDraftsLoaded();
   if (loadPromise !== null) {
     await loadPromise;
   }
 }
-
 export async function getComposerCloudAccountId(): Promise<string | null> {
   await waitForComposerDraftsLoaded();
   return appAtomRegistry.get(composerCloudDraftsAtom).accountId;
 }
-
 export async function archiveCloudComposerDrafts(
   accountId: string | null,
   environmentIds: ReadonlySet<EnvironmentId>,
@@ -1146,8 +1166,12 @@ export async function archiveCloudComposerDrafts(
     appAtomRegistry.get(threadOutboxManager.queuedMessagesByThreadKeyAtom),
   ).flat();
   const current = appAtomRegistry.get(composerDraftsAtom);
-  const remaining = { ...current };
-  const savedDrafts = { ...cloud.signedOut[owner]?.drafts };
+  const remaining = {
+    ...current,
+  };
+  const savedDrafts = {
+    ...cloud.signedOut[owner]?.drafts,
+  };
   for (const [key, draft] of Object.entries(current)) {
     const environmentId = composerDraftEnvironmentId(key, knownEnvironmentIds, queued, draft);
     if (environmentId !== null && environmentIds.has(environmentId)) {
@@ -1167,13 +1191,15 @@ export async function archiveCloudComposerDrafts(
     accountId: owner,
     signedOut: {
       ...cloud.signedOut,
-      [owner]: { drafts: savedDrafts, queuedMessages: [...savedMessages.values()] },
+      [owner]: {
+        drafts: savedDrafts,
+        queuedMessages: [...savedMessages.values()],
+      },
     },
   });
   schedulePersistComposerState();
   await flushComposerDrafts();
 }
-
 function sameDraftAttachmentIds(
   left: ReadonlyArray<DraftComposerAttachment>,
   right: ReadonlyArray<DraftComposerAttachment>,
@@ -1190,7 +1216,9 @@ export async function removeDeliveredCloudQueuedMessage(
 ): Promise<void> {
   await waitForComposerDraftsLoaded();
   const cloud = appAtomRegistry.get(composerCloudDraftsAtom);
-  const signedOut = { ...cloud.signedOut };
+  const signedOut = {
+    ...cloud.signedOut,
+  };
   let changed = false;
   for (const [accountId, saved] of Object.entries(signedOut)) {
     const archived = saved.queuedMessages.find(
@@ -1242,7 +1270,9 @@ export async function removeDeliveredCloudQueuedMessage(
               (message.creation?.startFromOrigin ?? false))))
     )
       continue;
-    const drafts = { ...saved.drafts };
+    const drafts = {
+      ...saved.drafts,
+    };
     delete drafts[editorKey];
     signedOut[accountId] = {
       drafts,
@@ -1251,7 +1281,10 @@ export async function removeDeliveredCloudQueuedMessage(
     changed = true;
   }
   if (!changed) return;
-  appAtomRegistry.set(composerCloudDraftsAtom, { ...cloud, signedOut });
+  appAtomRegistry.set(composerCloudDraftsAtom, {
+    ...cloud,
+    signedOut,
+  });
   schedulePersistComposerState();
   try {
     await flushComposerDrafts();
@@ -1261,7 +1294,6 @@ export async function removeDeliveredCloudQueuedMessage(
     throw error;
   }
 }
-
 export async function restoreCloudComposerDrafts(accountId: string): Promise<void> {
   await waitForComposerDraftsLoaded();
   const cloud = appAtomRegistry.get(composerCloudDraftsAtom);
@@ -1277,7 +1309,9 @@ export async function restoreCloudComposerDrafts(accountId: string): Promise<voi
       if (!alreadyQueued) await threadOutboxManager.enqueue(message);
     }
     updateComposerDrafts((current) => {
-      const restored = { ...current };
+      const restored = {
+        ...current,
+      };
       for (const [key, draft] of Object.entries(saved.drafts)) {
         const existing = current[key];
         const attachmentIds = new Set(existing?.attachments.map((attachment) => attachment.id));
@@ -1308,13 +1342,17 @@ export async function restoreCloudComposerDrafts(accountId: string): Promise<voi
       return restored;
     });
   }
-  const signedOut = { ...cloud.signedOut };
+  const signedOut = {
+    ...cloud.signedOut,
+  };
   delete signedOut[accountId];
-  appAtomRegistry.set(composerCloudDraftsAtom, { accountId, signedOut });
+  appAtomRegistry.set(composerCloudDraftsAtom, {
+    accountId,
+    signedOut,
+  });
   schedulePersistComposerState();
   await flushComposerDrafts();
 }
-
 function updateComposerDrafts(
   update: (current: Record<string, ComposerDraft>) => Record<string, ComposerDraft>,
 ): void {
@@ -1326,12 +1364,10 @@ function updateComposerDrafts(
   appAtomRegistry.set(composerDraftsAtom, next);
   schedulePersistComposerState();
 }
-
 export function setStickyComposerModelSelection(modelSelection: ModelSelection): void {
   appAtomRegistry.set(stickyComposerModelSelectionAtom, modelSelection);
   schedulePersistComposerState();
 }
-
 export function setComposerDraftText(draftKey: string, value: string): void {
   let removed: ReadonlyArray<DraftComposerAttachment> = [];
   updateComposerDrafts((current) => {
@@ -1343,7 +1379,6 @@ export function setComposerDraftText(draftKey: string, value: string): void {
   });
   scheduleUnusedComposerAttachmentCleanup(removed);
 }
-
 export function insertComposerDraftText(
   draftKey: string,
   value: string,
@@ -1358,7 +1393,6 @@ export function insertComposerDraftText(
     end: start + value.length,
   });
 }
-
 export function appendComposerDraftText(draftKey: string, value: string): void {
   updateComposerDrafts((current) => {
     const existing = normalizeDraft(current[draftKey]);
@@ -1410,7 +1444,10 @@ export function appendComposerDraftAttachments(
     if (accepted.length === 0) {
       return current;
     }
-    let draft = { ...existing, attachments: [...existing.attachments, ...accepted] };
+    let draft = {
+      ...existing,
+      attachments: [...existing.attachments, ...accepted],
+    };
     if (options?.appendReference) {
       const records = accepted.map((attachment) => attachmentContextRecord(attachment));
       const inserted = draftWithInsertedContext(
@@ -1418,7 +1455,10 @@ export function appendComposerDraftAttachments(
         draft,
         {
           text: records.map(formatComposerContextReference).join(" "),
-          context: { version: 1, records },
+          context: {
+            version: 1,
+            records,
+          },
         },
         options?.insertion,
       );
@@ -1426,7 +1466,10 @@ export function appendComposerDraftAttachments(
         rejected = attachments;
         return current;
       }
-      draft = { ...inserted, attachments: [...inserted.attachments] };
+      draft = {
+        ...inserted,
+        attachments: [...inserted.attachments],
+      };
       removed = existing.attachments.filter(
         (attachment) => !draft.attachments.includes(attachment),
       );
@@ -1439,7 +1482,6 @@ export function appendComposerDraftAttachments(
   scheduleUnusedComposerAttachmentCleanup([...rejected, ...removed]);
   return rejected.length;
 }
-
 export function replaceComposerDraftAttachments(
   draftKey: string,
   attachments: ReadonlyArray<DraftComposerAttachment>,
@@ -1468,7 +1510,6 @@ export function replaceComposerDraftAttachments(
     previousAttachments.filter((attachment) => !retainedIds.has(attachment.id)),
   );
 }
-
 export function removeComposerDraftAttachment(draftKey: string, imageId: string): void {
   const previousAttachments = getComposerDraftSnapshot(draftKey).attachments;
   updateComposerDrafts((current) => {
@@ -1493,7 +1534,6 @@ export function removeComposerDraftAttachment(draftKey: string, imageId: string)
     previousAttachments.filter((attachment) => attachment.id === imageId),
   );
 }
-
 export function setComposerDraftAttachmentUpload(
   draftKey: string,
   attachment: DraftComposerAttachment,
@@ -1527,7 +1567,6 @@ export function setComposerDraftAttachmentUpload(
   if (previous) scheduleUnusedComposerAttachmentCleanup([previous]);
   return previous !== undefined;
 }
-
 export function updateComposerDraftSettings(
   draftKey: string,
   settings: Partial<ComposerDraftSettingsUpdate>,
@@ -1635,15 +1674,23 @@ export function clearComposerDraftContentState(
   } = existing;
   const draft = {
     ...retained,
-    ...(options?.clearModelSelection || modelSelection === undefined ? {} : { modelSelection }),
+    ...(options?.clearModelSelection || modelSelection === undefined
+      ? {}
+      : {
+          modelSelection,
+        }),
     ...(options?.clearWorkspaceSelection || workspaceSelection === undefined
       ? {}
-      : { workspaceSelection }),
+      : {
+          workspaceSelection,
+        }),
     text: "",
     attachments: [],
   };
   if (isEmptyDraft(draft)) {
-    const next = { ...current };
+    const next = {
+      ...current,
+    };
     delete next[draftKey];
     return next;
   }
@@ -1652,13 +1699,14 @@ export function clearComposerDraftContentState(
     [draftKey]: draft,
   };
 }
-
 export function restoreComposerDraftSnapshotState(
   current: Record<string, ComposerDraft>,
   draftKey: string,
   snapshot: ComposerDraft,
 ): Record<string, ComposerDraft> {
-  const next = { ...current };
+  const next = {
+    ...current,
+  };
   if (isEmptyDraft(snapshot)) {
     delete next[draftKey];
   } else {
@@ -1666,14 +1714,12 @@ export function restoreComposerDraftSnapshotState(
   }
   return next;
 }
-
 function stripAttachmentUploadReference(
   attachment: DraftComposerAttachment,
 ): DraftComposerAttachment {
   const { uploadedAttachmentId: _id, uploadEnvironmentId: _environmentId, ...rest } = attachment;
   return rest;
 }
-
 function mergeComposerDraftText(existing: string, incoming: string): string {
   if (incoming.length === 0) {
     return existing;
@@ -1686,7 +1732,6 @@ function mergeComposerDraftText(existing: string, incoming: string): string {
   }
   return `${existing}\n\n${incoming}`;
 }
-
 function mergeReferencedComposerContext(
   text: string,
   first?: OrchestrationMessageContext,
@@ -1695,9 +1740,11 @@ function mergeReferencedComposerContext(
   const records = new Map((first?.records ?? []).map((record) => [record.contextId, record]));
   for (const record of second?.records ?? []) records.set(record.contextId, record);
   if (records.size === 0) return undefined;
-  return referencedComposerContext(text, { version: 1, records: [...records.values()] });
+  return referencedComposerContext(text, {
+    version: 1,
+    records: [...records.values()],
+  });
 }
-
 export function mergeComposerDraftContentState(
   current: Record<string, ComposerDraft>,
   draftKey: string,
@@ -1744,7 +1791,11 @@ export function mergeComposerDraftContentState(
         text,
         attachments,
         context,
-        ...(importedShareIds ? { importedShareIds } : {}),
+        ...(importedShareIds
+          ? {
+              importedShareIds,
+            }
+          : {}),
       },
       content.sourceShareId ? attachments.slice(existing.attachments.length) : [],
     ),
@@ -1755,7 +1806,9 @@ export function mergeComposerDraftContentState(
 export async function mergeComposerDraftContent(
   draftKey: string,
   content: ComposerDraftContent,
-): Promise<{ readonly skippedAttachmentCount: number }> {
+): Promise<{
+  readonly skippedAttachmentCount: number;
+}> {
   ensureComposerDraftsLoaded();
   if (loadPromise !== null) {
     await loadPromise;
@@ -1783,9 +1836,32 @@ export async function mergeComposerDraftContent(
   await persistenceQueue.run(() =>
     writePersistedComposerState(next, appAtomRegistry.get(stickyComposerModelSelectionAtom)),
   );
-  return { skippedAttachmentCount };
+  return {
+    skippedAttachmentCount,
+  };
 }
-
+export async function restoreComposerDraftSnapshot(
+  draftKey: string,
+  snapshot: ComposerDraft,
+): Promise<void> {
+  ensureComposerDraftsLoaded();
+  if (loadPromise !== null) {
+    await loadPromise;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const next = restoreComposerDraftSnapshotState(
+    appAtomRegistry.get(composerDraftsAtom),
+    draftKey,
+    snapshot,
+  );
+  appAtomRegistry.set(composerDraftsAtom, next);
+  await persistenceQueue.run(() =>
+    writePersistedComposerState(next, appAtomRegistry.get(stickyComposerModelSelectionAtom)),
+  );
+}
 export function sameComposerDraftState(a: ComposerDraft, b: ComposerDraft): boolean {
   return (
     a.text === b.text &&
@@ -1851,7 +1927,6 @@ export function undoComposerDraftMergeState(
   };
   return withComposerDraft(current, draftKey, draft);
 }
-
 export async function undoComposerDraftMerge(
   draftKey: string,
   snapshot: ComposerDraft,
@@ -1876,7 +1951,6 @@ export async function undoComposerDraftMerge(
     writePersistedComposerState(next, appAtomRegistry.get(stickyComposerModelSelectionAtom)),
   );
 }
-
 export function clearComposerDraftContent(
   draftKey: string,
   options?: {
@@ -1893,10 +1967,11 @@ export function clearComposerDraftContent(
     scheduleUnusedComposerAttachmentCleanup(previousAttachments);
   }
 }
-
 export function clearComposerDraft(
   draftKey: string,
-  options?: { readonly deferAttachmentCleanup?: boolean },
+  options?: {
+    readonly deferAttachmentCleanup?: boolean;
+  },
 ): void {
   abortComposerDraftOperations(draftKey);
   markComposerDraftReset(draftKey);
@@ -1905,7 +1980,9 @@ export function clearComposerDraft(
     if (!current[draftKey]) {
       return current;
     }
-    const next = { ...current };
+    const next = {
+      ...current,
+    };
     delete next[draftKey];
     return next;
   });
@@ -1913,7 +1990,6 @@ export function clearComposerDraft(
     scheduleUnusedComposerAttachmentCleanup(previousAttachments);
   }
 }
-
 export function removeComposerDraftsForEnvironment(
   drafts: Record<string, ComposerDraft>,
   environmentId: EnvironmentId,
@@ -1926,7 +2002,6 @@ export function removeComposerDraftsForEnvironment(
     ),
   );
 }
-
 export function createNewTaskDraft(project: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
@@ -1939,14 +2014,19 @@ export function createNewTaskDraft(project: {
   };
   updateComposerDrafts((current) => ({
     ...current,
-    [draftKey]: { ...EMPTY_DRAFT, project: stamp },
+    [draftKey]: {
+      ...EMPTY_DRAFT,
+      project: stamp,
+    },
   }));
   return draftKey;
 }
-
 export function retargetNewTaskDraft(
   draftKey: string,
-  project: { readonly environmentId: EnvironmentId; readonly projectId: ProjectId },
+  project: {
+    readonly environmentId: EnvironmentId;
+    readonly projectId: ProjectId;
+  },
 ): void {
   updateComposerDrafts((current) => {
     const existing = current[draftKey];
@@ -1980,10 +2060,12 @@ export function retargetNewTaskDraft(
     };
   });
 }
-
 export function findNewTaskDraftKeys(
   drafts: Readonly<Record<string, ComposerDraft>>,
-  project: { readonly environmentId: EnvironmentId; readonly projectId: ProjectId },
+  project: {
+    readonly environmentId: EnvironmentId;
+    readonly projectId: ProjectId;
+  },
 ): ReadonlyArray<string> {
   return Object.entries(drafts)
     .filter(
@@ -1997,13 +2079,11 @@ export function findNewTaskDraftKeys(
     )
     .map(([key]) => key);
 }
-
 export async function clearComposerDraftsEnvironment(environmentId: EnvironmentId): Promise<void> {
   ensureComposerDraftsLoaded();
   if (loadPromise !== null) {
     await loadPromise;
   }
-
   const current = appAtomRegistry.get(composerDraftsAtom);
   const next = removeComposerDraftsForEnvironment(current, environmentId);
   const removedAttachments = Object.entries(current)
@@ -2032,7 +2112,6 @@ const composerDraftAtom = Atom.family((draftKey: string) =>
   Atom.make((get) => get(composerDraftsAtom)[draftKey] ?? EMPTY_DRAFT),
 );
 const EMPTY_DRAFT_ATOM = Atom.make(EMPTY_DRAFT);
-
 type ComposerDraftsByKey = Readonly<Record<string, ComposerDraft>>;
 const EMPTY_DRAFTS: ComposerDraftsByKey = {};
 function sameDrafts(a: ComposerDraftsByKey, b: ComposerDraftsByKey): boolean {
@@ -2055,14 +2134,16 @@ export const newTaskComposerDraftsAtom = Atom.make((get): ComposerDraftsByKey =>
   );
   return matching.length === 0 ? EMPTY_DRAFTS : Object.fromEntries(matching);
 }).pipe(Atom.withEquality(sameDrafts));
-
 type ComposerDraftUploadSource = Pick<ComposerDraft, "attachments" | "project">;
 type ComposerDraftUploadSources = Readonly<Record<string, ComposerDraftUploadSource>>;
 export const composerDraftUploadSourcesAtom = Atom.make((get): ComposerDraftUploadSources =>
   Object.fromEntries(
     Object.entries(get(composerDraftsAtom)).map(([key, draft]) => [
       key,
-      { attachments: draft.attachments, project: draft.project },
+      {
+        attachments: draft.attachments,
+        project: draft.project,
+      },
     ]),
   ),
 ).pipe(
@@ -2076,7 +2157,6 @@ export const composerDraftUploadSourcesAtom = Atom.make((get): ComposerDraftUplo
     );
   }),
 );
-
 type ComposerDraftSettings = Pick<
   ComposerDraft,
   "modelSelection" | "runtimeMode" | "interactionMode" | "freshContext"
@@ -2102,7 +2182,6 @@ const composerDraftSettingsAtom = Atom.family((draftKey: string) =>
   ),
 );
 const EMPTY_DRAFT_SETTINGS_ATOM = Atom.make(EMPTY_DRAFT_SETTINGS);
-
 export function useComposerDraftSettings(draftKey: string | null): ComposerDraftSettings {
   const settings = useAtomValue(
     draftKey ? composerDraftSettingsAtom(draftKey) : EMPTY_DRAFT_SETTINGS_ATOM,
@@ -2113,7 +2192,20 @@ export function useComposerDraftSettings(draftKey: string | null): ComposerDraft
   }, []);
   return settings;
 }
+export function composerDraftHasUserContent(draft: ComposerDraft | undefined): boolean {
+  return (
+    draft !== undefined &&
+    (draft.text.trim().length > 0 ||
+      draft.attachments.length > 0 ||
+      (draft.context?.records.length ?? 0) > 0)
+  );
+}
 
+/** Select a boolean so draft indicators change only when content appears or disappears. */
+export function useThreadHasUnsentDraft(draftKey: string): boolean {
+  const hasDraft = useAtomValue(composerDraftAtom(draftKey), composerDraftHasUserContent);
+  return hasDraft;
+}
 export function useComposerDraft(draftKey: string | null): ComposerDraft {
   const draft = useAtomValue(draftKey ? composerDraftAtom(draftKey) : EMPTY_DRAFT_ATOM);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts loading persisted composer drafts from native storage on first use
@@ -2122,7 +2214,6 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
   }, []);
   return draft;
 }
-
 export function useStickyComposerModelSelection(): ModelSelection | null {
   const selection = useAtomValue(stickyComposerModelSelectionAtom);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts loading persisted composer drafts from native storage on first use

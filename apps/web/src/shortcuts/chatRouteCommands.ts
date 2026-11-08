@@ -41,6 +41,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
         ([environmentId, presentation]) => ({ ...presentation, environmentId }),
       ),
     primaryEnvironmentId: () => appAtomRegistry.get(primaryEnvironmentIdAtom),
+    preferredEnvironmentId: () => getClientSettings().defaultScratchEnvironmentId,
     registry: appAtomRegistry,
     handleNewThread,
   });
@@ -70,6 +71,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     return {
       activeDraftThread,
       activeThread: activeThread ?? undefined,
+      preferredProjectRef: useUiStateStore.getState().lastNewThreadProjectRef,
       defaultProjectRef: resolveDefaultProjectRef(
         readProjects(),
         useUiStateStore.getState().projectOrder,

@@ -24,8 +24,8 @@ export function createThreadNotificationGate<Key>(
       next: ThreadNotificationObservation,
       options: { readonly archived: boolean; readonly quiet: boolean },
     ): void {
-      // The first sighting, archived threads, and stopped or silent runs never notify completion.
-      if (!prior || options.archived || options.quiet) skip(key, next.completedAt);
+      // A run blocked by background work must not notify later when its continuation is still due.
+      if (!prior || !next.settled || options.archived || options.quiet) skip(key, next.completedAt);
       if (!prior || options.archived) return;
       if (next.attention && next.attention !== prior.attention) {
         notify(key, "input");

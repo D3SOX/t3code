@@ -439,7 +439,35 @@ export function parseMarkdownDocument(markdown: string): Root {
 }
 
 export function markdownForNativeRendering(markdown: string, fileLink: RegExp): string {
-  return transformNativeMarkdown(markdownForNativeParsing(markdown), fileLink, true);
+  return markdownWithBlockImages(
+    transformNativeMarkdown(markdownForNativeParsing(markdown), fileLink, true),
+  );
+}
+
+/** Native custom image renderers replace image-only paragraphs, not inline thumbnails. */
+export function markdownWithBlockImages(markdown: string): string {
+  if (!markdown.includes("![")) return markdown;
+  const edits: MarkdownEdit[] = [];
+  for (const block of parser.parse(markdown).children) {
+    if (block.type !== "paragraph" || block.children.length === 1) continue;
+    const start = block.position?.start.offset;
+    const end = block.position?.end.offset;
+    if (start === undefined || end === undefined) continue;
+    let offset = start;
+    const parts: string[] = [];
+    for (const child of block.children) {
+      if (child.type !== "image" && child.type !== "imageReference") continue;
+      const imageStart = child.position?.start.offset;
+      const imageEnd = child.position?.end.offset;
+      if (imageStart === undefined || imageEnd === undefined) continue;
+      parts.push(markdown.slice(offset, imageStart).trim(), markdown.slice(imageStart, imageEnd));
+      offset = imageEnd;
+    }
+    if (offset === start) continue;
+    parts.push(markdown.slice(offset, end).trim());
+    edits.push({ start, end, content: parts.filter(Boolean).join("\n\n") });
+  }
+  return applyMarkdownEdits(markdown, edits);
 }
 
 /** Native media slots only cover standalone images; nested file embeds must become links. */

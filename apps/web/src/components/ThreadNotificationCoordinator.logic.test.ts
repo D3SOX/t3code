@@ -38,6 +38,14 @@ describe("createThreadNotificationGate", () => {
     observe(working);
     observe(completed(1));
     expect(notify).toHaveBeenCalledTimes(1);
+
+    observe({ ...completed(2), settled: false });
+    observe(completed(2));
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    observe(working);
+    observe(completed(3));
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it("notifies each newer completion immediately", () => {

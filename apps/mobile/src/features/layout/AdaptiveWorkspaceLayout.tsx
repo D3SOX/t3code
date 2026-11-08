@@ -8,8 +8,13 @@ import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area
 import { AdaptiveWorkspaceContext, useAdaptiveWorkspaceLayout } from "./adaptive-workspace-context";
 import { threadSelectionDeferral } from "./deferred-navigation";
 import { uuidv4 } from "../../lib/uuid";
+import {
+  EnvironmentId,
+  ThreadId,
+  type ScopedProjectRef,
+  type SidebarProjectGroupingMode,
+} from "@t3tools/contracts";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
-import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
 import {
@@ -212,6 +217,7 @@ export function AdaptiveWorkspaceLayout(props: {
       {...props}
       projectGroupingMode={groupingSettings.sidebarProjectGroupingMode}
       savedThreadListFilters={preferencesResult.value.threadListFilters}
+      lastNewThreadProjectRef={preferencesResult.value.lastNewThreadProjectRef}
     />
   );
 }
@@ -225,6 +231,7 @@ function AdaptiveWorkspaceLayoutContent(
   } & {
     readonly projectGroupingMode: SidebarProjectGroupingMode;
     readonly savedThreadListFilters?: ThreadListFilters | undefined;
+    readonly lastNewThreadProjectRef?: ScopedProjectRef | undefined;
   },
 ) {
   const floatingTabsEnabled = useAndroidFloatingTabs();
@@ -653,7 +660,7 @@ function AdaptiveWorkspaceLayoutContent(
         requestId: uuidv4(),
         useLastProject: saved?.useLastProjectForNewThreads,
         currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
-        lastProject: saved?.lastThreadProject,
+        lastProject: saved?.lastNewThreadProjectRef ?? saved?.lastThreadProject ?? undefined,
       }),
     );
   };

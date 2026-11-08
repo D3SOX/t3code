@@ -1,4 +1,5 @@
 import type { AppSymbolName } from "./AppSymbol";
+import type { ColorValue } from "react-native";
 
 export interface IconButtonProps {
   readonly accessibilityLabel: string;
@@ -8,4 +9,5 @@ export interface IconButtonProps {
   readonly selected?: boolean;
   readonly variant?: "standard" | "primary" | "tonal" | "danger";
   readonly tintColorClassName?: string;
+  readonly tintColor?: ColorValue;
 }

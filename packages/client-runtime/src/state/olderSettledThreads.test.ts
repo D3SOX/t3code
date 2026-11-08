@@ -428,7 +428,7 @@ describe("createOlderSettledThreadAtoms", () => {
     }),
   );
 
-  it.effect("reads pages in order until a short one, and retries a failed page", () =>
+  it.effect.each([2, Number.MAX_SAFE_INTEGER])("reads %s pages and retries", (limit) =>
     Effect.gen(function* () {
       const { replies, requests, atoms, registry, setShell, until } = yield* makeAtoms();
       const scope = { environmentId, projectIds: null };
@@ -444,7 +444,7 @@ describe("createOlderSettledThreadAtoms", () => {
 
       setShell({ snapshot, generation: 1 });
       expect(registry.get(atoms.pagesAtom(scope, 0)).frontier).toEqual({ settledAt: before });
-      const full = Array.from({ length: 25 }, (_, index) =>
+      const full = Array.from({ length: 50 }, (_, index) =>
         row(`full-${String(index).padStart(2, "0")}`, { settledDay: 40 - index }),
       );
       yield* Queue.offer(
@@ -455,21 +455,21 @@ describe("createOlderSettledThreadAtoms", () => {
         replies,
         Effect.succeed({
           snapshotSequence: 3,
-          threads: [row("short", { settledDay: 10 })],
+          threads: [row("short", { settledDay: -10 })],
           counts: [],
         }),
       );
-      const twoPages = atoms.pagesAtom(scope, 2);
+      const twoPages = atoms.pagesAtom(scope, limit);
       registry.mount(twoPages);
       const done = yield* until(twoPages, (pages) => pages.reads.length === 2);
       expect(done.frontier).toBeNull();
       expect(done.status).toBe("ready");
       // The second page continues from the first page's last row.
       expect(requests).toEqual([
-        { before: { settledAt: before }, limit: 25 },
+        { before: { settledAt: before }, limit: 50 },
         {
-          before: { settledAt: DateTime.formatIso(full[24]!.settledAt!), threadId: full[24]!.id },
-          limit: 25,
+          before: { settledAt: DateTime.formatIso(full[49]!.settledAt!), threadId: full[49]!.id },
+          limit: 50,
         },
       ]);
 
@@ -534,13 +534,13 @@ describe("createOlderSettledThreadAtoms", () => {
         generation: 1,
       });
       const scope = { environmentId, projectIds: null };
-      const full = Array.from({ length: 25 }, (_, index) =>
+      const full = Array.from({ length: 50 }, (_, index) =>
         row(`full-${String(index).padStart(2, "0")}`, { settledDay: 40 - index }),
       );
       const releaseOne = registry.mount(atoms.pagesAtom(scope, 1));
       expect((yield* Queue.take(requestLog)).input).toEqual({
         before: { settledAt: before },
-        limit: 25,
+        limit: 50,
       });
       yield* Queue.offer(
         replies,
@@ -554,8 +554,8 @@ describe("createOlderSettledThreadAtoms", () => {
       const releaseTwo = registry.mount(atoms.pagesAtom(scope, 2));
       const second = yield* Queue.take(requestLog);
       expect(second.input).toEqual({
-        before: { settledAt: DateTime.formatIso(full[24]!.settledAt!), threadId: full[24]!.id },
-        limit: 25,
+        before: { settledAt: DateTime.formatIso(full[49]!.settledAt!), threadId: full[49]!.id },
+        limit: 50,
       });
 
       // Collapsing stops the pending read: nothing is left to run again on a reconnect.

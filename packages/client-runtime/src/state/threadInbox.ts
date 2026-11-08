@@ -1,6 +1,9 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
-import { toSortableTimestamp } from "./threadSort.ts";
+import { sortActiveThreadsByOrderKey, toSortableTimestamp } from "./threadSort.ts";
+
+// Working section beta, shared so web and mobile fold and order the inbox the
+// same way. Off by default; each client owns its own toggle.
 import { effectiveSnoozed } from "./threadSettled.ts";
 
 type WorkingThreadInput = Pick<
@@ -12,12 +15,36 @@ type WorkingThreadInput = Pick<
   | "interactionMode"
   | "latestRun"
   | "runtime"
->;
+> &
+  Partial<Pick<EnvironmentThreadShell, "pendingBackgroundTasks">>;
 
+export function hasBackgroundCommand(
+  thread: Pick<EnvironmentThreadShell, "runtime"> & {
+    readonly pendingBackgroundTasks?: EnvironmentThreadShell["pendingBackgroundTasks"] | undefined;
+  },
+): boolean {
+  return (
+    (thread.runtime?.status === "completed" || thread.runtime?.status === "idle") &&
+    thread.pendingBackgroundTasks?.some(
+      (task) => task.kind === "command" && task.awaited !== true,
+    ) === true
+  );
+}
+
+/** Threads busy with work that does not need the user fold into the Working
+    section: a running run, or one stopped with background work that will wake
+    it. Approvals, questions (its own or a subagent's), plan prompts, and
+    failures stay in the inbox. */
 export function isThreadWorking(thread: WorkingThreadInput): boolean {
   if (thread.hasPendingApprovals || thread.hasPendingUserInput) return false;
   if (thread.pendingSubagentRequest != null) return false;
-  if (!threadRuntimeIsActive(thread.runtime) && thread.runtime?.status !== "idle") return false;
+  if (
+    !threadRuntimeIsActive(thread.runtime) &&
+    thread.runtime?.status !== "idle" &&
+    !hasBackgroundCommand(thread)
+  )
+    return false;
+  // A plan prompt outranks lingering background work: the user has to act on it.
   const run = thread.latestRun;
   const runSettled =
     run !== null &&
@@ -30,11 +57,15 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
   return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
 }
 
-type InboxThreadInput = Pick<
+type InboxThreadInput = { readonly activeOrderKey?: string | null } & Pick<
   EnvironmentThreadShell,
   "id" | "environmentId" | "createdAt" | "unsettledAt" | "latestRun"
 >;
 
+/** Unarranged inbox threads lead the saved manual order, newest first by when
+    each last came back to the user.
+    `observedReturnAt` adds returns the server does not stamp, such as an
+    approval request mid-turn or background work ending. */
 export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
   threads: readonly T[],
   observedReturnAt?: (thread: T) => number | undefined,
@@ -51,7 +82,7 @@ export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
       ),
     ]),
   );
-  return sortNewestFirst(threads, timestamps);
+  return sortActiveThreadsByOrderKey(threads, (thread) => timestamps.get(thread)!);
 }
 
 type WorkingSortInput = Pick<
@@ -59,6 +90,7 @@ type WorkingSortInput = Pick<
   "id" | "environmentId" | "createdAt" | "latestRun" | "latestUserAuthoredMessageAt"
 >;
 
+/** Sort working threads by the latest user send, so completions and background wakes do not reshuffle them. */
 export function sortWorkingThreadsBySend<T extends WorkingSortInput>(threads: readonly T[]): T[] {
   const timestamps = new Map(
     threads.map((thread) => [

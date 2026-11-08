@@ -118,6 +118,23 @@ query PullRequestCore(
         compare(headRef: $headRef) {
           behindBy
         }
+        branchProtectionRule {
+          requiredStatusCheckContexts
+        }
+        rules(first: 100) @include(if: $required) {
+          nodes {
+            parameters {
+              ... on RequiredStatusChecksParameters {
+                requiredStatusChecks {
+                  context
+                }
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+          }
+        }
       }
       reviewRequests(first: $requestedReviewers) {
         nodes {

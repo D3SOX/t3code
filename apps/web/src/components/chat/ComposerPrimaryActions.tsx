@@ -4,7 +4,7 @@ import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
-import { cn, isMacPlatform } from "~/lib/utils";
+import { cn } from "~/lib/utils";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import { Button } from "../ui/button";
@@ -12,11 +12,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import {
-  alternateComposerDispatchAction,
-  resolveComposerDispatchMode,
-} from "@t3tools/client-runtime/state/composer-dispatch";
-
+import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 interface PendingActionState {
   questionIndex: number;
   isLastQuestion: boolean;
@@ -24,14 +20,14 @@ interface PendingActionState {
   isResponding: boolean;
   isComplete: boolean;
 }
-
 interface ComposerPrimaryActionsProps {
   compact: boolean;
   canOperateThread: boolean;
   pendingAction: PendingActionState | null;
   isRunning: boolean;
   canInterrupt: boolean;
-  followUpBehavior?: "queue" | "steer";
+  followUpBehavior?: "queue" | "next-tool" | "steer";
+  submissionHints?: string;
   canSteer?: boolean;
   alternateShortcutLabel?: string | null;
   showPlanFollowUpPrompt: boolean;
@@ -39,6 +35,7 @@ interface ComposerPrimaryActionsProps {
   /** Dictation is running; Send finishes it and submits once the transcript lands. */
   voiceInputActive?: boolean;
   isSendBusy: boolean;
+  isInterruptBusy?: boolean;
   sendDisabledReason: string | null;
   isEnvironmentUnavailable: boolean;
   isPreparingWorktree: boolean;
@@ -55,7 +52,6 @@ interface ComposerPrimaryActionsProps {
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
 }
-
 const formatPendingPrimaryActionLabel = (input: {
   compact: boolean;
   isLastQuestion: boolean;
@@ -73,14 +69,11 @@ const formatPendingPrimaryActionLabel = (input: {
   }
   return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
 };
-
 const messageActionPillClassName =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-message-action font-medium text-base text-message-action-foreground shadow-xs shadow-message-action/24 outline-none hover:bg-message-action-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:text-sm";
-
 const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
 };
-
 export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   compact,
   canOperateThread,
@@ -88,12 +81,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isRunning,
   canInterrupt,
   followUpBehavior = "steer",
+  submissionHints,
   canSteer = true,
-  alternateShortcutLabel = null,
   showPlanFollowUpPrompt,
   promptHasText,
   voiceInputActive = false,
   isSendBusy,
+  isInterruptBusy = false,
   sendDisabledReason,
   isEnvironmentUnavailable,
   isPreparingWorktree,
@@ -111,22 +105,24 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onToggleKeepFullHistory,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
-    ? { onPointerDown: preventPointerFocus }
+    ? {
+        onPointerDown: preventPointerFocus,
+      }
     : undefined;
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const shortcutModifiers = useShortcutModifierState();
+  const dispatchAction = resolveComposerDispatchMode({
+    running: isRunning,
+    activeTurnDefault: followUpBehavior,
+    canSteer,
+    alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
+  });
   const isQueuing =
     !isEditingQueuedMessage &&
-    resolveComposerDispatchMode({
-      running: isRunning,
-      activeTurnDefault: followUpBehavior,
-      canSteer,
-      alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
-    }) === "queue";
-  const alternateAction = alternateComposerDispatchAction(followUpBehavior);
+    isRunning &&
+    (dispatchAction === "queue" || dispatchAction === "next-tool");
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
-
   const renderStopGenerationButton = (insidePendingAction: boolean) => (
     <Tooltip key="interrupt">
       <TooltipTrigger
@@ -134,30 +130,34 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <button
             type="button"
             className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
+              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none disabled:pointer-events-none [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
             )}
             {...pointerFocusProps}
-            disabled={!canOperateThread}
             onClick={() => {
               if (canOperateThread) onInterrupt();
             }}
-            aria-label="Stop generation"
+            disabled={!canOperateThread || isInterruptBusy}
+            aria-busy={isInterruptBusy}
+            aria-label={isInterruptBusy ? "Interrupting" : "Stop generation"}
           />
         }
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <rect x="2" y="2" width="8" height="8" rx="1.5" />
-        </svg>
+        {isInterruptBusy ? (
+          <Spinner size="sm" aria-hidden="true" />
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="2" width="8" height="8" rx="1.5" />
+          </svg>
+        )}
       </TooltipTrigger>
-      <TooltipPopup>Interrupt</TooltipPopup>
+      <TooltipPopup>{isInterruptBusy ? "Interrupting..." : "Interrupt"}</TooltipPopup>
     </Tooltip>
   );
-
   if (pendingAction) {
     return (
       <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
-        {canInterrupt ? renderStopGenerationButton(true) : null}
+        {canInterrupt || isInterruptBusy ? renderStopGenerationButton(true) : null}
         {pendingAction.questionIndex > 0 ? (
           compact ? (
             <Button
@@ -207,8 +207,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </div>
     );
   }
-
-  if (showPlanFollowUpPrompt && (promptHasText || !canResume)) {
+  if (!isInterruptBusy && showPlanFollowUpPrompt && (promptHasText || !canResume)) {
     if (promptHasText) {
       return (
         <button
@@ -221,7 +220,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         </button>
       );
     }
-
     return (
       <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
         <button
@@ -265,19 +263,18 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </div>
     );
   }
-
-  if (canInterrupt && !hasSendableContent && !isEditingQueuedMessage) {
+  if (
+    isInterruptBusy ||
+    (canInterrupt && !hasSendableContent && !isEditingQueuedMessage && !isSendBusy)
+  ) {
     return renderStopGenerationButton(false);
   }
-
   const showResume = canResume && !hasSendableContent && !isEditingQueuedMessage;
-
   const compactTokens =
     compactBeforeSendTokens !== null && !showResume && !isEditingQueuedMessage
       ? formatContextWindowTokens(compactBeforeSendTokens)
       : null;
   const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
-
   const submitLabel = showResume
     ? "Resume thread"
     : isEditingQueuedMessage
@@ -285,7 +282,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       : compactsBeforeSend
         ? "Compact and send"
         : isQueuing
-          ? "Queue message"
+          ? dispatchAction === "next-tool"
+            ? "Queue after next tool call"
+            : "Queue after current turn"
           : isRunning
             ? "Steer message"
             : "Submit message";
@@ -303,10 +302,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     submitStatus ??
     (compactsBeforeSend
       ? `Summarize ${compactTokens} tokens of history, then send`
-      : isRunning && !isEditingQueuedMessage && canSteer
-        ? `Click to ${followUpBehavior}, ${isMacPlatform(navigator.platform) ? "⌘" : "Ctrl"}-click${alternateShortcutLabel ? ` or ${alternateShortcutLabel}` : ""} to ${alternateAction}`
-        : submitLabel);
-
+      : showResume
+        ? submitLabel
+        : (submissionHints ?? submitLabel));
   const sendButton = (
     <button
       type={showResume ? "button" : "submit"}
@@ -325,6 +323,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         (!hasSendableContent && !showResume)
       }
       aria-label={submitStatus ?? submitLabel}
+      aria-busy={isSendBusy}
     >
       {stageBackdropVariant ? (
         <span className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
@@ -352,15 +351,15 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       )}
     </button>
   );
-
   const submit = (
     <Tooltip key="submit">
       <TooltipTrigger render={<span className="inline-flex" />}>{sendButton}</TooltipTrigger>
-      <TooltipPopup>{submitTooltip}</TooltipPopup>
+      <TooltipPopup>
+        <div className="whitespace-pre-line">{submitTooltip}</div>
+      </TooltipPopup>
     </Tooltip>
   );
   if (compactTokens === null) return submit;
-
   return (
     <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
       <Tooltip>
