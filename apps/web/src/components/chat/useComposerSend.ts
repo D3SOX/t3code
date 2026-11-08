@@ -1,5 +1,11 @@
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
-import { armFreshSession, disarmFreshSession, readFreshSessionArm } from "./freshSessionArms";
+import {
+  armFreshSession,
+  claimFreshSessionArm,
+  disarmFreshSession,
+  readFreshSessionArm,
+  restoreFreshSessionArm,
+} from "./freshSessionArms";
 import {
   mergeDirectPreviewAnnotation,
   resolveBackgroundDraftWorkspaceOptions,
@@ -971,7 +977,10 @@ export function useComposerSend(input: ComposerSendInput) {
     }
     const redirectsApproval = sendCtx.shownPendingApprovalIds.length > 0;
     let draftAccepted = false;
+    let claimedFreshArm: symbol | undefined;
     const acceptDraft = () => {
+      claimedFreshArm =
+        freshArm === undefined ? undefined : claimFreshSessionArm(routeThreadKey, freshArm);
       draftAccepted = true;
       const optimisticAttachments = optimisticMessageAttachments(composerAttachmentsSnapshot);
       if (!shouldQueueBehindActiveRun) {
@@ -1404,7 +1413,7 @@ export function useComposerSend(input: ComposerSendInput) {
               runtimeMode,
               interactionMode: sendInteractionMode,
               dispatchMode: turnDispatchMode,
-              ...(freshArm === undefined ? {} : { freshContext: true }),
+              ...(claimedFreshArm === undefined ? {} : { freshContext: true }),
               ...(bootstrap
                 ? {
                     bootstrap,
@@ -1442,7 +1451,7 @@ export function useComposerSend(input: ComposerSendInput) {
           } else {
             turnStartSucceeded = true;
             setKeepFullHistory(routeThreadKey, false);
-            if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
+            if (claimedFreshArm !== undefined) disarmFreshSession(routeThreadKey, claimedFreshArm);
             clearUsageLimitsFor(routeThreadKey);
             if (turnUsesAttachmentUploads) {
               releaseDraftAttachments(composerAttachmentsSnapshot);
@@ -1595,6 +1604,7 @@ export function useComposerSend(input: ComposerSendInput) {
         if (!sendQueuesBehindSetup) resetLocalDispatch();
       })
       .finally(() => {
+        if (claimedFreshArm !== undefined) restoreFreshSessionArm(routeThreadKey, claimedFreshArm);
         setSetupQueueSendThreadKey((current) => (current === activeThreadKey ? null : current));
       });
   };
