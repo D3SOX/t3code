@@ -123,6 +123,58 @@ describe("deriveMessagesTimelineRows", () => {
       );
     },
   );
+  it("keeps viewed images in separate rows outside collapsed tool groups", () => {
+    const at = "2026-10-01T06:19:10Z";
+    const image: TimelineEntry = {
+      kind: "work",
+      id: "view-image",
+      createdAt: at,
+      entry: {
+        id: "view-image",
+        createdAt: at,
+        label: "Viewed image",
+        tone: "tool",
+        viewedImagePath: "/workspace/preview.png",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const tool: TimelineEntry = {
+      kind: "work",
+      id: "tool",
+      createdAt: at,
+      entry: {
+        id: "tool",
+        createdAt: at,
+        label: "Ran command",
+        tone: "tool",
+        command: "ls",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        tool,
+        image,
+        { ...tool, id: "last-tool", entry: { ...tool.entry, id: "last-tool" } },
+      ],
+      runningRunId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    expect(rows.find((row) => row.kind === "viewed-image")).toMatchObject({
+      id: "view-image",
+      imagePath: "/workspace/preview.png",
+      active: false,
+    });
+    expect(
+      rows
+        .filter((row) => row.kind === "work")
+        .flatMap((row) => row.groupedEntries)
+        .some((entry) => entry.id === "view-image"),
+    ).toBe(false);
+  });
 
   it("stops stranded thinking after a steer and follows the next thought or tool", () => {
     const runId = RunId.make("steered-run");

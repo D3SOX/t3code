@@ -208,6 +208,7 @@ describe("GhosttyTerminalSurface visibility", () => {
         buttons: number,
         modifiers: boolean | Partial<Pick<MouseEvent, "ctrlKey" | "metaKey" | "shiftKey">> = {},
         button = 0,
+        ctrlKey = false,
         clientY = 5,
       ) {
         canvas.dispatchEvent(
@@ -217,7 +218,7 @@ describe("GhosttyTerminalSurface visibility", () => {
             pointerId: 1,
             button,
             buttons,
-            ...(typeof modifiers === "boolean" ? { shiftKey: modifiers } : modifiers),
+            ...(typeof modifiers === "boolean" ? { shiftKey: modifiers, ctrlKey } : modifiers),
           }),
         );
       },
@@ -264,6 +265,19 @@ describe("GhosttyTerminalSurface visibility", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("passes the right-clicked link to the terminal context menu", async () => {
+    const harness = createHarness();
+    const onContextMenu = vi.fn();
+    const surface = await harness.create({ onContextMenu });
+    surface.write("https://t3.codes plain");
+    harness.flushFrame();
+
+    harness.pointer("contextmenu", 28, 0, false, 2);
+    harness.pointer("contextmenu", 156, 0, false, 2);
+
+    expect(onContextMenu.mock.calls.map(([, link]) => link)).toEqual(["https://t3.codes", null]);
   });
 
   it("preserves shell Ctrl+A and ordinary application navigation", async () => {
@@ -393,6 +407,29 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(harness.onData).not.toHaveBeenCalled();
   });
 
+  it("scrolls a selection drag held at the terminal edge, even when the window ends there", async () => {
+    const harness = createHarness();
+    const surface = await harness.create();
+    surface.write(Array.from({ length: 40 }, (_, index) => `line ${index}`).join("\r\n"));
+    harness.flushFrame();
+    const latest = harness.renderedSnapshot.rowData[0]?.text;
+
+    harness.pointer("pointerdown", 5, 1, {}, 0, false, 50);
+    harness.pointer("pointermove", 5, 1, {}, 0, false, 1);
+    vi.advanceTimersByTime(400);
+    harness.flushFrame();
+    expect(surface.isAtBottom()).toBe(false);
+
+    harness.pointer("pointermove", 5, 1, {}, 0, false, 103);
+    vi.advanceTimersByTime(2_000);
+    harness.pointer("pointerup", 5, 0, {}, 0, false, 103);
+    harness.flushFrame();
+    expect(surface.isAtBottom()).toBe(true);
+    expect(harness.renderedSnapshot.rowData[0]?.text).toBe(latest);
+    expect(surface.getSelection()).not.toBe("");
+    expect(surface.getSelectionPosition()?.end.y).toBe(39);
+  });
+
   function paste(surface: GhosttyTerminalSurface, text: string) {
     surface.input.dispatchEvent(
       Object.assign(new Event("paste", { cancelable: true }), {
@@ -441,6 +478,58 @@ describe("GhosttyTerminalSurface visibility", () => {
       expect(harness.onData.mock.calls).toEqual([["echo hi"], ["echo hi"]]);
     },
   );
+
+  it("still opens a terminal path with an unmodified click", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1);
+    harness.pointer("pointerup", 5, 0);
+    expect(onLinkActivate).toHaveBeenCalledOnce();
+    expect(onLinkActivate.mock.calls[0]?.[0]).toBe("/tmp/example.txt");
+  });
+
+  it("still activates a URL with Ctrl held", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("https://example.com");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointerup", 5, 0, false, 0, true);
+    expect(onLinkActivate).toHaveBeenCalledOnce();
+    expect(onLinkActivate.mock.calls[0]?.[0]).toBe("https://example.com");
+  });
+
+  it("opens a terminal path on Ctrl-click", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointerup", 5, 0, false, 0, true);
+    expect(onLinkActivate).toHaveBeenCalledExactlyOnceWith("/tmp/example.txt", expect.any(Event));
+  });
+
+  it("allows Ctrl-dragging from a terminal path to select text", async () => {
+    const harness = createHarness();
+    const onLinkActivate = vi.fn();
+    const surface = await harness.create({ onLinkActivate });
+    surface.write("/tmp/example.txt");
+    harness.flushFrame();
+
+    harness.pointer("pointerdown", 5, 1, false, 0, true);
+    harness.pointer("pointermove", 37, 1, false, 0, true);
+    harness.pointer("pointerup", 37, 0, false, 0, true);
+    expect(onLinkActivate).not.toHaveBeenCalled();
+    expect(surface.getSelection()).toBe("/tmp/");
+  });
 
   it("keeps a selection through redraws until the selected text changes", async () => {
     const harness = createHarness();
@@ -494,9 +583,9 @@ describe("GhosttyTerminalSurface visibility", () => {
     const rows = Array.from({ length: 10 }, (_, index) => `row ${index}`);
     surface.write(`\x1b[?1049h\x1b[H${rows.join("\r\n")}`);
     harness.flushFrame();
-    harness.pointer("pointerdown", 5, 1, {}, 0, 50);
-    harness.pointer("pointermove", 45, 1, {}, 0, 50);
-    harness.pointer("pointerup", 45, 0, {}, 0, 50);
+    harness.pointer("pointerdown", 5, 1, {}, 0, false, 50);
+    harness.pointer("pointermove", 45, 1, {}, 0, false, 50);
+    harness.pointer("pointerup", 45, 0, {}, 0, false, 50);
     const text = surface.getSelection();
     const before = surface.getSelectionPosition();
     expect(text).toMatch(/^row \d$/);
@@ -512,13 +601,13 @@ describe("GhosttyTerminalSurface visibility", () => {
     const rows = Array.from({ length: 10 }, (_, index) => `row ${index}`);
     surface.write(`\x1b[?1049h\x1b[H${rows.join("\r\n")}`);
     harness.flushFrame();
-    harness.pointer("pointerdown", 5, 1, {}, 0, 50);
-    harness.pointer("pointermove", 45, 1, {}, 0, 50);
+    harness.pointer("pointerdown", 5, 1, {}, 0, false, 50);
+    harness.pointer("pointermove", 45, 1, {}, 0, false, 50);
     expect(surface.getSelection()).toBe("row 6");
 
     // The pointer stays over the row that output scrolls "row 8" into.
     surface.write("\r\nrow 10\r\nrow 11");
-    harness.pointer("pointermove", 53, 1, {}, 0, 50);
+    harness.pointer("pointermove", 53, 1, {}, 0, false, 50);
     expect(surface.getSelection()).toBe("row 6\nrow 7\nrow 8");
   });
 

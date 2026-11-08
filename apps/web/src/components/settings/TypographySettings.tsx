@@ -385,16 +385,25 @@ function FontFamilySettingsRow({
   const [draftSettled, setDraftSettled] = useState(true);
   // Each pending commit remembers the value it was typed against, so one that outlives
   // an external change (hydration, reset, picker selection) drops its stale draft.
-  const commitTimerRef = useRef<{ readonly id: number; readonly value: string } | null>(null);
+  const commitTimerRef = useRef<{
+    readonly id: number;
+    readonly value: string;
+  } | null>(null);
   const cancelPendingCommit = () => {
     if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current.id);
     commitTimerRef.current = null;
   };
   // Bumped on every external value change, so a pending commit typed before one never lands,
   // even if the value has since changed back to what it was typed against.
-  const [adopted, setAdopted] = useState({ value, generation: 0 });
+  const [adopted, setAdopted] = useState({
+    value,
+    generation: 0,
+  });
   if (adopted.value !== value) {
-    setAdopted({ value, generation: adopted.generation + 1 });
+    setAdopted({
+      value,
+      generation: adopted.generation + 1,
+    });
     setDraft(value);
     setDraftSettled(true);
   }
@@ -509,20 +518,27 @@ function FontFamilySettingsRow({
           <SelectValue>{size.value} px</SelectValue>
         </SelectTrigger>
         <SelectPopup align="end" alignItemWithTrigger={false}>
-          {Array.from({ length: size.max - size.min + 1 }, (_, index) => size.min + index).map(
-            (px) => (
-              <SelectItem hideIndicator key={px} value={String(px)}>
-                {px} px
-              </SelectItem>
-            ),
-          )}
+          {Array.from(
+            {
+              length: size.max - size.min + 1,
+            },
+            (_, index) => size.min + index,
+          ).map((px) => (
+            <SelectItem hideIndicator key={px} value={String(px)}>
+              {px} px
+            </SelectItem>
+          ))}
         </SelectPopup>
       </Select>
     </div>
   );
   return (
     <SettingsRow
-      {...(id !== undefined ? { id } : {})}
+      {...(id !== undefined
+        ? {
+            id,
+          }
+        : {})}
       title={title}
       description={description}
       resetAction={resetAction}

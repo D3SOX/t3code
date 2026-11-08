@@ -2,6 +2,7 @@ import { type LiveActivity } from "expo-widgets";
 import {
   configureAndroidAgentNotifications,
   clearAndroidAgentNotifications,
+  getAndroidPushState,
 } from "./androidNotifications";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -281,13 +282,18 @@ const nativePushTokenRegistration = Effect.fn("remoteRegistration.nativePushToke
           logRegistrationError("native push token lookup failed", error);
         }),
       ),
-      Effect.orElseSucceed(() => null),
     );
     const pushToken =
       token?.type === Platform.OS && typeof token.data === "string" && token.data.trim().length > 0
         ? token.data.trim()
         : null;
-    return { notificationsEnabled: pushToken !== null, pushToken };
+    if (pushToken === null) {
+      return yield* new AgentAwarenessOperationError({
+        operation: "read-native-push-token",
+        cause: new Error("No native push token was returned."),
+      });
+    }
+    return { notificationsEnabled: true, pushToken };
   },
 );
 
@@ -632,6 +638,7 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
   input: RegisterDeviceInput = {},
   expectedGeneration = deviceRegistrationGeneration,
 ): Effect.fn.Return<void, AgentAwarenessRegistrationError, ManagedRelay.ManagedRelayClient> {
+  if (Platform.OS === "android" && getAndroidPushState().transport !== "fcm") return;
   if (!canRegisterPushNotifications()) {
     return;
   }

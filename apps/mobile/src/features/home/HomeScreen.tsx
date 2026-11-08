@@ -30,7 +30,6 @@ import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeS
 import { GestureDetector, useNativeGesture } from "react-native-gesture-handler";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import { cn } from "../../lib/cn";
 import {
   ANDROID_READING_MAX_WIDTH,
@@ -66,6 +65,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2SectionDivider,
   ThreadListV2WorkingShelfHeader,
 } from "../threads/thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider-instance";
@@ -89,7 +89,6 @@ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-sw
 import { useFabScroll } from "./FabScrollContext";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
-
 interface HomeScreenProps {
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -137,17 +136,19 @@ interface HomeScreenProps {
   readonly onNewThreadOnBranch: (thread: EnvironmentThreadShell) => void;
   readonly onNewThreadInProject: (project: EnvironmentProject) => void;
 }
-
 const ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT = 72;
 // Rows away from the viewport skip their swipe actions (see
 // swipe-row-activation), so render further ahead: a fast fling then reaches
 // rows that are already built instead of rows still being rebuilt.
 const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
-
 function deriveEmptyState(props: {
   readonly catalogState: WorkspaceState;
   readonly projectCount: number;
-}): { readonly title: string; readonly detail: string; readonly loading: boolean } {
+}): {
+  readonly title: string;
+  readonly detail: string;
+  readonly loading: boolean;
+} {
   const { catalogState } = props;
   if (catalogState.isLoadingConnections) {
     return {
@@ -156,7 +157,6 @@ function deriveEmptyState(props: {
       loading: true,
     };
   }
-
   if (!catalogState.hasConnections) {
     return {
       title: "No environments connected",
@@ -164,7 +164,6 @@ function deriveEmptyState(props: {
       loading: false,
     };
   }
-
   if (
     (catalogState.connectionState === "available" ||
       catalogState.connectionState === "offline" ||
@@ -183,7 +182,6 @@ function deriveEmptyState(props: {
       loading: false,
     };
   }
-
   if (
     catalogState.hasConnectingEnvironment &&
     !catalogState.hasLoadedShellSnapshot &&
@@ -195,7 +193,6 @@ function deriveEmptyState(props: {
       loading: true,
     };
   }
-
   if (props.projectCount === 0 && catalogState.hasLoadedShellSnapshot) {
     return {
       title: "No projects found",
@@ -203,18 +200,15 @@ function deriveEmptyState(props: {
       loading: false,
     };
   }
-
   return {
     title: "No threads yet",
     detail: "Create a task to start a new coding runtime in one of your connected projects.",
     loading: false,
   };
 }
-
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
 }
-
 function HomeScrollView(props: ComponentProps<typeof ScrollView>) {
   const primaryColumn = use(NativePrimaryColumnContext);
   const sidebarSurface = usePaneRole() === "sidebar" && primaryColumn !== null;
@@ -223,7 +217,9 @@ function HomeScrollView(props: ComponentProps<typeof ScrollView>) {
   // Register the scroll view explicitly; layout and header siblings hide it from UIKit.
   return (
     <ScrollViewMarker
-      style={{ flex: 1 }}
+      style={{
+        flex: 1,
+      }}
       scrollEdgeEffects={{
         ...nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version),
         top: Number.parseInt(String(Platform.Version), 10) >= 27 ? "automatic" : "soft",
@@ -237,12 +233,10 @@ function HomeScrollView(props: ComponentProps<typeof ScrollView>) {
     </ScrollViewMarker>
   );
 }
-
 function renderHomeScrollView(props: ScrollViewProps) {
   // FlatList clones this with cells and ref; keep the marker inside their actual ScrollView.
   return <HomeScrollView {...props} />;
 }
-
 export function HomeScreen(props: HomeScreenProps) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const workspace = useWorkspaceTabs();
@@ -301,13 +295,11 @@ export function HomeScreen(props: HomeScreenProps) {
       openSwipeableRef.current = methods;
     }
   };
-
   const handleSwipeableClose = (methods: SwipeableMethods) => {
     if (openSwipeableRef.current === methods) {
       openSwipeableRef.current = null;
     }
   };
-
   const handleScrollBeginDrag = () => {
     openSwipeableRef.current?.close();
   };
@@ -385,7 +377,6 @@ export function HomeScreen(props: HomeScreenProps) {
     }
     return map;
   })();
-
   const v2ProjectScopeKey = props.selectedProjectKey;
   // An archived project's filter reads as all projects, matching the filter menu.
   const v2ScopedProjectGroup = findHomeProjectScope(
@@ -432,6 +423,10 @@ export function HomeScreen(props: HomeScreenProps) {
     setSettledVisibleCount((count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT);
   const {
     loaded: shelfPreferencesLoaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
+    togglePinnedShelf,
+    toggleActiveShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
@@ -482,6 +477,8 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
   });
   // Called as `props.onSelectThread(...)`, the compiler would cache this handler on the whole
   // props object, which is new on every render of Home's parent.
@@ -503,7 +500,6 @@ export function HomeScreen(props: HomeScreenProps) {
   useEffect(() => {
     if (swipeEnabled) activateVisibleRows(threadListV2Items);
   }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
-
   const renderV2Item = ({ item }: { readonly item: ThreadListV2ListItem }) => {
     if (item.type === "v2-pending") {
       const pendingScopeKey = scopedProjectKey(
@@ -538,6 +534,17 @@ export function HomeScreen(props: HomeScreenProps) {
           onSwipeableWillOpen={handleSwipeableWillOpen}
           simultaneousSwipeGesture={homeScrollGesture}
           activationKey={item.key}
+        />
+      );
+    }
+    if (item.type === "v2-section") {
+      return (
+        <ThreadListV2SectionDivider
+          label={item.label}
+          count={item.count}
+          expanded={item.expanded}
+          disabled={item.disabled}
+          onToggle={item.label === "Pinned" ? togglePinnedShelf : toggleActiveShelf}
         />
       );
     }
@@ -656,7 +663,6 @@ export function HomeScreen(props: HomeScreenProps) {
     threadSearchMatchByKey,
     workingShelfEnabled,
   };
-
   const hasAnyThreads =
     props.threads.some((thread) => thread.archivedAt === null) ||
     props.pendingTasks.length > 0 ||
@@ -670,7 +676,6 @@ export function HomeScreen(props: HomeScreenProps) {
     catalogState: props.catalogState,
     projectCount: props.projects.length,
   });
-
   if (!hasAnyThreads) {
     return (
       <View className={containerClassName}>
@@ -722,9 +727,7 @@ export function HomeScreen(props: HomeScreenProps) {
       </View>
     );
   }
-
   const listHeader = Platform.OS === "ios" ? undefined : <HomeTopContentSpacer />;
-
   const v2ListHeader = (
     <>
       {listHeader}
@@ -735,6 +738,7 @@ export function HomeScreen(props: HomeScreenProps) {
           projects={pickableProjectGroups(projectScopes).map((scope) => ({
             key: scope.key,
             label: scope.title,
+            project: scope.representative,
           }))}
           selectedEnvironmentId={props.selectedEnvironmentId}
           selectedProjectKey={props.selectedProjectKey}
@@ -744,7 +748,6 @@ export function HomeScreen(props: HomeScreenProps) {
       ) : null}
     </>
   );
-
   const v2ListEmpty =
     hasSearchQuery && threadSearch.isPending ? undefined : hasSearchQuery ? (
       <EmptyState
@@ -771,7 +774,6 @@ export function HomeScreen(props: HomeScreenProps) {
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     );
-
   if (Platform.OS === "android" && threadListV2Items.length === 0) {
     return (
       <ScreenContent surface="screen">
@@ -784,7 +786,6 @@ export function HomeScreen(props: HomeScreenProps) {
       </ScreenContent>
     );
   }
-
   return (
     <View className={containerClassName}>
       <ScreenContent surface="screen">

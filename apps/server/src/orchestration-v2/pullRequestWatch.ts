@@ -1,10 +1,14 @@
 import type {
   OrchestrationV2Notification,
+  OrchestrationV2ConversationMessage,
   PullRequestCheck,
   PullRequestComment,
   PullRequestDetail,
   ThreadPullRequestWatch,
+  ThreadPullRequestLink,
+  ThreadPullRequestKey,
 } from "@t3tools/contracts";
+import { threadPullRequestKeysEqual } from "../sourceControl/threadPullRequests.ts";
 import * as DateTime from "effect/DateTime";
 
 /** Bounds consecutive comment-only wakes to stop bot reply loops; check, conflict, or push news resets it. */
@@ -17,13 +21,21 @@ const SNIPPET_LENGTH = 200;
 export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "checks-passed"; readonly count: number; readonly required: boolean }
+  | {
+      readonly kind: "checks-completed";
+      readonly count: number;
+      readonly failed: ReadonlyArray<PullRequestCheck>;
+    }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
   | { readonly kind: "no-checks"; readonly minutes: number }
   | { readonly kind: "conflicting" };
 
 export interface PullRequestWatchReport {
+  /** What the agent has not been told yet. Empty means no wake. */
   readonly changes: ReadonlyArray<PullRequestWatchChange>;
+  /** The watch to record, whether or not anything is reported. */
   readonly next: ThreadPullRequestWatch;
+  /** This report spends the last wake before the limit, so watching stops after it. */
   readonly exhausted: boolean;
 }
 
@@ -31,6 +43,7 @@ export interface PullRequestWatchReport {
 const isFailedCheck = (check: PullRequestCheck) =>
   check.status === "failure" || check.status === "cancelled" || check.status === "action-required";
 
+/** Report failures immediately, then required and remaining CI completion separately. Own replies never wake the agent; unread remarks wait for a later pass. */
 export function evaluatePullRequestWatch(
   watch: ThreadPullRequestWatch,
   detail: Pick<
@@ -49,45 +62,46 @@ export function evaluatePullRequestWatch(
   let failedChecks = headMoved ? [] : watch.failedChecks;
   let passed = headMoved ? false : watch.passed;
   let passedChecks = headMoved ? [] : watch.passedChecks;
-  let owedChecks = headMoved ? [] : (watch.owedChecks ?? []);
+  let allPassedChecks = headMoved ? [] : watch.allPassedChecks;
+  let completedChecks = headMoved ? [] : watch.completedChecks;
   if (detail.checks.length > 0) {
     const failed = detail.checks.filter(isFailedCheck);
     const newlyFailed = failed.filter((check) => !failedChecks.includes(check.name));
     if (newlyFailed.length > 0) changes.push({ kind: "checks-failed", failed: newlyFailed });
+    // A check that runs again leaves the list, so a rerun that fails again is reported.
     failedChecks = failed.map((check) => check.name);
 
     const required = detail.checks.filter((check) => check.required === true);
     const gate = required.length > 0 ? required : detail.checks;
     const passedNow = gate.every((check) => check.status !== "pending" && !isFailedCheck(check));
-    const gateNames = gate.map((check) => check.name);
-    const told = passed && passedChecks.length === 0 ? gateNames : passedChecks;
-    // Required checks can finish between sweeps; detect new names. With no required checks, ignore advisory gate growth.
-    const gateGrew = required.length > 0 && gateNames.some((name) => !told.includes(name));
-    // Other checks still pending when required ones passed are owed one wake when all settle.
-    // Only those are owed, so later advisory churn never wakes. One turned required is gate news.
-    const owed =
-      passedNow && passed
-        ? detail.checks
-            .filter((check) => check.required !== true && owedChecks.includes(check.name))
-            .map((check) => check.name)
-        : [];
-    const settled =
-      failed.length === 0 && detail.checks.every((check) => check.status !== "pending");
-    owedChecks = owed;
-    if (passedNow && (!passed || gateGrew)) {
+    const gateNames = gate.map((check) => check.name).sort();
+    const gateChanged = passedChecks.length > 0 && gateNames.join("\n") !== passedChecks.join("\n");
+    const reportGate = passedNow && (!passed || gateChanged);
+    if (reportGate) {
       changes.push({ kind: "checks-passed", count: gate.length, required: required.length > 0 });
-      owedChecks =
-        required.length > 0
-          ? detail.checks
-              .filter((check) => check.required !== true && check.status === "pending")
-              .map((check) => check.name)
-          : [];
-    } else if (settled && owed.length > 0) {
-      changes.push({ kind: "checks-passed", count: detail.checks.length, required: false });
-      owedChecks = [];
     }
     passed = passedNow;
     passedChecks = passedNow ? gateNames : [];
+    const allPassedNow = detail.checks.every(
+      (check) => check.status !== "pending" && !isFailedCheck(check),
+    );
+    const allNames = detail.checks.map((check) => check.name).sort();
+    if (allPassedNow && allNames.join("\n") !== (allPassedChecks ?? []).join("\n") && !reportGate) {
+      changes.push({ kind: "checks-passed", count: allNames.length, required: false });
+    }
+    allPassedChecks = allPassedNow ? allNames : [];
+    const completed = detail.checks.every((check) => check.status !== "pending");
+    // An early failure already woke the agent, but it may be waiting for the other jobs.
+    // New failures and an all-pass result already produce their own wake on this pass.
+    if (
+      completed &&
+      failed.length > 0 &&
+      newlyFailed.length === 0 &&
+      allNames.join("\n") !== (completedChecks ?? []).join("\n")
+    ) {
+      changes.push({ kind: "checks-completed", count: allNames.length, failed });
+    }
+    completedChecks = completed ? allNames : [];
   }
 
   // Only a head never read with checks waits for them: an empty read after checks were seen is
@@ -109,6 +123,7 @@ export function evaluatePullRequestWatch(
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
   const through = Date.parse(watch.remarksThrough);
+  // An edit counts as new activity, so bots that rewrite one summary comment still wake the agent.
   const activeAt = (remark: PullRequestComment) => remark.editedAt ?? remark.createdAt;
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
   const fresh = (remarks ?? []).filter((remark) => {
@@ -146,8 +161,9 @@ export function evaluatePullRequestWatch(
       headSha,
       failedChecks,
       passed,
-      passedChecks,
-      owedChecks,
+      passedChecks: passedChecks ?? [],
+      ...(allPassedChecks === undefined ? {} : { allPassedChecks }),
+      ...(completedChecks === undefined ? {} : { completedChecks }),
       remarksThrough,
       remarkIds,
       conflicting,
@@ -194,6 +210,14 @@ function changeLines(
       return [
         `- All ${change.count} ${change.required ? "required " : ""}${change.count === 1 ? "check" : "checks"} passed${context.commit}.`,
       ];
+    case "checks-completed":
+      return [
+        `- All ${change.count} ${change.count === 1 ? "check" : "checks"} finished${context.commit}; ${change.failed.length} ${change.failed.length === 1 ? "check still needs" : "checks still need"} attention:`,
+        ...listed(
+          change.failed,
+          (check) => `  - ${check.name} (${check.status})${check.url ? ` ${check.url}` : ""}`,
+        ),
+      ];
     case "remarks":
       return [
         `- ${change.remarks.length} new ${change.remarks.length === 1 ? "comment" : "comments"}:`,
@@ -216,18 +240,21 @@ function changeLines(
 const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-failed": "checks failed",
   "checks-passed": "checks passed",
+  "checks-completed": "checks finished with failures",
   remarks: "new comments",
   "no-checks": "no checks reported",
   conflicting: "merge conflict",
 };
 
-export function pullRequestWatchMessage(input: {
-  readonly number: number;
-  readonly url: string;
-  readonly baseBranch: string;
-  readonly headSha: string | null;
-  readonly report: PullRequestWatchReport;
-}): { readonly text: string; readonly notification: OrchestrationV2Notification } {
+/** The wake the agent reads and the timeline notification the user sees. */
+export function pullRequestWatchMessage(
+  input: ThreadPullRequestKey & {
+    readonly url: string;
+    readonly baseBranch: string;
+    readonly headSha: string | null;
+    readonly report: PullRequestWatchReport;
+  },
+): { readonly text: string; readonly notification: OrchestrationV2Notification } {
   const { changes, exhausted } = input.report;
   const context = {
     baseBranch: input.baseBranch,
@@ -239,23 +266,82 @@ export function pullRequestWatchMessage(input: {
     "",
     exhausted
       ? `T3 Code stopped watching after ${PULL_REQUEST_WATCH_WAKE_LIMIT} comment-only updates in a row. Call watch_pull_request to watch it again.`
-      : "Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. End your turn when you are done, and T3 Code wakes you on the next change. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox.",
+      : "Look into each item and act on it as your task requires. This PR stays linked and watched, so do not link, watch, or list it again. T3 Code keeps watching and wakes you on the next change, so end your turn when you are done. Keep watching while a running review blocks a pending push or review response; ending your turn to wait still needs automatic wakes. When the requested monitoring is complete or the user asks you to stop, call unwatch_pull_request so the thread returns to their inbox.",
   ].join("\n");
   const failed = changes.some(
-    (change) => change.kind === "checks-failed" || change.kind === "conflicting",
+    (change) =>
+      change.kind === "checks-failed" ||
+      change.kind === "checks-completed" ||
+      change.kind === "conflicting",
   );
   const summary = changes.map((change) => SUMMARY[change.kind]);
   if (exhausted) summary.push("stopped watching");
   return {
     text,
     notification: {
-      source: { kind: "monitor" },
+      source: {
+        kind: "monitor",
+        pullRequest: {
+          host: input.host,
+          repository: input.repository,
+          number: input.number,
+          headSha: input.headSha,
+        },
+      },
       outcome: failed
         ? "failed"
         : changes.every((change) => change.kind === "checks-passed")
           ? "completed"
           : "updated",
       summary: `#${input.number}: ${summary.join(", ")}`,
+    },
+  };
+}
+
+/** Drop stale check news before delivery, retaining any comments bundled with it. */
+export function refreshQueuedPullRequestMessage(
+  message: OrchestrationV2ConversationMessage,
+  link: Pick<ThreadPullRequestLink, "host" | "repository" | "number" | "url">,
+  headSha: string | null,
+): OrchestrationV2ConversationMessage | null {
+  const notification = message.notification;
+  if (notification?.source.kind !== "monitor" || headSha === null) return message;
+  const observed = notification.source.pullRequest;
+  if (observed !== undefined) {
+    if (
+      !threadPullRequestKeysEqual(observed, link) ||
+      observed.headSha === null ||
+      observed.headSha === headSha
+    )
+      return message;
+  } else {
+    // Released versions stored the PR identity and abbreviated commit only in the wake text.
+    if (
+      !message.id.startsWith("message:pr-watch:") ||
+      !message.text.startsWith(
+        `Update on pull request #${link.number} (${link.url}), which T3 Code is watching for you:\n`,
+      )
+    )
+      return message;
+    const commit = message.text.match(
+      /^- (?:Checks failed|All \d+ (?:required )?checks? passed) on ([\da-f]+)[:.]$/m,
+    )?.[1];
+    if (commit === undefined || headSha.startsWith(commit)) return message;
+  }
+
+  const text = message.text.replace(
+    /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? (?:passed|finished)[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
+    "",
+  );
+  if (text === message.text) return message;
+  if (!/^- \d+ new comments?:$/m.test(text)) return null;
+  return {
+    ...message,
+    text,
+    notification: {
+      ...notification,
+      outcome: "updated",
+      summary: `#${link.number}: new comments${notification.summary.includes("stopped watching") ? ", stopped watching" : ""}`,
     },
   };
 }

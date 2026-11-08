@@ -2826,8 +2826,11 @@ describe("orchestration v2 provider switching", () => {
                 modelSelection,
                 ...options,
                 // A fresh send must never steer the running turn.
-                deliveryIntent: "auto",
-                dispatchMode: { type: "start_immediately" },
+                ...(queued && options.freshContext ? {} : { deliveryIntent: "auto" as const }),
+                dispatchMode:
+                  queued && options.freshContext
+                    ? { type: "queue_after_active", afterNextTool: true }
+                    : { type: "start_immediately" },
               });
             yield* orchestrator.dispatch({
               type: "thread.create",
@@ -2868,6 +2871,9 @@ describe("orchestration v2 provider switching", () => {
               assert.deepEqual(
                 waiting.runs.map((run) => run.status),
                 ["completed", "running", "queued", "queued"],
+              );
+              assert.isUndefined(
+                waiting.runs.find((run) => run.freshContext === true)?.queueAfterNextTool,
               );
               // Steering would send it into the conversation it is meant to leave.
               const promoted = yield* orchestrator

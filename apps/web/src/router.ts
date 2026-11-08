@@ -1,11 +1,12 @@
 import { createRouter, RouterHistory } from "@tanstack/react-router";
 
 import { routeTree } from "./routeTree.gen";
+import { createAppHistory } from "./appHistory";
 
 export function getRouter(history: RouterHistory) {
   return createRouter({
     routeTree,
-    history,
+    history: createAppHistory(history),
     context: {},
     defaultPreload: "intent",
   });

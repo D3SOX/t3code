@@ -1,3 +1,9 @@
+import {
+  hasUnseenCompletion,
+  resolveSidebarThreadStatus,
+  shouldShowCollapsedSidebarThread,
+  resolveThreadLastVisitedAt,
+} from "./Sidebar.logic";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
@@ -140,6 +146,7 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
   useConnectedEnvironmentIds,
+  useEnvironmentConnectionSummaries,
   useEnvironmentMachines,
   usePrimaryEnvironmentId,
 } from "../state/environments";
@@ -154,8 +161,12 @@ import {
 import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentProjects } from "../state/projects";
-import { threadEnvironment } from "../state/threads";
-import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
+import { environmentThreadShells, threadEnvironment } from "../state/threads";
+import {
+  withAllOlderSettledThreads,
+  useOlderSettledShelf,
+  useOlderSettledShelfGrowth,
+} from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
@@ -187,6 +198,8 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   firstValidTimestampMs,
+  belongsInSidebarWorkingShelf,
+  isSidebarEnvironmentDisconnected,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -323,15 +336,14 @@ const sidebarProviderEntriesAtom = Atom.make((get) => {
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, SidebarProviderEntry> = new Map();
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
-
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
-
+const PINNED_SHELF_EXPANDED_KEY = "t3code:sidebar:pinned-expanded";
+const ACTIVE_SHELF_EXPANDED_KEY = "t3code:sidebar:active-expanded";
 const inboxReturns = createInboxReturnTracker();
-
 type SidebarOptimisticDrop = {
   readonly key: string;
   readonly sourceSection: SidebarSection;
@@ -342,7 +354,6 @@ type SidebarOptimisticDrop = {
   readonly keysAtDrop: ReadonlyMap<string, string | null>;
   readonly assignedKeys: ReadonlyMap<string, string>;
 };
-
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
@@ -354,6 +365,7 @@ interface SidebarThreadPartitionInput {
   readonly workingShelfEnabled: boolean;
   /** Boring mode: folders list active threads by the user's latest message. */
   readonly sortActiveBySend: boolean;
+  readonly disconnectedEnvironmentIds: ReadonlySet<EnvironmentId>;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -367,39 +379,21 @@ function scrollSidebarToTop(content: HTMLElement | null) {
 function threadShellKey(thread: Pick<SidebarThreadSummary, "environmentId" | "id">): string {
   return scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
 }
-
 const NO_DRAGGED_ORDER: readonly string[] = [];
-const NO_DRAGGED_ORDERS: {
-  readonly settledOrder: readonly string[];
-  readonly activeOrder: readonly string[] | undefined;
-} = { settledOrder: NO_DRAGGED_ORDER, activeOrder: undefined };
 
-function resolveDraggedOrders(input: {
+function resolveDraggedSettledOrder(input: {
   readonly drag: { readonly activeKey: string; readonly occurredAt: string };
   readonly threadByKey: ReadonlyMap<string, EnvironmentThreadShell>;
   readonly settledThreads: readonly EnvironmentThreadShell[];
-  readonly activeThreads: readonly EnvironmentThreadShell[];
-  readonly workingShelfEnabled: boolean;
-}): typeof NO_DRAGGED_ORDERS {
-  const { drag, threadByKey, settledThreads, activeThreads, workingShelfEnabled } = input;
+}): readonly string[] {
+  const { drag, threadByKey, settledThreads } = input;
   const thread = threadByKey.get(drag.activeKey);
-  if (thread === undefined) return NO_DRAGGED_ORDERS;
-  const others = (list: readonly EnvironmentThreadShell[]) =>
-    list.filter((candidate) => threadShellKey(candidate) !== drag.activeKey);
-  return {
-    settledOrder: sortSettledThreads([
-      ...others(settledThreads),
-      applySidebarThreadDrop(thread, "settled", drag.occurredAt),
-    ]).map(threadShellKey),
-    activeOrder: workingShelfEnabled
-      ? sortInboxThreadsByReturn(
-          [...others(activeThreads), applySidebarThreadDrop(thread, "active", drag.occurredAt)],
-          inboxReturns.returnedAt,
-        ).map(threadShellKey)
-      : undefined,
-  };
+  if (thread === undefined) return NO_DRAGGED_ORDER;
+  return sortSettledThreads([
+    ...settledThreads.filter((candidate) => threadShellKey(candidate) !== drag.activeKey),
+    applySidebarThreadDrop(thread, "settled", drag.occurredAt),
+  ]).map(threadShellKey);
 }
-
 function routeThreadOnly(
   threads: readonly EnvironmentThreadShell[],
   routeThreadKey: string | null,
@@ -439,6 +433,12 @@ function useSidebarThreads(input: {
   // Folders already separate the work, so boring mode has no Working shelf.
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && folderGroups === null;
+  const environmentConnections = useEnvironmentConnectionSummaries();
+  const disconnectedEnvironmentIds = new Set(
+    environmentConnections
+      .filter((environment) => isSidebarEnvironmentDisconnected(environment.connectionState))
+      .map((environment) => environment.environmentId),
+  );
   const inboxReturnsVersion = useSyncExternalStore(
     inboxReturns.subscribe,
     inboxReturns.getSnapshot,
@@ -461,6 +461,18 @@ function useSidebarThreads(input: {
     false,
     Schema.Boolean,
   );
+  const [pinnedShelfExpanded, setPinnedShelfExpanded] = useLocalStorage(
+    PINNED_SHELF_EXPANDED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const [activeShelfExpanded, setActiveShelfExpanded] = useLocalStorage(
+    ACTIVE_SHELF_EXPANDED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const threadLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  // The settled tail restarts whenever the project scope changes.
   // Shared with the old per-project sidebar, so folders keep their open state.
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
@@ -469,11 +481,13 @@ function useSidebarThreads(input: {
     count: SETTLED_TAIL_INITIAL_COUNT,
   });
   if (settledTail.scopeKey !== projectScopeKey) {
-    setSettledTail({ scopeKey: projectScopeKey, count: SETTLED_TAIL_INITIAL_COUNT });
+    setSettledTail({
+      scopeKey: projectScopeKey,
+      count: SETTLED_TAIL_INITIAL_COUNT,
+    });
   }
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
-
   const partition = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
@@ -483,6 +497,7 @@ function useSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
+    disconnectedEnvironmentIds,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -498,6 +513,26 @@ function useSidebarThreads(input: {
   useOlderSettledShelfGrowth(olderSettledShelf, listedSettledThreads);
   const settledCount =
     settledThreads.length + olderSettledShelf.unloadedCount(partition.visibleThreads);
+  const isVisibleWhenCollapsed = (thread: EnvironmentThreadShell) => {
+    const threadKey = threadShellKey(thread);
+    return shouldShowCollapsedSidebarThread({
+      status: resolveSidebarThreadStatus(thread),
+      isUnread: hasUnseenCompletion({
+        ...thread,
+        lastVisitedAt: resolveThreadLastVisitedAt(
+          thread.lastVisitedAt,
+          threadLastVisitedAtById[threadKey],
+        ),
+      }),
+      isActive: threadKey === routeRowThreadKey,
+    });
+  };
+  const visiblePinnedThreads = pinnedShelfExpanded
+    ? pinnedThreads
+    : pinnedThreads.filter(isVisibleWhenCollapsed);
+  const visibleActiveThreads = activeShelfExpanded
+    ? activeThreads
+    : activeThreads.filter(isVisibleWhenCollapsed);
   const visibleSettledThreads = (() => {
     const visible = listedSettledThreads.slice(0, settledVisibleCount);
     if (
@@ -541,10 +576,12 @@ function useSidebarThreads(input: {
           };
         });
   const orderedThreads = [
-    ...pinnedThreads,
+    ...visiblePinnedThreads,
     ...(projectFolders === null
-      ? activeThreads
-      : projectFolders.flatMap((folder) => folder.threads)),
+      ? visibleActiveThreads
+      : activeShelfExpanded
+        ? projectFolders.flatMap((folder) => folder.threads)
+        : []),
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
@@ -570,6 +607,12 @@ function useSidebarThreads(input: {
       ...snoozedThreads,
       ...settledThreads,
     ],
+    visiblePinnedThreads,
+    visibleActiveThreads,
+    pinnedShelfExpanded,
+    setPinnedShelfExpanded,
+    activeShelfExpanded,
+    setActiveShelfExpanded,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -608,7 +651,6 @@ function useSidebarThreads(input: {
     ),
   };
 }
-
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const {
     threads,
@@ -618,6 +660,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend,
+    disconnectedEnvironmentIds,
   } = input;
   const preciseNow = new Date().toISOString();
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
@@ -626,8 +669,11 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
-    workingShelfEnabled &&
-    (manuallyMoved ? isThreadWorking(thread) : inboxObservation.isWorking(thread))
+    belongsInSidebarWorkingShelf(thread, {
+      enabled: workingShelfEnabled,
+      disconnectedEnvironmentIds,
+      isWorking: manuallyMoved ? isThreadWorking : inboxObservation.isWorking,
+    })
       ? working
       : active;
   const snoozed: EnvironmentThreadShell[] = [];
@@ -655,7 +701,11 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
       ).push(
         optimisticDrop.clearsSnooze
           ? projected
-          : { ...projected, snoozedAt: thread.snoozedAt, snoozedUntil: thread.snoozedUntil },
+          : {
+              ...projected,
+              snoozedAt: thread.snoozedAt,
+              snoozedUntil: thread.snoozedUntil,
+            },
       );
     } else {
       const section = resolveSidebarThreadSection({
@@ -727,7 +777,6 @@ function olderSettledScopes(
     return projectIds.length === 0 ? [] : [{ environmentId, projectIds }];
   });
 }
-
 function isOptimisticDropReleased(input: {
   readonly optimisticDrop: SidebarOptimisticDrop;
   readonly threads: readonly EnvironmentThreadShell[];
@@ -746,7 +795,9 @@ function isOptimisticDropReleased(input: {
   if (thread === undefined || thread.archivedAt !== null) {
     return true;
   }
-  const canonicalSection = effectiveSnoozed(thread, { now })
+  const canonicalSection = effectiveSnoozed(thread, {
+    now,
+  })
     ? "snoozed"
     : thread.settledOverride === "settled"
       ? "settled"
@@ -854,7 +905,6 @@ function ProjectScopeRowIcon(props: { isSelected: boolean; children: ReactNode }
     </span>
   );
 }
-
 function canOperateThreads(
   threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
 ): boolean {
@@ -862,7 +912,6 @@ function canOperateThreads(
     readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope),
   );
 }
-
 function checkThreadOperations(
   threads: ReadonlyArray<Pick<SidebarThreadSummary, "environmentId">>,
 ): boolean {
@@ -929,12 +978,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     reorderActiveThread,
     markThreadUnread,
     archiveThread,
+    archiveSettledThreads,
     deleteThread,
   } = useThreadActions();
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
-  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
+  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{
+    path: string;
+  }>({
     onCopy: ({ path }) => {
       toastManager.add({
         type: "success",
@@ -952,7 +1004,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
     },
   });
-  const { copyToClipboard: copyBranchToClipboard } = useCopyToClipboard<{ branch: string }>({
+  const { copyToClipboard: copyBranchToClipboard } = useCopyToClipboard<{
+    branch: string;
+  }>({
     target: "branch name",
     onCopy: ({ branch }) => {
       toastManager.add({
@@ -971,7 +1025,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
     },
   });
-  const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
+  const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{
+    threadId: ThreadId;
+  }>({
     onCopy: ({ threadId }) => {
       toastManager.add({
         type: "success",
@@ -1011,7 +1067,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const setPersistedProjectScopeKeys = useUiStateStore((store) => store.setSidebarProjectScopeKeys);
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
-    { open: false, query: "" },
+    {
+      open: false,
+      query: "",
+    },
   );
   const projectScopeFilter = useComboboxFilter();
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
@@ -1064,7 +1123,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const shortcutModifiers = useShortcutModifierState();
   const terminalFocused = useTerminalFocus();
-  const openAddProjectCommandPalette = () => openCommandPalette({ open: "add-project" });
+  const openAddProjectCommandPalette = () =>
+    openCommandPalette({
+      open: "add-project",
+    });
   const routeThreadRef = resolveActiveThreadRouteRef(routeTarget, routeDraftThread);
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
 
@@ -1209,7 +1271,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return count;
   });
-
   const openProjectSettings = useStableCallback(
     (projectGroup: SidebarProjectSnapshot, projectRef?: ScopedProjectRef) => {
       if (isMobile) {
@@ -1241,7 +1302,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       event.preventDefault();
       event.stopPropagation();
       suppressNextScopeChangeRef.current = true;
-      dispatchProjectScopeMenu({ type: "project-settings-opened" });
+      dispatchProjectScopeMenu({
+        type: "project-settings-opened",
+      });
       openProjectSettings(projectGroup);
     },
   );
@@ -1290,10 +1353,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       })();
     },
   );
-
   const {
-    workingShelfEnabled,
     pinnedThreads,
+    visiblePinnedThreads,
+    visibleActiveThreads,
+    pinnedShelfExpanded,
+    setPinnedShelfExpanded,
+    activeShelfExpanded,
+    setActiveShelfExpanded,
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads,
@@ -1418,13 +1485,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const count = threadSearchResults.length;
     setActiveSearchResultIndex((activeSearchResultIndex + step + count) % count);
   };
-
   const orderedThreadKeysRef = useRef(orderedThreadKeys);
   // Read changing maps/sets through refs so streamed events preserve row callbacks.
   const threadByKeyRef = useRef(threadByKey);
   const settledThreadKeysRef = useRef(settledThreadKeys);
   const snoozedThreadKeysRef = useRef(snoozedThreadKeys);
-
   const jumpLabelByKey = (() => {
     const mapping = new Map<string, string>();
     for (const [index, threadKey] of orderedThreadKeys.entries()) {
@@ -1435,7 +1500,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return mapping;
   })();
-
   const navigateToThread = (threadRef: ScopedThreadRef) => {
     if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
       clearSelection();
@@ -1449,16 +1513,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       params: buildThreadRouteParams(threadRef),
     });
   };
-
   const handleThreadFileDrop = async (threadRef: ScopedThreadRef, files: File[]) => {
-    const dropId = queuePendingFileDrop({ threadRef, files });
+    const dropId = queuePendingFileDrop({
+      threadRef,
+      files,
+    });
     const landedBefore =
       router.buildLocation({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
       }).pathname === router.state.location.pathname;
     if (landedBefore) return;
-
     try {
       await navigateToThread(threadRef);
       const landed =
@@ -1471,15 +1536,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       clearPendingFileDrop(dropId);
     }
   };
-
   const navigateToDraft = (draftId: DraftId) => {
     clearSelection();
     if (isMobile) {
       setOpenMobile(false);
     }
-    void router.navigate({ to: "/draft/$draftId", params: { draftId } });
+    void router.navigate({
+      to: "/draft/$draftId",
+      params: {
+        draftId,
+      },
+    });
   };
-
   const clearThreadSearch = () => {
     setThreadSearchQuery("");
     setSearchHighlightKey(null);
@@ -1520,7 +1588,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       if (result) selectThreadSearchResult(result);
     }
   };
-
   const startThreadRename = (threadRef: ScopedThreadRef, title: string) => {
     if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
     setRenamingThreadRef(threadRef);
@@ -1533,13 +1600,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const trimmed = title.trim();
       setRenamingThreadRef(null);
       if (trimmed.length === 0) {
-        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+        toastManager.add({
+          type: "warning",
+          title: "Thread title cannot be empty",
+        });
         return;
       }
       if (trimmed === originalTitle) return;
       const result = await updateThreadMetadata({
         environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, title: trimmed },
+        input: {
+          threadId: threadRef.threadId,
+          title: trimmed,
+        },
       });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -1553,7 +1626,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     })();
   };
-
   const handleThreadClick = (event: ReactMouseEvent, threadRef: ScopedThreadRef) => {
     if (isSidebarNestedLinkClick(event.target)) return;
     const isMac = isMacPlatform(navigator.platform);
@@ -1578,73 +1650,62 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // Snapshot navigation before partition mutation; background parks use a null plan.
   const planForwardNavigation = (
     threadKey: string,
-    coParkingKeys?: ReadonlySet<string>,
+    _coParkingKeys?: ReadonlySet<string>,
   ): (() => void) | null => {
     if (readRouteThreadKey(router) !== threadKey) return null;
     const shell = threadByKeyRef.current.get(threadKey);
-    const orderedKeys = orderedThreadKeysRef.current;
-    const settledKeys = settledThreadKeysRef.current;
-    const snoozedKeys = snoozedThreadKeysRef.current;
-    const currentIndex = orderedKeys.indexOf(threadKey);
-    const nextCardKey =
-      currentIndex === -1
-        ? null
-        : ([...orderedKeys.slice(currentIndex + 1), ...orderedKeys.slice(0, currentIndex)].find(
-            (key) => !settledKeys.has(key) && !snoozedKeys.has(key) && !coParkingKeys?.has(key),
-          ) ?? null);
-    const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
-    return nextThread
-      ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
-      : shell
-        ? () => void handleNewThread(scopeProjectRef(shell.environmentId, shell.projectId))
-        : () => void router.navigate({ to: "/" });
+    return shell
+      ? () => void handleNewThread(scopeProjectRef(shell.environmentId, shell.projectId))
+      : () =>
+          void router.navigate({
+            to: "/",
+          });
   };
-
-  const attemptSettle = (
-    threadRef: ScopedThreadRef,
-    opts: { coSettlingKeys?: ReadonlySet<string> } = {},
-  ) => {
+  const attemptSettle = (threadRef: ScopedThreadRef) => {
     void (async () => {
       const threadKey = scopedThreadKey(threadRef);
       if (settlingThreadKeysRef.current.has(threadKey)) return;
       settlingThreadKeysRef.current.add(threadKey);
-      const navigateAfterSettle = planForwardNavigation(threadKey, opts.coSettlingKeys);
-      const result = await settleThread(threadRef);
-      settlingThreadKeysRef.current.delete(threadKey);
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to settle thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
+      return await (async () => {
+        const navigateAfterSettle = planForwardNavigation(threadKey);
+        const result = await settleThread(threadRef);
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Failed to settle thread",
+                description: error instanceof Error ? error.message : "An error occurred.",
+              }),
+            );
+          }
+          return;
+        }
+        if (
+          shouldNavigateAfterThreadPark({
+            threadKey,
+            currentThreadKey: readRouteThreadKey(router),
+            action: "settle",
+            now: new Date().toISOString(),
+            thread: readThreadShell(threadRef),
+          })
+        ) {
+          navigateAfterSettle?.();
         }
         return;
-      }
-      if (
-        shouldNavigateAfterThreadPark({
-          threadKey,
-          currentThreadKey: readRouteThreadKey(router),
-          action: "settle",
-          now: new Date().toISOString(),
-          thread: readThreadShell(threadRef),
-        })
-      ) {
-        navigateAfterSettle?.();
-      }
+      })().finally(() => {
+        settlingThreadKeysRef.current.delete(threadKey);
+      });
     })();
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this sidebar's settle handler in the module-level settleAndAdvance registry
   useEffect(() => registerSettleAndAdvance(attemptSettle), [attemptSettle]);
   const settleThreads = (threadKeys: readonly string[]) => {
-    const coSettlingKeys = new Set(threadKeys);
     for (const threadKey of threadKeys) {
       const thread = threadByKeyRef.current.get(threadKey);
       if (!thread || thread.settledOverride === "settled") continue;
-      attemptSettle(scopeThreadRef(thread.environmentId, thread.id), { coSettlingKeys });
+      attemptSettle(scopeThreadRef(thread.environmentId, thread.id));
     }
   };
   const attemptUnsettle = (threadRef: ScopedThreadRef) => {
@@ -1751,7 +1812,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setDragState((current) =>
       current === null || current.contextDrag === contextDrag
         ? current
-        : { ...current, contextDrag },
+        : {
+            ...current,
+            contextDrag,
+          },
     );
     if (!contextDrag) {
       endThreadContextDrag();
@@ -1761,7 +1825,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const threads = contextDragThreads();
     const title =
       threadByKeyRef.current.get(contextDragKeyRef.current ?? "")?.title.trim() || "Thread";
-    moveThreadContextDragGhost(point, { title, count: threads.length });
+    moveThreadContextDragGhost(point, {
+      title,
+      count: threads.length,
+    });
     return true;
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
@@ -1807,7 +1874,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         if (key === null || key === targetKey) return;
         targetKey = key;
         sweptKeys = resolveSidebarSweepKeys(orderedThreadKeysRef.current, originKey, key, canApply);
-        setActionSweep({ action, keys: new Set(sweptKeys) });
+        setActionSweep({
+          action,
+          keys: new Set(sweptKeys),
+        });
       };
       dragSensorRef.current = new SidebarPointerSensor({
         active: originKey,
@@ -1885,7 +1955,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     })();
   };
-
   const handleThreadDragStart = (event: DragStartEvent) => {
     const activeKey = String(event.active.id);
     contextDragKeyRef.current = activeKey;
@@ -1899,8 +1968,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (list && header) {
       const listRect = list.getBoundingClientRect();
       const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
+      const headerRect = header.getBoundingClientRect();
       dragLabelOffsetRef.current =
-        header.getBoundingClientRect().top - listRect.top + SIDEBAR_DRAG_LABEL_HEIGHT * scale;
+        headerRect.top -
+        listRect.top +
+        Math.max(headerRect.height, SIDEBAR_DRAG_LABEL_HEIGHT * scale);
     } else {
       dragLabelOffsetRef.current = 0;
     }
@@ -1922,7 +1994,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ): SidebarListItem[] =>
       list.map((thread) => {
         const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-        return { kind: "thread", key, section };
+        return {
+          kind: "thread",
+          key,
+          section,
+        };
       });
     // Boring mode keeps a pinned open project or one the user filtered to, so it can start a thread.
     if (
@@ -1936,24 +2012,47 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ) {
       return [];
     }
-    const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
+    const items: SidebarListItem[] = [
+      {
+        kind: "marker",
+        marker: "pinned-header",
+      },
+    ];
+    const pinnedRows = rowsOf(visiblePinnedThreads, "pinned");
     items.push(...pinnedRows);
-    items.push({ kind: "marker", marker: "pinned-divider" });
-    const activeRows = rowsOf(activeThreads, "active");
-    items.push({ kind: "marker", marker: "active-placeholder" });
+    items.push({
+      kind: "marker",
+      marker: "pinned-divider",
+    });
+    const activeRows = rowsOf(visibleActiveThreads, "active");
+    items.push({
+      kind: "marker",
+      marker: "active-placeholder",
+    });
     items.push(...activeRows);
     if (workingThreads.length > 0) {
-      items.push({ kind: "marker", marker: "working-header" });
+      items.push({
+        kind: "marker",
+        marker: "working-header",
+      });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
     }
     if (snoozedThreads.length > 0) {
-      items.push({ kind: "marker", marker: "snoozed-header" });
+      items.push({
+        kind: "marker",
+        marker: "snoozed-header",
+      });
       items.push(...rowsOf(visibleSnoozedThreads, "snoozed"));
     }
-    items.push({ kind: "marker", marker: "settled-header" });
+    items.push({
+      kind: "marker",
+      marker: "settled-header",
+    });
     const settledRows = rowsOf(renderedSettledThreads, "settled");
-    items.push({ kind: "marker", marker: "settled-placeholder" });
+    items.push({
+      kind: "marker",
+      marker: "settled-placeholder",
+    });
     items.push(...settledRows);
     return items;
   })();
@@ -2010,27 +2109,27 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     setDragState((current) =>
       current === null || current.activeKey !== String(event.active.id)
         ? current
-        : { ...current, targetSection: target?.section ?? null },
+        : {
+            ...current,
+            targetSection: target?.section ?? null,
+          },
     );
   };
   const sortableIds = sidebarListItems.map(sidebarListItemId);
   // Keep non-drag orders constant to preserve sorting strategy and row identity during streaming.
-  const { settledOrder: draggedSettledOrder, activeOrder: draggedActiveOrder } =
+  const draggedSettledOrder =
     dragState === null
-      ? NO_DRAGGED_ORDERS
-      : resolveDraggedOrders({
+      ? NO_DRAGGED_ORDER
+      : resolveDraggedSettledOrder({
           drag: dragState,
           threadByKey,
           settledThreads,
-          activeThreads,
-          workingShelfEnabled,
         });
   const sidebarSortingStrategy = createSidebarSortingStrategy({
     items: sidebarListItems,
     enabled: !isContextDrag,
     boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
     settledOrder: draggedSettledOrder,
-    ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
     settledExpanded: settledShelfExpanded,
     settledVisibleCount,
     routeThreadKey: routeRowThreadKey,
@@ -2062,7 +2161,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             activeOrder: activeKeys,
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
-            activeTimeOrdered: workingShelfEnabled,
           }).kind !== "none"
         );
       },
@@ -2095,14 +2193,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       activeOrder: activeKeys,
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
-      activeTimeOrdered: workingShelfEnabled,
     });
     if (plan.kind === "none") return;
     if (plan.kind === "settle" && settlingThreadKeysRef.current.has(activeKey)) return;
     const assignments =
       plan.kind === "pin"
         ? [
-            ...(plan.orderKey === undefined ? [] : [{ id: activeKey, orderKey: plan.orderKey }]),
+            ...(plan.orderKey === undefined
+              ? []
+              : [
+                  {
+                    id: activeKey,
+                    orderKey: plan.orderKey,
+                  },
+                ]),
             ...plan.extraAssignments,
           ]
         : plan.kind === "reorder-pinned" || plan.kind === "move-active"
@@ -2184,7 +2288,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         case "pin":
           if (
             !(await run(
-              pinThread(threadRef, plan.orderKey === undefined ? {} : { orderKey: plan.orderKey }),
+              pinThread(
+                threadRef,
+                plan.orderKey === undefined
+                  ? {}
+                  : {
+                      orderKey: plan.orderKey,
+                    },
+              ),
               "Failed to pin thread",
             ))
           )
@@ -2215,42 +2326,53 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const performSnooze = async (
     threadRef: ScopedThreadRef,
     preset: Pick<SnoozePreset, "snoozedUntil">,
-    opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
   ) => {
     const threadKey = scopedThreadKey(threadRef);
     if (snoozingThreadKeysRef.current.has(threadKey)) {
-      return { status: "skipped" } as const;
+      return {
+        status: "skipped",
+      } as const;
     }
     snoozingThreadKeysRef.current.add(threadKey);
-    const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
-    const result = await snoozeThread(threadRef, preset.snoozedUntil);
-    snoozingThreadKeysRef.current.delete(threadKey);
-    if (result._tag === "Failure") {
-      return isAtomCommandInterrupted(result)
-        ? ({ status: "interrupted" } as const)
-        : ({ status: "failure", error: squashAtomCommandFailure(result) } as const);
-    }
-    if (
-      shouldNavigateAfterThreadPark({
-        threadKey,
-        currentThreadKey: readRouteThreadKey(router),
-        action: "snooze",
-        // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
-        now: new Date().toISOString(),
-        thread: readThreadShell(threadRef),
-      })
-    ) {
-      navigateAfterSnooze?.();
-    }
-    return { status: "success" } as const;
+    return await (async () => {
+      // Snoozing the open thread moves you forward, same as settle —
+      // both park the thread you're done with for now.
+      const navigateAfterSnooze = planForwardNavigation(threadKey);
+      const result = await snoozeThread(threadRef, preset.snoozedUntil);
+      if (result._tag === "Failure") {
+        return isAtomCommandInterrupted(result)
+          ? ({
+              status: "interrupted",
+            } as const)
+          : ({
+              status: "failure",
+              error: squashAtomCommandFailure(result),
+            } as const);
+      }
+      if (
+        shouldNavigateAfterThreadPark({
+          threadKey,
+          currentThreadKey: readRouteThreadKey(router),
+          action: "snooze",
+          now: new Date().toISOString(),
+          thread: readThreadShell(threadRef),
+        })
+      ) {
+        navigateAfterSnooze?.();
+      }
+      return {
+        status: "success",
+      } as const;
+    })().finally(() => {
+      snoozingThreadKeysRef.current.delete(threadKey);
+    });
   };
   const attemptSnooze = (
     threadRef: ScopedThreadRef,
     preset: Pick<SnoozePreset, "snoozedUntil">,
-    opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
   ) => {
     void (async () => {
-      const outcome = await performSnooze(threadRef, preset, opts);
+      const outcome = await performSnooze(threadRef, preset);
       if (outcome.status === "failure") {
         toastManager.add(
           stackedThreadToast({
@@ -2264,7 +2386,92 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     })();
   };
-
+  const handleSettledContextMenu = useStableCallback(async (position: { x: number; y: number }) => {
+    const api = readLocalApi();
+    if (!api) return;
+    const scopes = olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys).filter(
+      ({ environmentId, projectIds }) =>
+        settledThreads.some((thread) => thread.environmentId === environmentId) ||
+        [...(olderSettledShelf.environments.get(environmentId)?.older?.counts ?? [])].some(
+          ([projectId, count]) =>
+            count > 0 && (projectIds === null || projectIds.includes(projectId)),
+        ),
+    );
+    const clicked = await settlePromise(() =>
+      api.contextMenu.show(
+        [
+          {
+            id: "archive-all",
+            label: `Archive all (${settledCount})`,
+            disabled:
+              settledCount === 0 ||
+              !canOperateThreads(scopes) ||
+              settledThreads.some((thread) => !threadRuntimeCanArchive(thread.runtime)),
+          },
+        ],
+        position,
+      ),
+    );
+    if (
+      clicked._tag === "Failure" ||
+      clicked.value !== "archive-all" ||
+      !checkThreadOperations(scopes)
+    )
+      return;
+    const settledBefore = new Map(
+      scopes.map(({ environmentId }) => [
+        environmentId,
+        olderSettledShelf.environments.get(environmentId)?.older?.before ?? "",
+      ]),
+    );
+    for (const thread of settledThreads) {
+      if (
+        thread.settledAt !== null &&
+        thread.settledAt > (settledBefore.get(thread.environmentId) ?? "")
+      ) {
+        settledBefore.set(thread.environmentId, thread.settledAt);
+      }
+    }
+    const selectionNow = new Date().toISOString();
+    const confirmation = await settlePromise(() =>
+      api.dialogs.confirm(
+        `Archive all ${settledCount} settled thread${settledCount === 1 ? "" : "s"}?`,
+      ),
+    );
+    if (confirmation._tag === "Failure" || !confirmation.value) return;
+    const outcome = await settlePromise(() =>
+      withAllOlderSettledThreads(scopes, () => {
+        const allSettled = filterSidebarV2VisibleThreads(
+          appAtomRegistry.get(environmentThreadShells.quietThreadShellsAtom),
+          scopedProjectKeys,
+          delegatedUnderParent,
+        ).filter(
+          (thread) =>
+            thread.settledOverride === "settled" &&
+            !effectiveSnoozed(thread, { now: selectionNow }),
+        );
+        if (!checkThreadOperations(allSettled)) return Promise.resolve(null);
+        return archiveSettledThreads(
+          allSettled.map((thread) => scopeThreadRef(thread.environmentId, thread.id)),
+          {
+            settledBefore,
+            onArchived: (threadRef) => removeFromSelection([scopedThreadKey(threadRef)]),
+          },
+        );
+      }),
+    );
+    const failure = outcome._tag === "Failure" ? outcome : outcome.value;
+    if (failure !== null && !isAtomCommandInterrupted(failure)) {
+      const error = squashAtomCommandFailure(failure);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not archive all settled threads",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    }
+  });
   const handleMultiSelectContextMenu = useStableCallback(
     async (position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -2317,7 +2524,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         api.contextMenu.show(
           [
             ...(unpinMenuItem
-              ? [{ ...unpinMenuItem, disabled: !canOperateThreads(pinnedSelectedThreads) }]
+              ? [
+                  {
+                    ...unpinMenuItem,
+                    disabled: !canOperateThreads(pinnedSelectedThreads),
+                  },
+                ]
               : []),
             {
               id: "settle",
@@ -2356,7 +2568,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   },
                 ]
               : []),
-            { id: "mark-unread", label: `Mark unread (${count})` },
+            {
+              id: "mark-unread",
+              label: `Mark unread (${count})`,
+            },
             {
               id: "delete",
               label: `Delete (${count})`,
@@ -2394,13 +2609,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 selectedThreads[0]!.environmentId,
               );
         if (preset) {
-          const coSnoozingKeys = new Set(threadKeys);
           clearSelection();
           const outcomes = await Promise.all(
             selectedThreads.map(async (thread) => {
               const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-              const outcome = await performSnooze(threadRef, preset, { coSnoozingKeys });
-              return { outcome, threadRef };
+              const outcome = await performSnooze(threadRef, preset);
+              return {
+                outcome,
+                threadRef,
+              };
             }),
           );
           const snoozedThreadRefs = outcomes.flatMap(({ outcome, threadRef }) =>
@@ -2409,7 +2626,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           const failures = outcomes.flatMap(({ outcome }) =>
             outcome.status === "failure" ? [outcome.error] : [],
           );
-
           if (failures.length > 0) {
             const firstError = failures[0];
             toastManager.add(
@@ -2438,7 +2654,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         for (const thread of regeneratableTitleThreads) {
           const result = await updateThreadMetadata({
             environmentId: thread.environmentId,
-            input: { threadId: thread.id, regenerateTitle: true },
+            input: {
+              threadId: thread.id,
+              regenerateTitle: true,
+            },
           });
           if (result._tag === "Success") continue;
           if (!isAtomCommandInterrupted(result)) {
@@ -2481,7 +2700,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               `Delete ${count} thread${count === 1 ? "" : "s"}?`,
               "This permanently clears conversation history for these threads.",
             ].join("\n"),
-            { variant: "destructive" },
+            {
+              variant: "destructive",
+            },
           ),
         );
         if (confirmed._tag === "Failure" || !confirmed.value) return;
@@ -2496,7 +2717,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       )
         return;
       const { deletedThreadKeys, firstFailure } = await deleteSelectedThreadEntries({
-        entries: threadKeys.map((threadKey) => ({ threadKey })),
+        entries: threadKeys.map((threadKey) => ({
+          threadKey,
+        })),
         delete: async ({ threadKey }, deletedThreadKeys) => {
           const thread = threadByKeyRef.current.get(threadKey);
           if (!thread) return null;
@@ -2523,9 +2746,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
     },
   );
-
   const handleDraftContextMenu = useStableCallback(
-    (draftId: DraftId, position: { x: number; y: number }) => {
+    (
+      draftId: DraftId,
+      position: {
+        x: number;
+        y: number;
+      },
+    ) => {
       void (async () => {
         const api = readLocalApi();
         const session = useComposerDraftStore.getState().getDraftSession(draftId);
@@ -2559,10 +2787,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               });
             return;
           case "copy-path":
-            if (workspacePath) copyPathToClipboard(workspacePath, { path: workspacePath });
+            if (workspacePath)
+              copyPathToClipboard(workspacePath, {
+                path: workspacePath,
+              });
             return;
           case "copy-branch":
-            if (session.branch) copyBranchToClipboard(session.branch, { branch: session.branch });
+            if (session.branch)
+              copyBranchToClipboard(session.branch, {
+                branch: session.branch,
+              });
             return;
           case "discard": {
             // The menu may outlive draft promotion; discarding then would strand the send.
@@ -2574,9 +2808,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       })();
     },
   );
-
   const handleThreadContextMenu = useStableCallback(
-    (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
+    (
+      threadRef: ScopedThreadRef,
+      position: {
+        x: number;
+        y: number;
+      },
+    ) => {
       void (async () => {
         const api = readLocalApi();
         if (!api) return;
@@ -2633,7 +2872,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+              canSnoozeNow: canSnooze(thread, {
+                now: new Date().toISOString(),
+              }),
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
               canShareWithGuest: appAtomRegistry.get(
@@ -2768,7 +3009,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             if (isRegeneratingTitle) return;
             const result = await updateThreadMetadata({
               environmentId: threadRef.environmentId,
-              input: { threadId: threadRef.threadId, regenerateTitle: true },
+              input: {
+                threadId: threadRef.threadId,
+                regenerateTitle: true,
+              },
             });
             if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
               const error = squashAtomCommandFailure(result);
@@ -2796,11 +3040,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               );
               return;
             }
-            copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
+            copyPathToClipboard(threadWorkspacePath, {
+              path: threadWorkspacePath,
+            });
             return;
           case "copy-branch":
             if (thread.branch) {
-              copyBranchToClipboard(thread.branch, { branch: thread.branch });
+              copyBranchToClipboard(thread.branch, {
+                branch: thread.branch,
+              });
             }
             return;
           case "copy-thread":
@@ -2809,7 +3057,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             );
             return;
           case "copy-thread-id":
-            copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            copyThreadIdToClipboard(thread.id, {
+              threadId: thread.id,
+            });
             return;
           case "archive": {
             if (confirmThreadArchive) {
@@ -2847,7 +3097,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     `Delete thread "${thread.title}"?`,
                     "This permanently clears conversation history for this thread.",
                   ].join("\n"),
-                  { variant: "destructive" },
+                  {
+                    variant: "destructive",
+                  },
                 ),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
@@ -2872,7 +3124,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       })();
     },
   );
-
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
@@ -2928,7 +3179,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeTerminalOpen,
     threadByKey,
   ]);
-
   const shouldShowJumpHintsNow = shouldShowThreadJumpHintsForModifiers(
     shortcutModifiers,
     keybindings,
@@ -2944,6 +3194,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
+  const handleNewThreadProjectPicker = () => {
+    if (isMobile) setOpenMobile(false);
+    openCommandPalette({
+      open: "new-thread-in",
+    });
+  };
 
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (
@@ -2959,6 +3215,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       void startNewThreadFromContext({
         activeDraftThread: newThreadContext.activeDraftThread,
         activeThread: newThreadContext.activeThread ?? undefined,
+        preferredProjectRef: newThreadContext.preferredProjectRef,
         defaultProjectRef: newThreadContext.defaultProjectRef,
         handleNewThread,
       }).then((started) => {
@@ -2966,16 +3223,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       });
       return;
     }
-    if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
+    handleNewThreadProjectPicker();
   };
 
+  // The primary button mirrors chat.newLocal. Shift+click opens the picker.
   const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.new") ??
-    (shouldCreateNewThreadInCurrentProject(false, scopeGroups.length, projectGroups.length)
-      ? shortcutLabelForCommand(keybindings, "chat.newLocal")
-      : undefined);
-  const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+    shortcutLabelForCommand(keybindings, "chat.newLocal") ??
+    (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.new") : undefined);
+  const newThreadPickerShortcutLabel = shortcutLabelForCommand(keybindings, "chat.new");
   return (
     <>
       <ThreadContextDragGhost />
@@ -2984,6 +3239,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         ref={sidebarContentRef}
         className="min-h-full"
         fixedHeader={
+          // Lifted above the stage backdrop, whose fade bleeds below the
+          // header and would otherwise paint across the search row's outline.
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
               hasProjects={projectGroups.length > 0}
@@ -2998,7 +3255,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   onOpenChange={(open, eventDetails) => {
                     if (eventDetails.isCanceled) return;
                     if (open) suppressNextScopeChangeRef.current = false;
-                    dispatchProjectScopeMenu({ type: "open-changed", open });
+                    dispatchProjectScopeMenu({
+                      type: "open-changed",
+                      open,
+                    });
                   }}
                   onItemHighlighted={(item) => {
                     highlightedProjectScopeKeyRef.current = item?.value ?? null;
@@ -3190,17 +3450,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
+              onNewThreadProjectPicker={handleNewThreadProjectPicker}
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
-              newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={
-                !legacySidebarEnabled &&
-                !shouldCreateNewThreadInCurrentProject(
-                  false,
-                  scopeGroups.length,
-                  projectGroups.length,
-                )
-              }
+              newThreadPickerShortcutLabel={newThreadPickerShortcutLabel}
+              showNewThreadPickerHint={!boringSidebarEnabled && projectGroups.length > 1}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {
@@ -3489,9 +3743,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarDragBoundary
                                 key="pinned-header"
                                 marker="pinned-header"
-                                label="Pinned"
-                                visible={from !== null}
+                                label={
+                                  pinnedShelfExpanded
+                                    ? "Pinned"
+                                    : `Pinned (${pinnedThreads.length})`
+                                }
+                                visible={from !== null || pinnedThreads.length > 0}
+                                persistent={pinnedThreads.length > 0}
                                 isDropTarget={dragTargetSection === "pinned"}
+                                toggle={{
+                                  expanded: pinnedShelfExpanded,
+                                  onToggle: () => setPinnedShelfExpanded((value) => !value),
+                                }}
                               />,
                             );
                             break;
@@ -3500,9 +3763,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarDragBoundary
                                 key="pinned-divider"
                                 marker="pinned-divider"
-                                label="Active"
-                                visible={from !== null}
+                                label={
+                                  activeShelfExpanded
+                                    ? "Active"
+                                    : `Active (${activeThreads.length})`
+                                }
+                                visible={
+                                  from !== null || pinnedThreads.length + activeThreads.length > 0
+                                }
+                                persistent={pinnedThreads.length + activeThreads.length > 0}
                                 isDropTarget={dragTargetSection === "active"}
+                                toggle={{
+                                  expanded: activeShelfExpanded,
+                                  onToggle: () => setActiveShelfExpanded((value) => !value),
+                                }}
                               />,
                             );
                             break;
@@ -3559,6 +3833,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <SidebarSectionHeader
                                 key="settled-shelf-header"
                                 marker="settled-header"
+                                onContextMenu={(position) =>
+                                  void handleSettledContextMenu(position)
+                                }
                                 className={cn(
                                   workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
                                 )}

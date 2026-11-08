@@ -16,6 +16,7 @@ const snapshotAtom = Atom.make((get) =>
     get(environmentPresentations.presentationsWithProvidersAtom),
     Linking.createURL("settings/usage", { queryParams: { tab: "limits" } }),
     Platform.OS === "android" ? Infinity : 6,
+    Platform.OS === "android" ? "accounts" : "pooled",
   ),
 ).pipe(Atom.withEquality((a, b) => JSON.stringify(a) === JSON.stringify(b)));
 

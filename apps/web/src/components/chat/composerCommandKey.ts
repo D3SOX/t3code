@@ -15,6 +15,7 @@ import {
   type ComposerTrigger,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
+  shouldHandleComposerMenuKey,
 } from "../../composer-logic";
 import { type PendingUserInput } from "../../session-logic";
 import { type PreviewAnnotationPayload } from "@t3tools/contracts";
@@ -36,6 +37,8 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 export function composerCommandKeyHandler(input: {
   readonly keybindings: ChatComposerProps["keybindings"];
   readonly sendShortcut: ChatComposerProps["settings"]["sendShortcut"];
+  readonly startThreadsInBackground: boolean;
+  readonly onEditLatestQueuedMessage: ChatComposerProps["onEditLatestQueuedMessage"];
   readonly routeKind: ChatComposerProps["routeKind"];
   readonly phase: ChatComposerProps["phase"];
   readonly isCompacting: boolean;
@@ -88,6 +91,8 @@ export function composerCommandKeyHandler(input: {
   const {
     keybindings,
     sendShortcut,
+    startThreadsInBackground,
+    onEditLatestQueuedMessage,
     routeKind,
     phase,
     isCompacting,
@@ -159,6 +164,12 @@ export function composerCommandKeyHandler(input: {
       return false;
     }
     const editor = composerEditorRef.current;
+    if (
+      direction === "backward" &&
+      promptRef.current.length === 0 &&
+      onEditLatestQueuedMessage(event.repeat)
+    )
+      return true;
     if (!editor?.isCaretOnVisualEdge(direction === "backward" ? "start" : "end")) {
       return false;
     }
@@ -206,6 +217,7 @@ export function composerCommandKeyHandler(input: {
       isDraftThread: routeKind === "draft",
       isRunning: phase === "running",
       sendShortcut,
+      startThreadsInBackground,
       prompt: promptRef.current,
     });
     if (key === "Tab" && event.shiftKey && submissionIntent === null) {
@@ -223,7 +235,7 @@ export function composerCommandKeyHandler(input: {
       composerMenuOpenRef.current = false;
       return true;
     }
-    if (menuIsActive && (submissionIntent === null || submissionIntent === "foreground")) {
+    if (menuIsActive && shouldHandleComposerMenuKey(event, submissionIntent)) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
       if (key === "ArrowDown" && currentItems.length > 0) {

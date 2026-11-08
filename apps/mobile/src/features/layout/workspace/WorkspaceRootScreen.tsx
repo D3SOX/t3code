@@ -1,3 +1,5 @@
+import { renderEnvironmentHeaderBackground } from "../../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../../state/environmentIdentification";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { WORKSPACE_TAB_LABELS, useEnabledNavigationTabs } from "./navigation-tabs";
 import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
@@ -65,6 +67,7 @@ function WorkspaceRootTitle(props: {
 }
 
 function WorkspaceRootContent() {
+  const { artworkStage } = useEnvironmentIdentification();
   const navigation = useNavigation();
   const { width: windowWidth } = useWindowDimensions();
   const { layout, startNewTask } = useAdaptiveWorkspaceLayout();
@@ -117,6 +120,7 @@ function WorkspaceRootContent() {
       <View className={sidebarPicker ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
         <NativeStackScreenOptions
           optionsVersion={[
+            artworkStage,
             settingsOpen,
             state.selectedTab,
             state.selectionRevision,
@@ -131,6 +135,8 @@ function WorkspaceRootContent() {
                 ? TAB_TITLES[state.selectedTab]
                 : "Navigation",
             headerShown: true,
+            headerBackground: artworkStage ? renderEnvironmentHeaderBackground : undefined,
+            headerTintColor: artworkStage ? "white" : undefined,
             headerTransparent: NATIVE_LIQUID_GLASS_SUPPORTED,
             headerStyle: NATIVE_LIQUID_GLASS_SUPPORTED
               ? { backgroundColor: "transparent" }

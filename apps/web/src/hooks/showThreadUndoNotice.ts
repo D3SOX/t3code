@@ -28,7 +28,7 @@ type UndoNotice = {
 
 export const useThreadUndoNotice = create<{ notice: UndoNotice | null }>(() => ({ notice: null }));
 
-function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
+export function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
   const noun = notice.action === "Discarded" ? "draft" : "thread";
   return `${notice.action} ${notice.count} ${noun}${notice.count === 1 ? "" : "s"}`;
 }
@@ -133,8 +133,13 @@ export function releaseThreadUndoShortcut() {
 
 /** Shows one compact confirmation for the currently undoable thread actions. */
 export function showThreadUndoNotice(options: UndoOptions) {
-  if (!options.claim.isCurrent()) return;
-  liveUndos.push(options);
+  showThreadUndoNotices([options]);
+}
+
+export function showThreadUndoNotices(options: readonly UndoOptions[]) {
+  const current = options.filter(({ claim }) => claim.isCurrent());
+  if (current.length === 0) return;
+  liveUndos.push(...current);
   shortcutClaimed = true;
   refreshNotice();
   clearTimeout(expiry);

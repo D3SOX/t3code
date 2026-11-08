@@ -65,6 +65,8 @@ const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettin
   "source-control": ["defaultAutoPull", "removeAgentCreditsOnMerge"],
   worktrees: [
     "newWorktreesStartFromOrigin",
+    "autoGenerateThreadTitles",
+    "autoGenerateBranchNames",
     "worktreeSubmodules",
     "branchNamingMode",
     "branchNamePrefix",

@@ -1,3 +1,8 @@
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { SettingsSection } from "./components/SettingsSection";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { Platform } from "react-native";
 import { AndroidNavigationAppearanceSection } from "./appearance/sections/AndroidNavigationAppearanceSection";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
@@ -8,6 +13,7 @@ import { CodeAppearanceSection } from "./appearance/sections/CodeAppearanceSecti
 import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
 import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
 import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
+import { EnvironmentIdentificationSection } from "./appearance/sections/EnvironmentIdentificationSection";
 
 export function SettingsAppearanceRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -24,11 +30,32 @@ export function SettingsAppearanceRouteScreen() {
         }}
       >
         <ThemeAppearanceSection />
+        <EnvironmentIdentificationSection />
+        <ThreadDisplaySettingsSection />
         {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />
         <TerminalAppearanceSection />
         <CodeAppearanceSection />
       </ScrollView>
     </SettingsScreen>
+  );
+}
+
+function ThreadDisplaySettingsSection() {
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const showThreadBranches =
+    !AsyncResult.isSuccess(preferences) || preferences.value.sidebarShowThreadBranches !== false;
+
+  return (
+    <SettingsSection title="Thread display">
+      <SettingsSwitchRow
+        icon="arrow.triangle.branch"
+        label="Show thread branches"
+        subtitle="Turn off for more compact thread rows."
+        value={showThreadBranches}
+        onValueChange={(value) => savePreferences({ sidebarShowThreadBranches: value })}
+      />
+    </SettingsSection>
   );
 }

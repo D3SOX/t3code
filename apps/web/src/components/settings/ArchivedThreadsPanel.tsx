@@ -1,3 +1,6 @@
+import { SearchIcon, XIcon } from "lucide-react";
+import { createArchivedThreadSearchMatcher } from "@t3tools/client-runtime/state/threads";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import { Spinner } from "~/components/ui/spinner";
 import { ArchiveIcon, ArchiveX, Trash2Icon } from "lucide-react";
@@ -31,6 +34,7 @@ type ArchiveAction = (typeof ARCHIVE_ACTIONS)[number]["action"];
 
 export function ArchivedThreadsPanel() {
   const { scope, groups: projectGroups, environments } = useSettingsScope();
+  const [searchQuery, setSearchQuery] = useState("");
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
   const pendingActionsRef = useRef(new Set<string>());
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -40,7 +44,6 @@ export function ArchivedThreadsPanel() {
     isLoading: isLoadingArchive,
     refresh: refreshArchivedThreads,
   } = useArchivedThreadSnapshots(scope.environmentIds);
-
   const { groups: archivedGroups, hasMultipleEnvironments } = (() => {
     const selectedProjectKeys =
       scope.kind === "project" || scope.kind === "checkout"
@@ -55,7 +58,14 @@ export function ArchivedThreadsPanel() {
               selectedProjectKeys.has(`${environmentId}:${project.id}`),
           )
           .map(
-            (project) => [`${environmentId}:${project.id}`, { ...project, environmentId }] as const,
+            (project) =>
+              [
+                `${environmentId}:${project.id}`,
+                {
+                  ...project,
+                  environmentId,
+                },
+              ] as const,
           ),
       ),
     );
@@ -86,7 +96,6 @@ export function ArchivedThreadsPanel() {
         ),
       ),
     );
-
     const archivedProjects = Array.from(projectsByEnvironmentAndId.values());
     const groups = new Map<
       string,
@@ -130,7 +139,30 @@ export function ArchivedThreadsPanel() {
         return rightKey.localeCompare(leftKey) || right.id.localeCompare(left.id);
       }),
     }));
-    return { groups: sortedGroups, hasMultipleEnvironments };
+    return {
+      groups: sortedGroups,
+      hasMultipleEnvironments,
+    };
+  })();
+  const filteredGroups = (() => {
+    const matchesSearch = createArchivedThreadSearchMatcher(searchQuery);
+    const environmentLabels = new Map(
+      environments.map((environment) => [environment.environmentId, environment.label]),
+    );
+    return archivedGroups.flatMap(({ threads, ...group }) => {
+      const { project } = group;
+      const matchingThreads = threads.filter((thread) =>
+        matchesSearch(thread, project, environmentLabels.get(project.environmentId) ?? null),
+      );
+      return matchingThreads.length > 0
+        ? [
+            {
+              ...group,
+              threads: matchingThreads,
+            },
+          ]
+        : [];
+    });
   })();
 
   type ArchivedThread = (typeof archivedGroups)[number]["threads"][number];
@@ -185,10 +217,41 @@ export function ArchivedThreadsPanel() {
     });
     reportFailure(result, "Archived thread action failed");
   };
-
   return (
     <SettingsPageContainer>
-      {archivedGroups.length === 0 ? (
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon aria-hidden className="size-3.5" />
+        </InputGroupAddon>
+        <InputGroupInput
+          type="search"
+          size="sm"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            if (searchQuery.length > 0) setSearchQuery("");
+            else event.currentTarget.blur();
+          }}
+          placeholder="Search archived threads"
+          aria-label="Search archived threads"
+        />
+        {searchQuery.length > 0 && (
+          <InputGroupAddon align="inline-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Clear search"
+              onClick={() => setSearchQuery("")}
+            >
+              <XIcon aria-hidden />
+            </Button>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+      {filteredGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
@@ -205,18 +268,23 @@ export function ArchivedThreadsPanel() {
                   ? "Loading archived threads"
                   : archiveError
                     ? "Could not load archived threads"
-                    : "No archived threads"}
+                    : archivedGroups.length > 0
+                      ? "No matching threads"
+                      : "No archived threads"}
               </span>
             }
             description={
               isLoadingArchive
                 ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
+                : (archiveError ??
+                  (archivedGroups.length > 0
+                    ? "Try another thread title, branch, project, or environment."
+                    : "Archived threads will appear here."))
             }
           />
         </SettingsSection>
       ) : (
-        archivedGroups.map(({ key, project, title, threads: projectThreads }, index) => (
+        filteredGroups.map(({ key, project, title, threads: projectThreads }, index) => (
           <SettingsSection
             key={key}
             id={index === 0 ? searchableSetting("archive").id : undefined}

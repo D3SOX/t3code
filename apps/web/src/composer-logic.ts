@@ -1,4 +1,5 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import type {
   AssistantCitation,
   EnvironmentId,
@@ -15,11 +16,35 @@ import {
   type ComposerPromptSegment,
 } from "./composer-editor-mentions";
 
-import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+import { formatShortcutLabel, resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+import { isMacPlatform } from "./lib/utils";
 
 export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default" | "side" | "btw" | "clear";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
+
+export function shouldHandleComposerMenuKey(
+  event: ShortcutEventLike,
+  submissionIntent: ComposerSubmissionIntent | null,
+): boolean {
+  // Plain Enter accepts suggestions even when new threads start in the background.
+  const isPlainEnter =
+    event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+  return isPlainEnter || submissionIntent === null || submissionIntent === "foreground";
+}
+
+export function isQueuedComposerDispatchMode(mode: ComposerDispatchMode): boolean {
+  return mode === "queue" || mode === "next-tool";
+}
+
+/** The alternate shortcut swaps the configured timing with after-turn delivery. */
+export function followUpBehaviorForSubmission(
+  preference: ClientSettings["followUpBehavior"],
+  intent: ComposerSubmissionIntent,
+): ClientSettings["followUpBehavior"] {
+  if (intent !== "alternate") return preference;
+  return preference === "queue" ? "next-tool" : "queue";
+}
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -64,6 +89,7 @@ export function composerSubmissionIntentForKey(input: {
   isDraftThread: boolean;
   isRunning?: boolean;
   sendShortcut?: ClientSettings["sendShortcut"];
+  startThreadsInBackground?: boolean;
   prompt?: string;
 }): ComposerSubmissionIntent | null {
   const { event } = input;
@@ -80,7 +106,13 @@ export function composerSubmissionIntentForKey(input: {
     },
   });
   if (command === "composer.sendAlternate" && input.isRunning) return "alternate";
-  if (command === "composer.sendBackground" && input.isDraftThread) return "background";
+  if (command === "composer.sendBackground" && input.isDraftThread) {
+    const isAlternateEnter =
+      event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    return isAlternateEnter && input.startThreadsInBackground !== false
+      ? "foreground"
+      : "background";
+  }
   if (command === "composer.sendAndNewThread" && !input.isDraftThread) return "background";
   if (command !== null || event.key !== "Enter" || event.shiftKey || event.altKey) return null;
   if (
@@ -89,9 +121,84 @@ export function composerSubmissionIntentForKey(input: {
     !event.ctrlKey
   )
     return null;
-  return "foreground";
+  return input.isDraftThread && input.startThreadsInBackground !== false
+    ? "background"
+    : "foreground";
 }
 
+/** Resolve hints through the same shortcut rules as the editor, including custom bindings. */
+export function composerSubmissionHints(
+  input: Omit<Parameters<typeof composerSubmissionIntentForKey>[0], "event"> & {
+    followUpBehavior: ClientSettings["followUpBehavior"];
+    isEditingQueuedMessage?: boolean;
+  },
+): string {
+  const platform = input.platform ?? navigator.platform;
+  const mac = isMacPlatform(platform);
+  const actionFor = (intent: ComposerSubmissionIntent) => {
+    if (input.isEditingQueuedMessage) return "Update queued message";
+    if (intent === "background" && !input.isDraftThread) return "Send and start a new thread";
+    if (input.isRunning) {
+      const timing = followUpBehaviorForSubmission(input.followUpBehavior, intent);
+      return timing === "queue"
+        ? "Queue after current turn"
+        : timing === "next-tool"
+          ? "Queue after next tool call"
+          : "Steer immediately";
+    }
+    return intent === "background"
+      ? input.isDraftThread
+        ? "Start thread in background"
+        : "Send and start a new thread"
+      : "Send message";
+  };
+  const hints = new Map<string, Set<string>>();
+  const add = (intent: ComposerSubmissionIntent, label: string) => {
+    const action = actionFor(intent);
+    const labels = hints.get(action) ?? new Set<string>();
+    labels.add(label);
+    hints.set(action, labels);
+  };
+  add(
+    input.isDraftThread && input.startThreadsInBackground !== false ? "background" : "foreground",
+    "Click",
+  );
+  if (input.isRunning) add("alternate", mac ? "⌘-click" : "Ctrl-click");
+  if (!input.isSoftwareKeyboardOpen) {
+    const enter = {
+      key: "enter",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      modKey: false,
+    };
+    const shortcuts = [
+      enter,
+      { ...enter, modKey: true },
+      ...input.keybindings
+        .filter((binding) =>
+          [
+            "composer.sendAlternate",
+            "composer.sendBackground",
+            "composer.sendAndNewThread",
+          ].includes(binding.command),
+        )
+        .map((binding) => binding.shortcut),
+    ];
+    for (const shortcut of shortcuts) {
+      const event = {
+        ...shortcut,
+        key: shortcut.key === "enter" ? "Enter" : shortcut.key,
+        metaKey: shortcut.metaKey || (shortcut.modKey && mac),
+        ctrlKey: shortcut.ctrlKey || (shortcut.modKey && !mac),
+      };
+      const intent = composerSubmissionIntentForKey({ ...input, platform, event });
+      if (intent) add(intent, formatShortcutLabel(shortcut, platform));
+    }
+  }
+  return [...hints].map(([action, labels]) => `${[...labels].join(" or ")}: ${action}`).join("\n");
+}
 function clampCursor(text: string, cursor: number): number {
   if (!Number.isFinite(cursor)) return text.length;
   return Math.max(0, Math.min(text.length, Math.floor(cursor)));

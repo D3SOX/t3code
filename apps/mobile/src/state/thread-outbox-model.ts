@@ -55,7 +55,9 @@ export const QueuedThreadMessageSchema = Schema.Struct({
   context: Schema.optional(OrchestrationMessageContext),
   attachments: Schema.Array(DraftComposerAttachmentSchema),
   modelSelection: Schema.optional(ModelSelection),
-  dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
+  dispatchMode: Schema.optional(
+    Schema.Literals(["auto", "queue", "next-tool", "steer", "restart"]),
+  ),
   compactBeforeSend: Schema.optional(Schema.Boolean),
   freshContext: Schema.optional(Schema.Boolean),
   runtimeMode: Schema.optional(RuntimeMode),

@@ -1,3 +1,4 @@
+import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
 import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
 import {
@@ -16,13 +17,16 @@ import {
   clampCollapsedComposerCursor,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
+  composerSubmissionHints,
   composerStateAtPromptEnd,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
+  followUpBehaviorForSubmission,
   extendReplacementRangeForTrailingSpace,
   formatAssistantCitationForComposer,
   isPathSuggestionCurrent,
   replaceTextRange,
+  shouldHandleComposerMenuKey,
 } from "./composer-logic";
 import { slashCommandItemsForPromptPosition } from "./components/chat/composerSlashCommandSearch";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
@@ -47,6 +51,79 @@ const citation: AssistantCitation = {
   suffix: " 後",
 };
 const citationSource = serializeAssistantCitation(citation).replaceAll("+", "%20");
+
+describe("composer submission hints", () => {
+  const input = {
+    keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    platform: "Linux",
+    isSoftwareKeyboardOpen: false,
+    isDraftThread: false,
+    followUpBehavior: "next-tool" as const,
+  };
+
+  it.each(["queue", "next-tool", "steer"] as const)(
+    "labels both timings for %s",
+    (followUpBehavior) => {
+      const hints = composerSubmissionHints({ ...input, isRunning: true, followUpBehavior });
+      const regular =
+        followUpBehavior === "queue"
+          ? "Queue after current turn"
+          : followUpBehavior === "next-tool"
+            ? "Queue after next tool call"
+            : "Steer immediately";
+      const alternate =
+        followUpBehavior === "queue" ? "Queue after next tool call" : "Queue after current turn";
+      expect(hints).toContain(`Click or Enter: ${regular}`);
+      expect(hints).toContain(`Ctrl-click or Ctrl+Enter: ${alternate}`);
+    },
+  );
+
+  it.each([true, false])("reflects background thread preference %s", (startThreadsInBackground) => {
+    const hints = composerSubmissionHints({
+      ...input,
+      isDraftThread: true,
+      startThreadsInBackground,
+    });
+    expect(hints).toContain(
+      `${startThreadsInBackground ? "Click or Enter or Ctrl+Alt+Enter: Start thread in background" : "Click or Enter: Send message"}`,
+    );
+    expect(hints).toContain(
+      `Ctrl+Enter${startThreadsInBackground ? ": Send message" : " or Ctrl+Alt+Enter: Start thread in background"}`,
+    );
+  });
+
+  it("omits Enter when multiline text requires a modifier", () => {
+    const hints = composerSubmissionHints({
+      ...input,
+      sendShortcut: "mod-enter-multiline",
+      prompt: "two\nlines",
+    });
+    expect(hints).not.toMatch(/(?:or |^)Enter(?::| or )/);
+    expect(
+      composerSubmissionHints({
+        ...input,
+        sendShortcut: "mod-enter-multiline",
+        prompt: "one line",
+      }),
+    ).toContain("Click or Enter or Ctrl+Enter:");
+  });
+
+  it("uses macOS modifier labels", () => {
+    const hints = composerSubmissionHints({ ...input, platform: "MacIntel", isRunning: true });
+    expect(hints).toContain("⌘-click or ⌘Enter: Queue after current turn");
+  });
+
+  it("respects remapped shortcuts without claiming the old binding still queues", () => {
+    const keybindings = mergeWithDefaultKeybindings(
+      compileResolvedKeybindingsConfig([
+        { key: "alt+q", command: "composer.sendAlternate", when: "composerFocus && turnRunning" },
+      ]),
+    );
+    const hints = composerSubmissionHints({ ...input, keybindings, isRunning: true });
+    expect(hints).toContain("Ctrl-click or Alt+Q: Queue after current turn");
+    expect(hints).toContain("Click or Enter or Ctrl+Enter: Queue after next tool call");
+  });
+});
 
 describe("isPathSuggestionCurrent", () => {
   const searchedTarget = {
@@ -103,6 +180,42 @@ describe("composerSubmissionIntentForKey", () => {
   };
   const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
 
+  it("starts drafts in the background by default and allows opting out", () => {
+    const draft = { ...input, event: enter, isDraftThread: true };
+    expect(composerSubmissionIntentForKey(draft)).toBe("background");
+    expect(composerSubmissionIntentForKey({ ...draft, startThreadsInBackground: false })).toBe(
+      "foreground",
+    );
+    expect(composerSubmissionIntentForKey({ ...draft, isDraftThread: false })).toBe("foreground");
+  });
+
+  it.each(["Linux", "Win32", "MacIntel"])(
+    "reverses Enter and Mod+Enter for new threads on %s",
+    (platform) => {
+      const draft = { ...input, platform, isDraftThread: true };
+      const modEnter = {
+        ...enter,
+        ctrlKey: platform !== "MacIntel",
+        metaKey: platform === "MacIntel",
+      };
+      for (const startThreadsInBackground of [true, false]) {
+        expect(
+          composerSubmissionIntentForKey({ ...draft, startThreadsInBackground, event: enter }),
+        ).toBe(startThreadsInBackground ? "background" : "foreground");
+        expect(
+          composerSubmissionIntentForKey({ ...draft, startThreadsInBackground, event: modEnter }),
+        ).toBe(startThreadsInBackground ? "foreground" : "background");
+        expect(
+          composerSubmissionIntentForKey({
+            ...draft,
+            startThreadsInBackground,
+            event: { ...modEnter, altKey: true },
+          }),
+        ).toBe("background");
+      }
+    },
+  );
+
   it.each([
     ["enter", "one line", false, "foreground"],
     ["enter", "two\nlines", false, "foreground"],
@@ -120,6 +233,86 @@ describe("composerSubmissionIntentForKey", () => {
         prompt,
       }),
     ).toBe(expected);
+  });
+
+  it.each(["MacIntel", "Win32", "Linux"])("uses the configured actions on %s", (platform) => {
+    const modEnter = {
+      ...enter,
+      metaKey: platform === "MacIntel",
+      ctrlKey: platform !== "MacIntel",
+    };
+    for (const [sendShortcut, prompt, requiresModifier] of [
+      ["enter", "one line", false],
+      ["enter", "two\nlines", false],
+      ["mod-enter", "one line", true],
+      ["mod-enter", "two\nlines", true],
+      ["mod-enter-multiline", "one line", false],
+      ["mod-enter-multiline", "two\nlines", true],
+    ] as const) {
+      const running = { ...input, platform, sendShortcut, prompt, isRunning: true };
+      const intent = composerSubmissionIntentForKey({ ...running, event: modEnter });
+      expect(intent).toBe(requiresModifier ? "foreground" : "alternate");
+      const alternateIntent = composerSubmissionIntentForKey({
+        ...running,
+        event: { ...modEnter, shiftKey: requiresModifier },
+      });
+      expect(alternateIntent).toBe("alternate");
+      expect(composerSubmissionIntentForKey({ ...running, event: enter })).toBe(
+        requiresModifier ? null : "foreground",
+      );
+      for (const activeTurnDefault of ["queue", "next-tool", "steer"] as const) {
+        expect(
+          resolveComposerDispatchMode({
+            running: true,
+            alternateModifier: intent === "alternate",
+            activeTurnDefault,
+          }),
+        ).toBe(
+          requiresModifier
+            ? activeTurnDefault
+            : activeTurnDefault === "queue"
+              ? "next-tool"
+              : "queue",
+        );
+        expect(
+          resolveComposerDispatchMode({
+            running: true,
+            alternateModifier: alternateIntent === "alternate",
+            activeTurnDefault,
+          }),
+        ).toBe(activeTurnDefault === "queue" ? "next-tool" : "queue");
+      }
+      expect(
+        composerSubmissionIntentForKey({
+          ...input,
+          platform,
+          sendShortcut,
+          isDraftThread: true,
+          event: { ...modEnter, altKey: true },
+        }),
+      ).toBe("background");
+      expect(
+        composerSubmissionIntentForKey({
+          ...input,
+          platform,
+          sendShortcut,
+          event: { ...modEnter, altKey: true },
+        }),
+      ).toBe("background");
+      expect(
+        composerSubmissionIntentForKey({
+          ...input,
+          platform,
+          sendShortcut,
+          prompt,
+          isDraftThread: true,
+          event: modEnter,
+        }),
+      ).toBe("foreground");
+      expect(
+        composerSubmissionIntentForKey({ ...running, event: { ...enter, shiftKey: true } }),
+      ).toBeNull();
+    }
   });
 
   it("honors the send preference with an existing install's saved alternate binding", () => {
@@ -220,6 +413,14 @@ describe("composerSubmissionIntentForKey", () => {
       ).toBe("alternate");
       expect(
         composerSubmissionIntentForKey({ ...keyboardOpen, isDraftThread: true, event: modEnter }),
+      ).toBe("foreground");
+      expect(
+        composerSubmissionIntentForKey({
+          ...keyboardOpen,
+          isDraftThread: true,
+          startThreadsInBackground: false,
+          event: modEnter,
+        }),
       ).toBe("background");
     },
   );
@@ -232,6 +433,81 @@ describe("composerSubmissionIntentForKey", () => {
   ])("does not submit with %j", (override) => {
     expect(composerSubmissionIntentForKey({ ...input, event: enter, ...override })).toBeNull();
   });
+});
+
+describe("composer suggestion keyboard priority", () => {
+  const input = {
+    keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+    platform: "Linux",
+    isSoftwareKeyboardOpen: false,
+    prompt: "$dependa",
+  };
+  const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
+
+  it.each([true, false])(
+    "accepts a selected skill before submitting a new thread with background preference %s",
+    (startThreadsInBackground) => {
+      const trigger = detectComposerTrigger(input.prompt, input.prompt.length);
+      expect(trigger?.kind).toBe("skill");
+      const intent = composerSubmissionIntentForKey({
+        ...input,
+        event: enter,
+        isDraftThread: true,
+        startThreadsInBackground,
+      });
+      expect(intent).toBe(startThreadsInBackground ? "background" : "foreground");
+      expect(shouldHandleComposerMenuKey(enter, intent)).toBe(true);
+    },
+  );
+
+  it.each([false, true])("accepts Enter in an existing thread with running=%s", (isRunning) => {
+    const intent = composerSubmissionIntentForKey({
+      ...input,
+      event: enter,
+      isDraftThread: false,
+      isRunning,
+    });
+    expect(shouldHandleComposerMenuKey(enter, intent)).toBe(true);
+  });
+
+  it("keeps explicit background and alternate submission shortcuts", () => {
+    for (const isDraftThread of [true, false]) {
+      const event = { ...enter, ctrlKey: true, altKey: true };
+      const intent = composerSubmissionIntentForKey({ ...input, event, isDraftThread });
+      expect(intent).toBe("background");
+      expect(shouldHandleComposerMenuKey(event, intent)).toBe(false);
+    }
+    const event = { ...enter, ctrlKey: true };
+    const intent = composerSubmissionIntentForKey({
+      ...input,
+      event,
+      isDraftThread: false,
+      isRunning: true,
+    });
+    expect(intent).toBe("alternate");
+    expect(shouldHandleComposerMenuKey(event, intent)).toBe(false);
+  });
+
+  it.each(["Tab", "ArrowUp", "ArrowDown"])("keeps %s available to the picker", (key) => {
+    const event = { ...enter, key };
+    const intent = composerSubmissionIntentForKey({ ...input, event, isDraftThread: true });
+    expect(intent).toBeNull();
+    expect(shouldHandleComposerMenuKey(event, intent)).toBe(true);
+  });
+});
+
+describe("follow-up submission timing", () => {
+  it.each([
+    ["queue", "queue", "next-tool"],
+    ["next-tool", "next-tool", "queue"],
+    ["steer", "steer", "queue"],
+  ] as const)(
+    "uses the %s preference and its one-message alternative",
+    (preference, regular, alternate) => {
+      expect(followUpBehaviorForSubmission(preference, "foreground")).toBe(regular);
+      expect(followUpBehaviorForSubmission(preference, "alternate")).toBe(alternate);
+    },
+  );
 });
 
 describe("detectComposerTrigger", () => {

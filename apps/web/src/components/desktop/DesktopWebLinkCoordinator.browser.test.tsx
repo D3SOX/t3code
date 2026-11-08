@@ -2,6 +2,7 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { AsyncResult, type Atom } from "effect/reactivity";
+import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { expect, it, vi } from "vite-plus/test";
 
 import { act, render, stubGlobal } from "../../../test/render";
@@ -107,6 +108,7 @@ import {
   useRightPanelStore,
 } from "../../rightPanelStore";
 import { DesktopWebLinkCoordinator } from "./DesktopWebLinkCoordinator";
+import { __setClientSettingsForTests } from "../../hooks/useSettings";
 
 const discoverySettled = allReachableShellsLiveAtom as Atom.Writable<boolean>;
 const environmentId = EnvironmentId.make("local");
@@ -155,10 +157,20 @@ function setup() {
   useDiffPanelStore.setState({ byThreadKey: {}, branchBaseRefByThreadKey: {} });
   useRightPanelStore.setState({ byThreadKey: {}, userActionRevisionByThreadKey: {} });
   appAtomRegistry.set(discoverySettled, false);
+  return {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+      state.projects = [];
+      __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+      appAtomRegistry.set(discoverySettled, false);
+    },
+  };
 }
 
 /** Mounts the coordinator behind a desktop bridge that hands over `urls` once the renderer is ready. */
 async function mount(...urls: string[]) {
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, pullRequestLinkTarget: "app" });
   let deliver: ((url: string) => void) | undefined;
   await using stack = new AsyncDisposableStack();
   stack.use(
@@ -186,7 +198,7 @@ async function mount(...urls: string[]) {
 }
 
 it("holds a launch PR link until project discovery settles, then opens the PR view", async () => {
-  setup();
+  using _env = setup();
   await using _coordinator = await mount(pullRequestUrl);
   expect(state.navigate).not.toHaveBeenCalled();
   expect(state.openScratchProject).not.toHaveBeenCalled();

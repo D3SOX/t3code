@@ -93,6 +93,7 @@ import {
   terminalContextReference,
 } from "../lib/composerContextRecords";
 import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
+import { isQueuedComposerDispatchMode } from "../composer-logic";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import { collapseExpandedComposerCursor, type ComposerSubmissionIntent } from "../composer-logic";
 import type { ReviewCommentContext } from "../reviewCommentContext";
@@ -654,7 +655,7 @@ export async function resolveFileAttachmentUrl(input: {
 }
 
 export async function prepareRevertedMessageAttachments(input: {
-  message: ChatMessage;
+  message: Pick<ChatMessage, "attachments">;
   environmentId: EnvironmentId;
   httpBaseUrl: string;
   createAssetUrl: Parameters<typeof resolveFileAttachmentUrl>[0]["createAssetUrl"];
@@ -1441,7 +1442,7 @@ export function planComposerTurn(input: {
     shouldQueueBehindActiveRun:
       compactBeforeSend ||
       input.sendQueuesBehindSetup ||
-      (input.phase === "running" && dispatchMode === "queue"),
+      (input.phase === "running" && isQueuedComposerDispatchMode(dispatchMode)),
   };
 }
 

@@ -28,6 +28,7 @@ import {
   createVividThemeColors,
   getDefaultThemeColors,
   themeColorToHex,
+  themeAllowsSidebarArtwork,
   toCanonicalThemeColor,
   THEME_FILE_VERSION,
 } from "./themePalette";
@@ -61,6 +62,10 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe("theme files", () => {
+  it.each(BUILT_IN_THEMES)("allows environment artwork with $label", (theme) => {
+    expect(themeAllowsSidebarArtwork(theme.id)).toBe(true);
+  });
+
   it("gives non-Latin theme names distinct stable ids", () => {
     const file = {
       version: THEME_FILE_VERSION,

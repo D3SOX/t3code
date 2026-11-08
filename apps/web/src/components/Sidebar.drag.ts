@@ -19,6 +19,8 @@ const isShelfHeader = (item: SidebarListItem | undefined) =>
     item.marker === "snoozed-header" ||
     item.marker === "settled-header");
 
+/** Keep the lifted card below the Pins label, including when Pins is empty.
+ * The container rect follows scrolling; the offset is measured once at pickup. */
 export function restrictBelowSidebarLabel(
   { transform, containerNodeRect, draggingNodeRect }: Parameters<Modifier>[0],
   offset: number,
@@ -28,6 +30,8 @@ export function restrictBelowSidebarLabel(
   return transform.y < minimumY ? { ...transform, y: minimumY } : transform;
 }
 
+/** Reject the nearest unsupported target without selecting another section.
+ * Recreate this detector when drop eligibility changes. */
 export function createSidebarCollisionDetection(
   isValidTarget: (id: string) => boolean,
   options: {
@@ -89,17 +93,21 @@ export function createSidebarCollisionDetection(
   };
 }
 
+/** Preview the committed section layout without moving or mounting DOM nodes.
+ * A zero scaleY marks rows/markers to hide while retaining their measured nodes. */
 export function createSidebarSortingStrategy(input: {
   items: readonly SidebarListItem[];
+  /** Suspend the reorder preview while the thread is dragged out as context. */
   enabled?: boolean;
   settledOrder: readonly string[];
-  activeOrder?: readonly string[];
   settledExpanded: boolean;
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
   snoozedThreadCount?: number;
   cardHeight?: number;
   slimHeight?: number;
+  /** Minimum space each boundary opens while dragging. Visible section
+   * headers retain their measured height. */
   boundaryLabelHeight?: number;
 }): SortingStrategy {
   if (input.enabled === false) return () => stationary;
@@ -137,6 +145,7 @@ export function createSidebarSortingStrategy(input: {
       else slimHeight ??= rects[index]?.height;
       if (item.key !== active.key) groups[item.section].push(item);
     }
+    // Cards are 4.875rem + 0.25rem padding; slim rows/placeholders are h-9.
     const scale =
       slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
     cardHeight ??= 82 * scale;
@@ -148,7 +157,7 @@ export function createSidebarSortingStrategy(input: {
         ? target.pinnedOrder
         : target.section === "settled"
           ? input.settledOrder
-          : (input.activeOrder ?? target.activeOrder);
+          : target.activeOrder;
     const ranks = new Map(order.map((key, index) => [key, index]));
     const rank = ranks.get(active.key) ?? Number.POSITIVE_INFINITY;
     const index = group.findIndex(
@@ -201,7 +210,7 @@ export function createSidebarSortingStrategy(input: {
       const moved = item.kind === "thread" && item.key === active.key;
       return item.kind === "marker" &&
         (item.marker === "pinned-header" || item.marker === "pinned-divider")
-        ? labelHeight
+        ? Math.max(labelHeight, rect?.height ?? 0)
         : item.kind === "marker" && item.marker.endsWith("placeholder")
           ? slimHeight
           : moved
@@ -212,6 +221,8 @@ export function createSidebarSortingStrategy(input: {
     const shelfRect = rects[firstShelf];
     const beforeShelf = rects[firstShelf - 1];
     const lastRect = rects.at(-1);
+    // Consume the shelf's auto margin as drag labels and resized rows need
+    // room, keeping the combined shelves at their measured bottom.
     let shelfSpace =
       shelfRect && beforeShelf && lastRect && shelfRect.top > beforeShelf.bottom + 1
         ? Math.max(
