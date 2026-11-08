@@ -1893,8 +1893,10 @@ describe("buildThreadListV2ListItems row-state stamps", () => {
           assistantMessageId: null,
         },
       });
-      const row = buildTickList([thread], BASE_MS, [])[0]!;
-      return row.type === "v2-thread" ? row.timeLabel : null;
+      const row = itemsByThreadKey(buildTickList([thread], BASE_MS, [])).get(
+        `v2-thread:${environmentId}:${thread.id}`,
+      );
+      return row?.type === "v2-thread" ? row.timeLabel : null;
     };
     expect(label(isoAt(BASE_MS - 40 * MINUTE_MS), isoAt(BASE_MS - 2 * MINUTE_MS))).toBe("2m");
   });

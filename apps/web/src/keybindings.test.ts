@@ -897,7 +897,7 @@ describe("isRichTextBoldShortcut", () => {
 });
 
 describe("composer and pull request shortcuts", () => {
-  it("uses the dictation chord outside the terminal and preserves terminal split", () => {
+  it("uses the dictation chord only outside the terminal", () => {
     const chord = event({ key: "d", ctrlKey: true, shiftKey: true });
     assert.strictEqual(
       resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
@@ -906,12 +906,11 @@ describe("composer and pull request shortcuts", () => {
       }),
       "composer.dictation",
     );
-    assert.strictEqual(
+    assert.isNull(
       resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
         platform: "Linux",
         context: { terminalFocus: true },
       }),
-      "terminal.splitVertical",
     );
   });
   it("fills missing number shortcuts without replacing the saved URL binding", () => {
