@@ -2767,13 +2767,14 @@ describe("orchestration v2 provider switching", () => {
     ),
   );
 
-  it.live.each(["immediately", "behind a running turn"] as const)(
+  it.live.each(["immediately", "behind a running turn", "after the next tool"] as const)(
     "starts a fresh provider session %s and never hands earlier runs to a later provider",
     (variant) =>
       Effect.scoped(
         Effect.gen(function* () {
           const queued = variant !== "immediately";
-          const key = queued ? "queued" : "immediate";
+          const nextTool = variant === "after the next tool";
+          const key = nextTool ? "next-tool" : queued ? "queued" : "immediate";
           const cwd = yield* checkpointWorkspace(`fresh-context-${key}`);
           const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
           const closedSessions = yield* Ref.make<ReadonlyArray<string>>([]);
@@ -2826,9 +2827,9 @@ describe("orchestration v2 provider switching", () => {
                 modelSelection,
                 ...options,
                 // A fresh send must never steer the running turn.
-                ...(queued && options.freshContext ? {} : { deliveryIntent: "auto" as const }),
+                ...(nextTool && options.freshContext ? {} : { deliveryIntent: "auto" as const }),
                 dispatchMode:
-                  queued && options.freshContext
+                  nextTool && options.freshContext
                     ? { type: "queue_after_active", afterNextTool: true }
                     : { type: "start_immediately" },
               });
