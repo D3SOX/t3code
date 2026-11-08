@@ -3680,7 +3680,13 @@ layer("GitHubPullRequestApi.layer", (it) => {
               {
                 commit: {
                   statusCheckRollup: {
-                    contexts: { nodes: checks, pageInfo: { hasNextPage: paginated } },
+                    contexts: {
+                      nodes: checks,
+                      pageInfo: {
+                        hasNextPage: paginated,
+                        endCursor: paginated ? "checks-cursor" : null,
+                      },
+                    },
                   },
                 },
               },
@@ -3753,7 +3759,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
                                   isRequired: true,
                                 }),
                               ),
-                              pageInfo: { hasNextPage: false },
+                              pageInfo: { hasNextPage: false, endCursor: null },
                             },
                           },
                         },
