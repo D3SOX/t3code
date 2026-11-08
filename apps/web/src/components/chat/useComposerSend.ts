@@ -1,3 +1,11 @@
+import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
+import {
+  armFreshSession,
+  claimFreshSessionArm,
+  disarmFreshSession,
+  readFreshSessionArm,
+  restoreFreshSessionArm,
+} from "./freshSessionArms";
 import {
   mergeDirectPreviewAnnotation,
   resolveBackgroundDraftWorkspaceOptions,
@@ -54,7 +62,6 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   type ComposerSubmissionIntent,
-  parseSideChatCommand,
   parseStandaloneComposerSlashCommand,
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
@@ -205,6 +212,8 @@ interface ComposerSendInput {
   readonly panelAnimationsActive: boolean;
   readonly panelAnimationDurationMs: number;
   readonly keepFullHistory: boolean;
+  /** `/clear` can arm a fresh session on this thread. */
+  readonly freshSessionAvailable: boolean;
   readonly resumeCompactionTokens: number | null;
   readonly showPlanFollowUpPrompt: boolean;
   readonly usageLimitsKey: string | null;
@@ -298,6 +307,7 @@ export function useComposerSend(input: ComposerSendInput) {
     panelAnimationsActive,
     panelAnimationDurationMs,
     keepFullHistory,
+    freshSessionAvailable,
     resumeCompactionTokens,
     showPlanFollowUpPrompt,
     usageLimitsKey,
@@ -719,8 +729,26 @@ export function useComposerSend(input: ComposerSendInput) {
       });
       return;
     }
+    const composerHoldsOnlyText =
+      composerImages.length === 0 &&
+      composerFiles.length === 0 &&
+      sendableComposerTerminalContexts.length === 0 &&
+      composerPreviewAnnotations.length === 0 &&
+      composerReviewComments.length === 0 &&
+      composerThreadContexts.length === 0 &&
+      composerEnvironmentContexts.length === 0;
+    if (freshSessionAvailable && composerHoldsOnlyText && isClearComposerCommand(trimmed)) {
+      armFreshSession(routeThreadKey);
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+      return;
+    }
+    // Read once: an arm made while this send is in flight belongs to the next message.
+    const freshArm = freshSessionAvailable ? readFreshSessionArm(routeThreadKey) : undefined;
     if (
       !directAnnotation &&
+      freshArm === undefined &&
       sendInteractionModeEnabled &&
       showPlanFollowUpPrompt &&
       activeProposedPlan &&
@@ -801,14 +829,7 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const standaloneSlashCommand =
-      sendInteractionModeEnabled &&
-      composerImages.length === 0 &&
-      composerFiles.length === 0 &&
-      sendableComposerTerminalContexts.length === 0 &&
-      composerPreviewAnnotations.length === 0 &&
-      composerReviewComments.length === 0 &&
-      composerThreadContexts.length === 0 &&
-      composerEnvironmentContexts.length === 0
+      sendInteractionModeEnabled && composerHoldsOnlyText
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
     if (standaloneSlashCommand && multipleModelSelections === null) {
@@ -889,6 +910,7 @@ export function useComposerSend(input: ComposerSendInput) {
       keepFullHistory,
       phase: followsLocalSubmission ? "running" : phase,
       dispatchMode,
+      freshContext: freshArm !== undefined,
     });
     if (missingWorktreeBaseBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
@@ -955,7 +977,10 @@ export function useComposerSend(input: ComposerSendInput) {
     }
     const redirectsApproval = sendCtx.shownPendingApprovalIds.length > 0;
     let draftAccepted = false;
+    let claimedFreshArm: symbol | undefined;
     const acceptDraft = () => {
+      claimedFreshArm =
+        freshArm === undefined ? undefined : claimFreshSessionArm(routeThreadKey, freshArm);
       draftAccepted = true;
       const optimisticAttachments = optimisticMessageAttachments(composerAttachmentsSnapshot);
       if (!shouldQueueBehindActiveRun) {
@@ -1388,6 +1413,7 @@ export function useComposerSend(input: ComposerSendInput) {
               runtimeMode,
               interactionMode: sendInteractionMode,
               dispatchMode: turnDispatchMode,
+              ...(claimedFreshArm === undefined ? {} : { freshContext: true }),
               ...(bootstrap
                 ? {
                     bootstrap,
@@ -1425,6 +1451,7 @@ export function useComposerSend(input: ComposerSendInput) {
           } else {
             turnStartSucceeded = true;
             setKeepFullHistory(routeThreadKey, false);
+            if (claimedFreshArm !== undefined) disarmFreshSession(routeThreadKey, claimedFreshArm);
             clearUsageLimitsFor(routeThreadKey);
             if (turnUsesAttachmentUploads) {
               releaseDraftAttachments(composerAttachmentsSnapshot);
@@ -1577,6 +1604,7 @@ export function useComposerSend(input: ComposerSendInput) {
         if (!sendQueuesBehindSetup) resetLocalDispatch();
       })
       .finally(() => {
+        if (claimedFreshArm !== undefined) restoreFreshSessionArm(routeThreadKey, claimedFreshArm);
         setSetupQueueSendThreadKey((current) => (current === activeThreadKey ? null : current));
       });
   };

@@ -11,7 +11,8 @@ import { resolveOfficialAcpRegistryIconUrl } from "@t3tools/contracts";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { AppText as Text } from "./ui/AppText";
 import { cn } from "../lib/cn";
-import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
+import { getProviderClient, openRouterIcon } from "@t3tools/client-runtime/provider-clients";
+
 type ProviderIconProps = {
   readonly provider: string | null | undefined;
   readonly iconUrl?: string | null | undefined;
@@ -111,7 +112,9 @@ export function ProviderIcon(props: ProviderIconProps) {
       </Svg>
     );
   }
-  const packageIcon = getProviderClient(props.provider)?.icon;
+
+  const packageIcon =
+    props.provider === "openrouter" ? openRouterIcon : getProviderClient(props.provider)?.icon;
   if (packageIcon) {
     const themeFill = (fill: { readonly light: string; readonly dark: string }) =>
       isDarkMode ? fill.dark : fill.light;

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useNavigation, useRoute, StackActions } from "@react-navigation/native";
 import { nativePullRequestDestination } from "../lib/pullRequestNavigation";
 import { Platform } from "react-native";
-import { useSelectWorkspaceDetail } from "../features/workspace/useSelectWorkspaceDetail";
+import { useSelectWorkspaceDetail } from "../features/layout/workspace/useSelectWorkspaceDetail";
 import {
   DEFAULT_PULL_REQUEST_LINK_TARGET,
   EnvironmentId,
@@ -18,6 +18,7 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { appAtomRegistry } from "../state/atom-registry";
 import { environmentServerConfigsAtom } from "../state/server";
+import { withKnownPullRequestSummary } from "../state/use-thread-pr";
 
 type PullRequestContext = { readonly environmentId: string; readonly projectId: string };
 
@@ -36,10 +37,11 @@ export function useNavigateToPullRequest(options?: { readonly replace?: boolean 
       if (target === "system") return tryOpenExternalUrl(url, "pull-request");
       // Read at press time so a capability push does not hand every link a new handler.
       const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
-      const params = nativePullRequestDestination(url, context, projects, (environmentId) =>
+      const destination = nativePullRequestDestination(url, context, projects, (environmentId) =>
         serverConfigs.has(environmentId),
       );
-      if (!params) return tryOpenExternalUrl(url, "pull-request");
+      if (!destination) return tryOpenExternalUrl(url, "pull-request");
+      const params = withKnownPullRequestSummary(destination);
       // Android shows one page at a time; iOS opens it over the current page, so Back returns.
       if (Platform.OS === "android") selectDetail({ name: "PullRequest", params });
       else if (replace) navigation.dispatch(StackActions.replace("PullRequest", params));

@@ -17,18 +17,16 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
-import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, { ReduceMotion, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { Button } from "../../components/ui/Button";
-import { AppBar } from "../../components/ui/AppBar";
+import { SheetHeader } from "../../components/ui/SheetHeader";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useAssetUrl } from "../../state/assets";
 import { assetImageSource } from "../../lib/assetImageSource";
 import {
@@ -49,7 +47,6 @@ import { scheduleUnusedComposerAttachmentCleanup } from "../../state/use-compose
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useServerConfigs } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
   buildCancelQueuedRunCommand,
@@ -58,7 +55,6 @@ import {
   resolveThreadQueueRowControls,
 } from "./threadQueueControlPresentation";
 import { threadDragGapOffset } from "./threadDragGap";
-const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 const REMOVE_ACTION_WIDTH = 76;
 const THUMBNAIL_LIMIT = 3;
 const EMPTY_QUEUED_COUNT_ATOM = Atom.make(0).pipe(
@@ -83,7 +79,6 @@ export function useThreadQueuedCount(target: QueueTarget | null) {
   );
 }
 export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
-  const { layout } = useAdaptiveWorkspaceLayout();
   const target = route.params;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -343,8 +338,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           );
         });
       } else if (workflow?.canSendNow) {
-        await resume({ ...target, input: { threadId: target.threadId } });
-      } else if (workflow?.activeRun && workflow.canPromoteToSteer) {
+        await resume({ ...target, input: { threadId: target.threadId, runId } });
+      } else if (
+        workflow?.activeRun &&
+        workflow.canPromoteToSteer &&
+        (queuedRuns[index]?.run.freshContext !== true || workflow.promoteSkipsCompaction === true)
+      ) {
         await promote({
           ...target,
           input: {
@@ -432,7 +431,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             : 0;
         const controls = resolveThreadQueueRowControls({
           busy: busyRunId !== null || draggedRunId !== null || editing !== null,
-          canPromoteToSteer: workflow?.canPromoteToSteer ?? false,
+          canPromoteToSteer:
+            (workflow?.canPromoteToSteer ?? false) &&
+            (run.freshContext !== true || workflow?.promoteSkipsCompaction === true),
           canSendNow: workflow?.canSendNow ?? false,
           canReorder: workflow?.canReorder ?? false,
           index,
@@ -684,67 +685,16 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       })}
     </ScrollView>
   );
-  if (Platform.OS === "ios") {
-    // Plain formSheets lack stack headers; host one in a nested native stack.
-    return (
-      <GestureHandlerRootView
-        style={{
-          flex: 1,
-        }}
-      >
-        <View collapsable={false} className="flex-1 bg-sheet">
-          <ScreenStack
-            style={{
-              flex: 1,
-            }}
-          >
-            <Screen
-              activityState={2}
-              enabled
-              isNativeStack
-              screenId="thread-queue-sheet-native"
-              scrollEdgeEffects={HEADER_SCROLL_EDGE_EFFECTS}
-              style={{
-                backgroundColor: theme["--color-sheet"],
-                flex: 1,
-              }}
-            >
-              {content}
-              <ScreenStackHeaderConfig
-                backgroundColor="rgba(0,0,0,0)"
-                color={theme["--color-foreground"]}
-                hideBackButton
-                hideShadow={false}
-                title="Queued"
-                titleColor={theme["--color-foreground"]}
-                titleFontSize={18}
-                titleFontWeight="800"
-                translucent
-              />
-            </Screen>
-          </ScreenStack>
-        </View>
-      </GestureHandlerRootView>
-    );
-  }
   return (
-    <GestureHandlerRootView
-      style={{
-        flex: 1,
-      }}
-    >
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <View collapsable={false} className="flex-1 bg-sheet">
-        <NativeStackScreenOptions
-          options={{
-            sheetCornerRadius: 28,
-          }}
-        />
-        <AppBar sheet title="Queued" onBack={() => navigation.goBack()} />
-        <ScreenContent insetHorizontal={layout.usesSplitView}>{content}</ScreenContent>
+        <SheetHeader title="Queued" onClose={() => navigation.goBack()} />
+        <ScreenContent>{content}</ScreenContent>
       </View>
     </GestureHandlerRootView>
   );
 }
+
 function QueueShiftedRow(props: {
   readonly offset: number;
   readonly dragging: boolean;

@@ -123,7 +123,11 @@ export function QueuedRunsControl({
   const queued = workflow?.queuedRuns ?? [];
   const activeRun = workflow?.activeRun ?? null;
   const canReorder = workflow?.canReorder === true;
-  const canSend = workflow?.canSendNow === true || workflow?.canPromoteToSteer === true;
+  // A fresh message starts its own turn: it may skip compaction, but not steer into a turn.
+  const canSendRun = (freshContext: boolean) =>
+    workflow?.canSendNow === true ||
+    (workflow?.canPromoteToSteer === true &&
+      (!freshContext || workflow.promoteSkipsCompaction === true));
   const queuedImageUrlById = new Map(
     queuedImageAttachmentUrls.flatMap((url, index) => {
       const resource = queuedImageAttachmentResources[index];
@@ -139,6 +143,7 @@ export function QueuedRunsControl({
       key: run.id,
       runId: run.id,
       messageId: run.userMessageId,
+      freshContext: run.freshContext === true,
       serverIndex,
       text,
       afterNextTool: run.queueAfterNextTool === true,
@@ -160,6 +165,7 @@ export function QueuedRunsControl({
       key: message.id,
       runId: null,
       messageId: null,
+      freshContext: false,
       serverIndex: null,
       text: message.text,
       afterNextTool: false,
@@ -198,7 +204,10 @@ export function QueuedRunsControl({
     void move(runId, queued[insertIndex]?.run.id ?? null);
   };
   const sendQueuedMessage = async (queuedRunId: RunId, afterNextTool?: boolean) => {
-    if (!canSend || steerInFlightRef.current) return;
+    const freshContext = queued.some(
+      ({ run }) => run.id === queuedRunId && run.freshContext === true,
+    );
+    if (!canSendRun(freshContext) || steerInFlightRef.current) return;
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
     await (async () => {
@@ -226,7 +235,7 @@ export function QueuedRunsControl({
   useImperativeHandle(ref, () => ({
     steerNext(repeat) {
       const next = queued[0];
-      if (!next || !canSend) return false;
+      if (!next || !canSendRun(next.run.freshContext === true)) return false;
       if (!repeat && busyRunId === null) void sendQueuedMessage(next.run.id);
       return true;
     },
@@ -472,7 +481,7 @@ export function QueuedRunsControl({
                       <Button
                         size="xs"
                         variant="ghost"
-                        disabled={busyRunId !== null}
+                        disabled={busyRunId !== null || !canSendRun(item.freshContext)}
                         aria-label={
                           item.afterNextTool
                             ? "Run after current turn"
@@ -533,7 +542,11 @@ export function QueuedRunsControl({
                             <Button
                               size="xs"
                               variant="ghost-muted"
-                              disabled={item.runId === null || busyRunId !== null || !canSend}
+                              disabled={
+                                item.runId === null ||
+                                busyRunId !== null ||
+                                !canSendRun(item.freshContext)
+                              }
                               onClick={() => {
                                 if (item.runId !== null) {
                                   void sendQueuedMessage(item.runId);

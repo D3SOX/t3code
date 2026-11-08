@@ -34,8 +34,11 @@ vi.mock("../state/entities", () => ({
     },
   ],
 }));
-vi.mock("../features/workspace/useSelectWorkspaceDetail", () => ({
+vi.mock("../features/layout/workspace/useSelectWorkspaceDetail", () => ({
   useSelectWorkspaceDetail: () => state.reset,
+}));
+vi.mock("../state/use-thread-pr", () => ({
+  withKnownPullRequestSummary: <Params>(params: Params) => params,
 }));
 vi.mock("../state/server", () => ({ environmentServerConfigsAtom: {} }));
 vi.mock("../state/atom-registry", () => ({

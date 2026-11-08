@@ -1,5 +1,6 @@
 import type { useWorkflowOpening } from "./use-workflow-opening";
 import {
+  workflowMemberModelSelection,
   workflowOpeningHeadline,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -26,6 +27,7 @@ function memberRowSubagent(
     threadId: coordinatorThreadId,
     childThreadId: member.childThreadId as ThreadId | null,
     model: member.model,
+    modelSelection: workflowMemberModelSelection(member, opening.providerInstanceId!),
     driver: opening.driver!,
     providerInstanceId: opening.providerInstanceId!,
     title: member.title,
