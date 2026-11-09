@@ -17,6 +17,39 @@ export const PULL_REQUEST_WATCH_WAKE_LIMIT = 10;
 export const PULL_REQUEST_WATCH_NO_CHECKS_MS = 15 * 60_000;
 const LISTED_ITEMS = 10;
 const SNIPPET_LENGTH = 200;
+const BOT_STATUS_PREFIXES = [
+  '<a href="https://app.coderabbit.ai/change-stack/',
+  "<a href='https://app.coderabbit.ai/change-stack/",
+  "## codex review summary",
+  "## greptile summary",
+  "## performance comparison",
+  "your [plan](https://docs.coderabbit",
+  "**rate limit exceeded",
+  "## rate limit exceeded",
+];
+
+function isActionableRemark(remark: PullRequestComment) {
+  if (!(remark.author?.isBot ?? remark.author?.login.toLowerCase().endsWith("[bot]"))) return true;
+  if (remark.kind === "review" && remark.reviewState === "CHANGES_REQUESTED") return true;
+  const body = remark.body
+    .replaceAll(/<!--[\s\S]*?-->/g, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  const findings = body.match(/\*\*actionable comments posted:\s*(\d+)\*\*/);
+  if (findings) {
+    if (Number(findings[1]) > 0) return true;
+    if (body === findings[0]) return false;
+  }
+  return (
+    body.length > 0 &&
+    !BOT_STATUS_PREFIXES.some((prefix) => body.startsWith(prefix)) &&
+    !/^(?:<details>\s*<summary>\s*)?(?:✅\s*)?action (?:performed|not completed)\b/.test(body) &&
+    !/^(?:\*\*)?review skipped\b/.test(body) &&
+    !(body.includes("revix") && /^(?:\[)?!\[[^\]]*\]\([^)]*\)(?:\]\([^)]*\))?$/.test(body)) &&
+    !/^(?:lgtm|looks good(?: to me)?|thanks|thank you)[.!]*$/.test(body)
+  );
+}
 
 export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
@@ -123,20 +156,19 @@ export function evaluatePullRequestWatch(
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
   const through = Date.parse(watch.remarksThrough);
-  // An edit counts as new activity, so bots that rewrite one summary comment still wake the agent.
-  const activeAt = (remark: PullRequestComment) => remark.editedAt ?? remark.createdAt;
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
-  const fresh = (remarks ?? []).filter((remark) => {
-    const at = Date.parse(activeAt(remark));
+  const unread = (remarks ?? []).filter((remark) => {
+    const at = Date.parse(remark.createdAt);
     return (
       (at > through || (at === through && !watch.remarkIds.includes(remark.id))) &&
       remark.author?.login.toLowerCase() !== own
     );
   });
+  const fresh = unread.filter(isActionableRemark);
   if (fresh.length > 0) changes.push({ kind: "remarks", remarks: fresh });
-  const latest = Math.max(through, ...fresh.map((remark) => Date.parse(activeAt(remark))));
-  const atLatest = fresh.filter((remark) => Date.parse(activeAt(remark)) === latest);
-  const remarksThrough = latest === through ? watch.remarksThrough : activeAt(atLatest[0]!);
+  const latest = Math.max(through, ...unread.map((remark) => Date.parse(remark.createdAt)));
+  const atLatest = unread.filter((remark) => Date.parse(remark.createdAt) === latest);
+  const remarksThrough = latest === through ? watch.remarksThrough : atLatest[0]!.createdAt;
   const remarkIds = [
     ...(latest === through ? watch.remarkIds : []),
     ...atLatest.map((remark) => remark.id),

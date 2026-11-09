@@ -363,7 +363,7 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(again.next.remarkIds, [first.id, "late"]);
   });
 
-  it("reports edits after the watermark once and counts them toward the wake limit", () => {
+  it("ignores edits after the watermark without spending the wake limit", () => {
     const old = remark("greptile[bot]", "2026-10-02T11:00:00Z");
     const watching = watch({
       headSha: "aaaaaaaaaa",
@@ -373,18 +373,19 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(watching, detail(), [old]).changes, []);
     const edited = { ...old, editedAt: "2026-10-02T12:06:00Z" };
     const report = evaluatePullRequestWatch(watching, detail(), [edited]);
-    assert.deepEqual(report.changes, [{ kind: "remarks", remarks: [edited] }]);
-    assert.equal(report.next.remarksThrough, edited.editedAt);
+    assert.deepEqual(report.changes, []);
+    assert.equal(report.next.remarksThrough, watching.remarksThrough);
     assert.deepEqual(report.next.remarkIds, [old.id]);
-    assert.isTrue(report.exhausted);
+    assert.equal(report.next.wakes, watching.wakes);
+    assert.isFalse(report.exhausted);
     assert.deepEqual(evaluatePullRequestWatch(report.next, detail(), [edited]).changes, []);
-    const late = { ...edited, id: "late" };
+    const late = { ...remark("reviewer", "2026-10-02T12:06:00Z"), id: "late" };
     assert.deepEqual(evaluatePullRequestWatch(report.next, detail(), [edited, late]).changes, [
       { kind: "remarks", remarks: [late] },
     ]);
   });
 
-  it("wakes once per edit of a remark seen at the watermark, never for the agent's own", () => {
+  it("ignores repeated edits at the watermark and still reports newly posted remarks", () => {
     const seen = remark("ci-bot", "2026-10-10T19:52:40.000Z");
     const watching = watch({
       headSha: "aaaaaaaaaa",
@@ -395,15 +396,129 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(watching, detail(), [seen]).changes, []);
     const edited = { ...seen, editedAt: "2026-10-10T20:04:50.000Z" };
     const first = evaluatePullRequestWatch(watching, detail(), [edited]);
-    assert.deepEqual(first.changes, [{ kind: "remarks", remarks: [edited] }]);
-    assert.strictEqual(first.next.remarksThrough, edited.editedAt);
+    assert.deepEqual(first.changes, []);
+    assert.strictEqual(first.next.remarksThrough, seen.createdAt);
     assert.deepEqual(evaluatePullRequestWatch(first.next, detail(), [edited]).changes, []);
     const again = { ...seen, editedAt: "2026-10-10T20:05:50.000Z" };
     const second = evaluatePullRequestWatch(first.next, detail(), [again]);
-    assert.deepEqual(second.changes, [{ kind: "remarks", remarks: [again] }]);
+    assert.deepEqual(second.changes, []);
     assert.deepEqual(evaluatePullRequestWatch(second.next, detail(), [again]).changes, []);
     const own = { ...edited, author: { login: "agent-user", name: null, avatarUrl: null } };
     assert.deepEqual(evaluatePullRequestWatch(watching, detail(), [own]).changes, []);
+    const posted = remark("reviewer", "2026-10-10T20:05:00.000Z");
+    assert.deepEqual(evaluatePullRequestWatch(second.next, detail(), [again, posted]).changes, [
+      { kind: "remarks", remarks: [posted] },
+    ]);
+  });
+
+  it("ignores bot status chatter while retaining human comments and review findings", () => {
+    const at = "2026-10-02T12:06:00Z";
+    const statusBodies = [
+      '<a href="https://app.coderabbit.ai/change-stack/123">View changes</a>',
+      "## Codex Review Summary\nThis comment shows the latest Codex review activity.",
+      "<details>\n<summary>Action performed</summary>Review requested.</details>",
+      "<details><summary>Action not completed</summary>Try again later.</details>",
+      "✅ Action performed\nReview requested.",
+      "Your [plan](https://docs.coderabbit.ai/plans) has reached its rate limit.",
+      "## Greptile Summary\nThis PR updates the sidebar.",
+      "## Performance comparison\nResults for the latest commit.",
+      "Review skipped: only documentation changed.",
+      "[![Revix](https://revix.ai/badge/123)](https://revix.ai/reviews/123)",
+      "![Revix](https://revix.ai/badge/123)",
+      "**Actionable comments posted: 0**",
+      "**Rate limit exceeded**\nTry again later.",
+      "LGTM.",
+    ] as const;
+    const bot = { login: "review-bot", name: null, avatarUrl: null, isBot: true };
+    const chatter = [
+      ...statusBodies.map((body, index) => ({
+        ...remark(bot.login, at, body),
+        id: `status-${index}`,
+        kind: "issue-comment" as const,
+        path: null,
+        author: bot,
+      })),
+      {
+        ...remark("coderabbitai[bot]", at, statusBodies[5]),
+        id: "suffix-status",
+        kind: "issue-comment" as const,
+        path: null,
+      },
+    ];
+    const quiet = evaluatePullRequestWatch(
+      watch({ headSha: "aaaaaaaaaa", wakes: 2 }),
+      detail(),
+      chatter,
+    );
+    assert.deepEqual(quiet.changes, []);
+    assert.equal(quiet.next.remarksThrough, at);
+    assert.equal(quiet.next.wakes, 2);
+    assert.isFalse(quiet.exhausted);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        quiet.next,
+        detail(),
+        chatter.map((comment) => ({ ...comment, editedAt: "2026-10-02T12:07:00Z" })),
+      ).changes,
+      [],
+    );
+
+    const findings = [
+      remark("reviewer", at, statusBodies[1]),
+      {
+        ...remark(bot.login, at, "**Actionable comments posted: 2**\nFix the null check."),
+        author: bot,
+        kind: "review" as const,
+        path: null,
+      },
+      {
+        ...remark(
+          "chatgpt-codex-connector[bot]",
+          at,
+          "### 💡 Codex Review\nHere are some automated review suggestions.",
+        ),
+        kind: "issue-comment" as const,
+        path: null,
+      },
+      {
+        ...remark("reviewer", at, ""),
+        id: "human-review",
+        kind: "review" as const,
+        path: null,
+        reviewState: "APPROVED",
+      },
+      {
+        ...remark(bot.login, at, "This dereferences a nullable value."),
+        id: "inline-finding",
+        author: bot,
+      },
+      {
+        ...remark(
+          bot.login,
+          at,
+          "[![Annotated bug](https://review.example/finding.png)](https://review.example/finding)",
+        ),
+        id: "image-finding",
+        author: bot,
+      },
+      {
+        ...remark(
+          bot.login,
+          at,
+          "**Actionable comments posted: 0**\n<details><summary>Nitpick comments (1)</summary>Guard the null value.</details>",
+        ),
+        id: "non-inline-finding",
+        kind: "review" as const,
+        path: null,
+        author: bot,
+      },
+    ];
+    const report = evaluatePullRequestWatch(quiet.next, detail(), [...chatter, ...findings]);
+    assert.deepEqual(report.changes, [{ kind: "remarks", remarks: findings }]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(report.next, detail(), [...chatter, ...findings]).changes,
+      [],
+    );
   });
 
   it("does not treat a failed check read as a rerun", () => {
