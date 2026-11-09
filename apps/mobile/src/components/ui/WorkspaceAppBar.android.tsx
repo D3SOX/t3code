@@ -11,10 +11,10 @@ import {
 } from "react";
 import { Pressable, View } from "react-native";
 
-import { AndroidAnchoredMenu, type AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu";
+import { AndroidAnchoredMenu, type AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu.android";
 import { EnvironmentArtwork } from "../EnvironmentArtwork";
 import { useEnvironmentIdentification } from "../../state/environmentIdentification";
-import { AndroidHeaderIconButton } from "./AndroidScreenHeader";
+import { AndroidHeaderIconButton } from "./AndroidScreenHeader.android";
 import { AppText } from "./AppText";
 import { NativeAppBar } from "./NativeAppBar.android";
 import { useControlTheme } from "./useControlTheme";

@@ -1,7 +1,7 @@
 import type { MenuView } from "@react-native-menu/menu";
 import type { ComponentProps, ReactNode } from "react";
 import type { AccessibilityProps } from "react-native";
-import type { AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu";
+import type { AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu.android";
 
 export type MenuProps = Omit<ComponentProps<typeof MenuView>, "children" | "themeVariant"> &
   Pick<AccessibilityProps, "accessible" | "accessibilityLabel" | "accessibilityRole"> & {

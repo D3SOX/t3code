@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ColorValue } from "react-native";
 import type { AppSymbolName } from "./AppSymbol";
-import type { AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu";
+import type { AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu.android";
 
 export interface AppBarAction {
   readonly accessibilityLabel: string;

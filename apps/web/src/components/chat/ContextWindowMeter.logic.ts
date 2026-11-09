@@ -1,3 +1,4 @@
+import { formatContextWindowCompactionMessage as formatCompactionMessage } from "./compaction.logic";
 import type { ModelSelection, ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import {
   resolveSelectableProviderInstanceEntry,
@@ -54,12 +55,9 @@ export function formatContextWindowCompactionMessage(
   modelDisplayName: string | null | undefined,
   autoCompactThreshold?: number | null,
 ): string {
-  if (typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) {
-    return `Compacts automatically at about ${autoCompactThreshold.toLocaleString("en-US")} tokens.`;
-  }
-  return modelDisplayName
-    ? `Context for ${modelDisplayName} compacts automatically when needed.`
-    : "Context compacts automatically when needed.";
+  if (!(typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) && modelDisplayName)
+    return `Context for ${modelDisplayName} compacts automatically when needed.`;
+  return formatCompactionMessage(autoCompactThreshold);
 }
 
 export function shouldReserveContextWindowMeter(input: {

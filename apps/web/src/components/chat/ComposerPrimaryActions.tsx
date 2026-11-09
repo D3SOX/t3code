@@ -1,4 +1,4 @@
-import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
+import { memo, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, Minimize2Icon, PlayIcon } from "lucide-react";
 import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -21,6 +21,8 @@ interface PendingActionState {
   isComplete: boolean;
 }
 interface ComposerPrimaryActionsProps {
+  /** Footer controls (dictation) that always sit right before the primary button. */
+  children?: ReactNode;
   compact: boolean;
   canOperateThread: boolean;
   pendingAction: PendingActionState | null;
@@ -75,6 +77,7 @@ const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
 };
 export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
+  children,
   compact,
   canOperateThread,
   pendingAction,
@@ -182,6 +185,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             </Button>
           )
         ) : null}
+        {children}
         <button
           type="submit"
           className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
@@ -210,64 +214,78 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   if (!isInterruptBusy && showPlanFollowUpPrompt && (promptHasText || !canResume)) {
     if (promptHasText) {
       return (
-        <button
-          type="submit"
-          className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
-          {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-        >
-          {isSendBusy ? "Sending..." : "Refine"}
-        </button>
+        <>
+          {children}
+          <button
+            type="submit"
+            className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+            {...pointerFocusProps}
+            disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
+          >
+            {isSendBusy ? "Sending..." : "Refine"}
+          </button>
+        </>
       );
     }
     return (
-      <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
-        <button
-          type="submit"
-          className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
-          {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-        >
-          {isSendBusy ? "Sending..." : "Implement"}
-        </button>
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                type="button"
-                className={cn(
-                  messageActionPillClassName,
-                  "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
-                )}
-                aria-label="Implementation actions"
-                onMouseDown={
-                  preserveComposerFocusOnPointerDown ? (event) => event.preventDefault() : undefined
-                }
-                disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-              />
-            }
+      <>
+        {children}
+        <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
+          <button
+            type="submit"
+            className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
+            {...pointerFocusProps}
+            disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
           >
-            <ChevronDownIcon className="size-3.5" />
-          </MenuTrigger>
-          <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
-            <MenuItem
-              disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
-              onClick={() => {
-                if (canOperateThread) onImplementPlanInNewThread();
-              }}
+            {isSendBusy ? "Sending..." : "Implement"}
+          </button>
+          <Menu>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  className={cn(
+                    messageActionPillClassName,
+                    "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
+                  )}
+                  aria-label="Implementation actions"
+                  onMouseDown={
+                    preserveComposerFocusOnPointerDown
+                      ? (event) => event.preventDefault()
+                      : undefined
+                  }
+                  disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
+                />
+              }
             >
-              Implement in a new thread
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-      </div>
+              <ChevronDownIcon className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
+              <MenuItem
+                disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
+                onClick={() => {
+                  if (canOperateThread) onImplementPlanInNewThread();
+                }}
+              >
+                Implement in a new thread
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+        </div>
+      </>
     );
   }
   if (
     isInterruptBusy ||
     (canInterrupt && !hasSendableContent && !isEditingQueuedMessage && !isSendBusy)
   ) {
-    return renderStopGenerationButton(false);
+    return (
+      <>
+        {" "}
+        {children}
+        {renderStopGenerationButton(false)}{" "}
+      </>
+    );
   }
   const showResume = canResume && !hasSendableContent && !isEditingQueuedMessage;
   const compactTokens =
@@ -359,7 +377,15 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </TooltipPopup>
     </Tooltip>
   );
-  if (compactTokens === null) return submit;
+  if (compactTokens === null) {
+    return (
+      <>
+        {children}
+        {submit}
+      </>
+    );
+  }
+
   return (
     <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
       <Tooltip>
@@ -391,6 +417,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <div>{keepFullHistory ? "Click to compact first" : "Click to keep full history"}</div>
         </TooltipPopup>
       </Tooltip>
+      {children}
       {submit}
     </div>
   );
