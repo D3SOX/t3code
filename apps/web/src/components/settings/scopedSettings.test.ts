@@ -314,12 +314,16 @@ describe("scoped settings writes", () => {
     await persistScopedSettingsPatch(
       planScopedSettingsPatch(named, environments, {
         diffIgnoreWhitespace: false,
+        defaultScratchEnvironmentId: server.environmentId,
         enableProviderUpdateChecks: false,
       }),
       persistServer,
       persistClient,
     );
-    expect(persistClient).toHaveBeenCalledExactlyOnceWith({ diffIgnoreWhitespace: false });
+    expect(persistClient).toHaveBeenCalledExactlyOnceWith({
+      diffIgnoreWhitespace: false,
+      defaultScratchEnvironmentId: server.environmentId,
+    });
     expect(persistServer).toHaveBeenCalledExactlyOnceWith({
       environmentId: server.environmentId,
       input: { patch: { enableProviderUpdateChecks: false } },

@@ -32,6 +32,7 @@ export interface QueuedThreadRun {
 }
 
 export interface ThreadQueueWorkflowState {
+  readonly canReorder: boolean;
   readonly activeRun: Run | null;
   readonly queuedRuns: ReadonlyArray<QueuedThreadRun>;
   readonly isHeld: boolean;
@@ -164,16 +165,20 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
   return {
     activeRun,
     queuedRuns,
-    isHeld: projection.runs.some((run) => run.status === "queued" && run.queueHeld === true),
+    isHeld: projection.runs.some(
+      (run) => run.status === "queued" && (run.queueHeld === true || run.queueEditing === true),
+    ),
+    canReorder: true,
     canSendNow:
       activeRun === null &&
       projection.thread.archivedAt == null &&
       projection.thread.deletedAt == null,
     canPromoteToSteer:
-      promoteSkipsCompaction ||
-      (hasSteerableProviderTurn &&
-        (capabilities?.supportsActiveSteering === true ||
-          capabilities?.supportsSteeringByInterruptRestart === true)),
+      !projection.runs.some((run) => run.status === "queued" && run.queueEditing === true) &&
+      (promoteSkipsCompaction ||
+        (hasSteerableProviderTurn &&
+          (capabilities?.supportsActiveSteering === true ||
+            capabilities?.supportsSteeringByInterruptRestart === true))),
     promoteSkipsCompaction,
   };
 }

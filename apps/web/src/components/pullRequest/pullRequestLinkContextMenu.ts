@@ -9,27 +9,32 @@ import { readLocalApi } from "~/localApi";
 
 import { toastManager } from "../ui/toast";
 
-export type PullRequestLinkContextMenuAction = "copy-link" | "open-external";
+export type PullRequestLinkContextMenuAction = "copy-link" | "open-app" | "open-external";
 
 export const openOnHostLabel = (host: SourceControlDefinition): string =>
   host === UNKNOWN_SOURCE_CONTROL_CLIENT ? "Open on host" : `Open on ${host.label}`;
 
-function pullRequestLinkContextMenuItems(
-  openLabel: string,
+/** Keep both explicit destinations available regardless of the saved click preference. */
+export function pullRequestLinkContextMenuItems(
+  openLabel = "Open in system browser",
 ): readonly ContextMenuItem<PullRequestLinkContextMenuAction>[] {
   return [
-    { id: "copy-link", label: "Copy link", icon: "copy" },
+    { id: "open-app", label: "Open in T3 Code" },
     { id: "open-external", label: openLabel },
+    { id: "copy-link", label: "Copy link", icon: "copy" },
   ];
 }
 
+/** Own the context menu on change-request numbers so native edit menus do not cover link actions. */
 export async function showPullRequestLinkContextMenu({
   url,
+  openInApp,
   openLabel,
   position,
 }: {
   readonly url: string;
-  readonly openLabel: string;
+  readonly openInApp: () => void | Promise<void>;
+  readonly openLabel?: string;
   readonly position: { readonly x: number; readonly y: number };
 }): Promise<void> {
   const api = readLocalApi();
@@ -38,10 +43,13 @@ export async function showPullRequestLinkContextMenu({
   try {
     action = await api.contextMenu.show(pullRequestLinkContextMenuItems(openLabel), position);
   } catch {
+    // A menu that could not be shown has already cost the reader their right-click; there is
+    // nothing to say about it that a second popup would not make worse.
     return;
   }
   try {
-    if (action === "copy-link") await writeTextToClipboard(url, "link");
+    if (action === "open-app") await openInApp();
+    else if (action === "copy-link") await writeTextToClipboard(url, "link");
     else if (action === "open-external") await api.shell.openExternal(url);
   } catch {
     toastManager.add({

@@ -19,6 +19,7 @@ import {
   SERVICE_ENV_FILE,
   SERVICE_LAUNCHER_PROTOCOL,
   SERVICE_RESTART_PENDING_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   serviceStateHasPendingUpdate,
 } from "./serviceProtocol.ts";
 
@@ -112,6 +113,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
   yield* fs.writeFileString(runtime.sentinelPath, "1.2.3\n");
 
   const commands: string[] = [];
+  const realRunner = yield* ProcessRunner.make();
   const invocations: ProcessRunner.ProcessRunInput[] = [];
   const timeouts = new Map<string, unknown>();
   const control: {
@@ -120,6 +122,8 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     linger: string;
     enabled: boolean;
     active: boolean;
+    executeLauncher?: boolean;
+    onStop?: Effect.Effect<void>;
   } = {
     failCommand: undefined,
     linger: "yes",
@@ -134,6 +138,9 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       commands.push(command);
       invocations.push(input);
       timeouts.set(command, input.timeout);
+      if (control.executeLauncher && input.command === desktopLauncherPath) {
+        return yield* realRunner.run(input);
+      }
       const failed = command === control.failCommand;
       if (!failed && command === "loginctl enable-linger --no-ask-password 501")
         control.linger = "yes";
@@ -141,6 +148,9 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       if (!failed && command === "systemctl --user restart t3code.service") control.active = true;
       // A timed-out stop may still stop the service.
       if (command === "systemctl --user stop t3code.service") control.active = false;
+      if (command === "systemctl --user stop t3code.service" && control.onStop) {
+        yield* control.onStop;
+      }
       if (
         control.stateAfterStop !== undefined &&
         (command === "systemctl --user stop t3code.service" ||
@@ -161,7 +171,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
                   "/etc/systemd/user",
                 ],
               })
-            : input.args[0] === "--version"
+            : input.args.at(-1) === "--version"
               ? `t3 v${/versions\/([^/]+)\//.exec(input.command)?.[1] ?? "1.2.3"}\n`
               : input.command === "loginctl" && input.args[0] === "show-user"
                 ? `${control.linger}\n`
@@ -186,23 +196,47 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       };
     }),
   });
+  const desktopExecPath = path.join(home, "T3 Code", "t3code");
+  const defaultDesktopEntryPath = path.join(
+    home,
+    "T3 Code",
+    "resources",
+    "app.asar",
+    "dist",
+    "bin.mjs",
+  );
+  const desktopLauncherPath = path.join(baseDir, "bin", "t3");
   const makeService = (
     environmentPath: string | undefined = installerPath,
     cliVersion = "1.2.3",
     serviceBaseDir = baseDir,
+    bundledCli = false,
+    desktopEntryPath = defaultDesktopEntryPath,
     insideService = false,
     hostExecPath = "/usr/bin/t3",
   ) =>
     Effect.gen(function* () {
       const paths = pinnedRuntimePaths(path, serviceBaseDir, cliVersion, platform);
-      yield* fs.makeDirectory(path.dirname(paths.entryPath), { recursive: true });
-      yield* fs.writeFileString(paths.entryPath, "#!/bin/sh\n");
-      yield* fs.writeFileString(paths.sentinelPath, `${cliVersion}\n`);
+      if (!bundledCli) {
+        yield* fs.makeDirectory(path.dirname(paths.entryPath), { recursive: true });
+        yield* fs.writeFileString(paths.entryPath, "#!/bin/sh\n");
+        yield* fs.writeFileString(paths.sentinelPath, `${cliVersion}\n`);
+      }
+      const execPath = bundledCli ? desktopExecPath : "/usr/bin/t3";
+      if (bundledCli) {
+        yield* fs.makeDirectory(path.dirname(execPath), { recursive: true });
+        yield* fs.makeDirectory(path.dirname(desktopEntryPath), { recursive: true });
+        yield* fs.writeFileString(execPath, "");
+        yield* fs.writeFileString(desktopEntryPath, "");
+        yield* fs.makeDirectory(path.dirname(desktopLauncherPath), { recursive: true });
+        yield* fs.writeFileString(desktopLauncherPath, "#!/bin/sh\n");
+      }
       return yield* BootService.make({
         baseDir: serviceBaseDir,
         logsDir: path.join(serviceBaseDir, "userdata", "logs"),
         cliVersion,
-        host: { execPath: hostExecPath },
+        preferBundledCli: true,
+        host: { execPath: bundledCli ? execPath : hostExecPath },
       });
     }).pipe(
       Effect.provideService(ProcessRunner.ProcessRunner, runner),
@@ -212,6 +246,10 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
           Layer.succeed(HostProcess.UserId, 501),
           Layer.succeed(HostProcess.ExecutablePath, hostExecPath),
           Layer.succeed(
+            HostProcess.Arguments,
+            bundledCli ? [desktopExecPath, desktopEntryPath] : ["/usr/bin/t3"],
+          ),
+          Layer.succeed(
             HttpClient.HttpClient,
             HttpClient.make(() => Effect.die("no release download expected")),
           ),
@@ -219,6 +257,8 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
             ConfigProvider.fromEnv({
               env: {
                 HOME: home,
+                ELECTRON_RUN_AS_NODE: "1",
+                T3CODE_CLI_PATH: desktopLauncherPath,
                 ...(xdgConfigHome === undefined ? {} : { XDG_CONFIG_HOME: xdgConfigHome }),
                 ...(environmentPath === undefined || environmentPath === ""
                   ? {}
@@ -243,10 +283,170 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     timeouts,
     control,
     runtime,
+    desktopLauncherPath,
   };
 });
 
 it.layer(NodeServices.layer)("boot service install", (it) => {
+  it.effect("keeps a restart intent visible during service repair and restart only", () =>
+    Effect.gen(function* () {
+      const { service, fs, baseDir, control } = yield* makeHarness();
+      yield* service.install();
+      const intentPath = `${baseDir}/runtime/${SERVICE_RESTART_INTENT_FILE}`;
+      let stops = 0;
+      control.onStop = Effect.gen(function* () {
+        expect(yield* fs.exists(intentPath).pipe(Effect.orDie)).toBe(true);
+        stops += 1;
+      });
+      yield* service.install();
+      expect(yield* fs.exists(intentPath)).toBe(false);
+      yield* service.restart;
+      expect(yield* fs.exists(intentPath)).toBe(false);
+      expect(stops).toBe(2);
+      control.onStop = Effect.gen(function* () {
+        expect(yield* fs.exists(intentPath).pipe(Effect.orDie)).toBe(false);
+      });
+      yield* service.uninstall;
+    }),
+  );
+
+  it.effect("runs the installed launcher and follows its replacement on restart", () =>
+    Effect.gen(function* () {
+      const { makeService, fs, runtime, desktopLauncherPath, control } = yield* makeHarness();
+      const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
+      yield* fs.remove(runtime.versionDir, { recursive: true });
+      const launcher = (build: string) =>
+        `#!/bin/sh\nif [ "$1" = --version ]; then printf 't3 v1.2.3\\n'; exit 0; fi\nprintf '%s\\n' '${build}' "$T3CODE_HOME" "$@"\n`;
+      yield* fs.writeFileString(desktopLauncherPath, launcher("installed-fork"));
+      yield* fs.chmod(desktopLauncherPath, 0o755);
+      control.executeLauncher = true;
+      const plan = yield* desktop.install();
+      const runner = yield* ProcessRunner.make();
+      const run = runner.run({
+        command: plan.program[0]!,
+        args: plan.program.slice(1),
+        env: { T3CODE_HOME: plan.baseDir },
+      });
+      expect((yield* run).stdout).toBe(`installed-fork\n${plan.baseDir}\nserve\n`);
+      yield* fs.writeFileString(desktopLauncherPath, launcher("updated-fork"));
+      yield* desktop.restart;
+      expect((yield* run).stdout).toBe(`updated-fork\n${plan.baseDir}\nserve\n`);
+      expect(yield* fs.exists(runtime.versionDir)).toBe(false);
+    }),
+  );
+
+  it.effect("keeps temporary AppImage mount paths out of the installed service", () =>
+    Effect.gen(function* () {
+      const { makeService, fs, desktopLauncherPath } = yield* makeHarness();
+      const mount = yield* fs.makeTempDirectoryScoped({ prefix: ".mount-T3-test-" });
+      const entry = `${mount}/resources/app.asar/apps/server/dist/bin.mjs`;
+      const desktop = yield* makeService(undefined, "1.2.3", undefined, true, entry);
+      const plan = yield* desktop.install();
+      yield* fs.remove(`${mount}/resources`, { recursive: true });
+      expect(plan.program).toEqual([desktopLauncherPath, "serve"]);
+      expect(yield* fs.readFileString(plan.unitPath)).not.toContain(mount);
+      expect((yield* desktop.status).current).toBe(true);
+    }),
+  );
+
+  it.effect("preserves connection overrides and user settings during desktop service repair", () =>
+    Effect.gen(function* () {
+      const { service, makeService, fs } = yield* makeHarness();
+      const plan = yield* service.install();
+      const overridePath = `${plan.unitPath}.d/connection.conf`;
+      const override =
+        "[Service]\nEnvironment=T3CODE_PORT=5733\nEnvironment=T3CODE_HOST=127.0.0.1\n";
+      const settingsPath = `${plan.baseDir}/userdata/settings.json`;
+      const settings = '{"saved":"connection configuration"}\n';
+      yield* fs.makeDirectory(`${plan.unitPath}.d`, { recursive: true });
+      yield* fs.makeDirectory(`${plan.baseDir}/userdata`, { recursive: true });
+      yield* fs.writeFileString(overridePath, override);
+      yield* fs.writeFileString(settingsPath, settings);
+      const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
+      yield* desktop.install();
+      yield* desktop.restart;
+      expect(yield* fs.readFileString(overridePath)).toBe(override);
+      expect(yield* fs.readFileString(settingsPath)).toBe(settings);
+    }),
+  );
+
+  it.effect.each(["linux", "darwin"] as const)(
+    "repairs a same-version downloaded service to use the desktop launcher on %s",
+    (platform) =>
+      Effect.gen(function* () {
+        const { service, makeService, fs, runtime, desktopLauncherPath } =
+          yield* makeHarness(platform);
+        const original = yield* service.install();
+        expect(original.program).toEqual([runtime.entryPath, "__service-launcher"]);
+        const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
+        expect((yield* desktop.status).current).toBe(false);
+        const repaired = yield* desktop.install();
+        expect(repaired.program).toEqual([desktopLauncherPath, "serve"]);
+        expect(yield* fs.readFileString(repaired.unitPath)).not.toContain(runtime.entryPath);
+        expect((yield* desktop.status).current).toBe(true);
+        yield* desktop.restart;
+        expect((yield* desktop.status).current).toBe(true);
+      }),
+  );
+
+  it.effect(
+    "follows desktop updates without requiring a downloaded runtime or stale version state",
+    () =>
+      Effect.gen(function* () {
+        const { makeService, fs, runtime, desktopLauncherPath } = yield* makeHarness();
+        const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
+        const plan = yield* desktop.install();
+        yield* fs.remove(runtime.versionDir, { recursive: true });
+        yield* fs.writeFileString(desktopLauncherPath, "#!/bin/sh\n# updated app\n");
+        const updated = yield* makeService(undefined, "1.2.4", undefined, true);
+        expect(yield* updated.status).toMatchObject({ current: true, installedVersion: "1.2.4" });
+        yield* updated.restart;
+        expect((yield* updated.status).current).toBe(true);
+        expect(yield* fs.readFileString(plan.unitPath)).not.toContain("app.asar");
+      }),
+  );
+
+  it.effect("does not replace a broken desktop launcher with a downloaded release", () =>
+    Effect.gen(function* () {
+      const { makeService, fs, commands, desktopLauncherPath } = yield* makeHarness();
+      const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
+      yield* desktop.install();
+      yield* fs.remove(desktopLauncherPath);
+      expect((yield* desktop.status).current).toBe(false);
+      commands.length = 0;
+      const error = yield* desktop.install().pipe(Effect.flip);
+      expect(error._tag).toBe("BootServiceCommandError");
+      expect(error.message).toContain("desktop CLI launcher");
+      expect(commands).not.toContain("systemctl --user stop t3code.service");
+    }),
+  );
+
+  it.effect.each(["linux", "darwin"] as const)(
+    "keeps the desktop CLI's bundled runtime on %s",
+    (platform) =>
+      Effect.gen(function* () {
+        const { makeService, fs, runtime, invocations, desktopLauncherPath } =
+          yield* makeHarness(platform);
+        const service = yield* makeService(undefined, "1.2.3", undefined, true);
+        yield* fs.remove(runtime.versionDir, { recursive: true });
+
+        const plan = yield* service.install();
+
+        expect(plan.program).toEqual([desktopLauncherPath, "serve"]);
+        expect(yield* fs.exists(runtime.versionDir)).toBe(false);
+        expect(invocations.find((input) => input.args.at(-1) === "--version")).toMatchObject({
+          command: plan.program[0],
+          args: ["--version"],
+        });
+        const unit = yield* fs.readFileString(plan.unitPath);
+        expect(unit).not.toContain("app.asar");
+        if (platform === "linux") expect(unit).toContain("KillMode=control-group");
+        expect((yield* service.status).current).toBe(true);
+        yield* service.restart;
+        expect((yield* service.status).current).toBe(true);
+      }),
+  );
+
   it.effect(
     "fails before installing files or validating a runtime when lingering needs an administrator",
     () =>
@@ -701,6 +901,45 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
     }),
   );
 
+  it.effect("restart brings the service back when activation fails", () =>
+    Effect.gen(function* () {
+      const { service, commands, control } = yield* makeHarness();
+      yield* service.install();
+      commands.length = 0;
+      control.failCommand = "systemctl --user daemon-reload";
+
+      const error = yield* service.restart.pipe(Effect.flip);
+      expect(error._tag).toBe("BootServiceCommandError");
+      expect(
+        commands.filter(
+          (command) => command.startsWith("systemctl ") && !command.includes("show-environment"),
+        ),
+      ).toEqual([
+        "systemctl --user stop t3code.service",
+        "systemctl --user daemon-reload",
+        "systemctl --user restart t3code.service",
+      ]);
+    }),
+  );
+
+  it.effect("repairs a desktop service from inside it without a downloaded runtime", () =>
+    Effect.gen(function* () {
+      const { service, makeService, fs, runtime, invocations, desktopLauncherPath } =
+        yield* makeHarness();
+      const plan = yield* service.install();
+      const originalUnit = yield* fs.readFileString(plan.unitPath);
+      yield* fs.remove(runtime.versionDir, { recursive: true });
+      const inside = yield* makeService(undefined, "1.2.3", undefined, true, undefined, true);
+      invocations.length = 0;
+      expect((yield* inside.install()).handedOff).toBe(true);
+      const handoff = invocations.find(({ command }) => command === "systemd-run");
+      expect(handoff?.args).toContain(desktopLauncherPath);
+      expect(handoff?.args).not.toContain(runtime.entryPath);
+      expect(yield* fs.readFileString(plan.unitPath)).toBe(originalUnit);
+      expect(yield* fs.exists(runtime.versionDir)).toBe(false);
+    }),
+  );
+
   it.effect("hands the whole install to systemd without changing the running service", () =>
     Effect.gen(function* () {
       const { fs, commands, invocations, control, makeService } = yield* makeHarness();
@@ -712,7 +951,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       const statePath = path.join(baseDir, "runtime", "service-state.json");
       const state = yield* fs.readFileString(statePath);
       const unit = yield* fs.readFileString(plan.unitPath);
-      const inside = yield* makeService(undefined, "1.2.4", baseDir, true);
+      const inside = yield* makeService(undefined, "1.2.4", baseDir, false, undefined, true);
       commands.length = 0;
       invocations.length = 0;
 
@@ -758,8 +997,9 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         const plan = yield* service.install();
         const state = yield* fs.readFileString(statePath);
         const marker = `${plan.baseDir}/runtime/${SERVICE_RESTART_PENDING_FILE}`;
+        const intent = `${plan.baseDir}/runtime/${SERVICE_RESTART_INTENT_FILE}`;
         yield* fs.writeFileString(marker, "1.2.3\n");
-        const inside = yield* makeService(undefined, "1.2.3", undefined, true);
+        const inside = yield* makeService(undefined, "1.2.3", undefined, false, undefined, true);
         commands.length = 0;
         control.failCommand = "systemctl --user daemon-reload";
 
@@ -767,6 +1007,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         expect(error).toMatchObject({ _tag: "BootServiceCommandError", exitCode: 1 });
         expect(commands).toEqual(["systemctl --user daemon-reload"]);
         expect(control.active).toBe(true);
+        expect(yield* fs.exists(intent)).toBe(false);
 
         control.failCommand = undefined;
         commands.length = 0;
@@ -777,6 +1018,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
           "systemctl --user restart --no-block t3code.service",
         ]);
         expect(outcome).toBe("queued");
+        expect(yield* fs.exists(intent)).toBe(true);
         expect(yield* fs.readFileString(statePath)).toBe(state);
         expect(yield* fs.readFileString(marker)).toBe("1.2.3\n");
       }),

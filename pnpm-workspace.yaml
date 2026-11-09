@@ -89,7 +89,7 @@ catalog:
   mdast-util-directive: 3.1.0
   micromark-extension-directive: 4.0.0
   micromark-util-character: 2.1.1
-  micromark-util-types: 2.0.2
+  micromark-util-types: 2.0.3
   rehype-raw: 7.0.0
   rehype-sanitize: 6.0.0
   remark-breaks: 4.0.0
@@ -99,6 +99,11 @@ catalog:
   unified: 11.0.5
 
 overrides:
+  prosemirror-view: 1.42.9
+  prosemirror-model: 1.25.12
+  prosemirror-transform: 1.12.4
+  mdast-util-from-markdown: 2.1.0
+  micromark-util-types: "catalog:"
   # Pin every patched package, including transitive dependencies, so lockfile-free
   # release installs cannot drift past the patch. Update these with patchedDependencies.
   react-native-image-viewing: 0.2.2
@@ -109,6 +114,7 @@ overrides:
   alchemy: "catalog:"
   expo-audio: 58.0.9
   expo-network: 58.0.3
+  expo-observe: 58.0.16
   "@clerk/expo-native-components": 0.4.0
   expo-sharing: 58.0.19
   expo-widgets: 58.0.20
@@ -263,6 +269,7 @@ patchedDependencies:
   # Observe the owned host exit independently of descendants retaining its stdio.
   "@muse-code/sdk@1.4.6": patches/@muse-code__sdk@1.4.6.patch
   app-builder-lib@26.16.1: patches/app-builder-lib@26.16.1.patch
+  expo-observe@58.0.16: patches/expo-observe@58.0.16.patch
   # A failed Artifacts.cached effect hangs every later caller: https://github.com/alchemy-run/alchemy/issues/2981
   alchemy@2.0.0-beta.85: patches/alchemy@2.0.0-beta.85.patch
   # Android: a marker orient other than "auto" or a number (auto-start-reverse) no longer throws.

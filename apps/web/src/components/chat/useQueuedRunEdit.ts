@@ -1,8 +1,13 @@
+import { readPreparedConnection } from "../../state/session";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { prepareRevertedMessageAttachments } from "../ChatView.logic";
+import { randomUUID } from "../../lib/utils";
 import { useAtomValue } from "@effect/atom-react";
 import {
   makeQueuedRunEditStore,
   makeQueuedRunsAtom,
 } from "@t3tools/client-runtime/queued-run-edit";
+import { useEffect, useRef, useState } from "react";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -54,7 +59,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import type { ChatComposerHandle } from "./ChatComposer";
 import { fileAttachmentCapabilityBlockReason } from "./composerAttachmentFiles";
-import { prepareQueuedEditAttachments, recoverQueuedMessageEdit } from "./queuedMessageEdit";
+import {
+  prepareQueuedEditAttachments,
+  recoverQueuedMessageEdit,
+  restoreQueuedMessage,
+} from "./queuedMessageEdit";
 import type { EditQueuedRunRequest } from "./QueuedRunsControl";
 
 interface EditingQueuedRun {
@@ -185,6 +194,10 @@ export function useQueuedRunEdit(input: {
   readonly serverProjection: ThreadStructure | null;
   readonly promptRef: { current: string };
   readonly composerRef: RefObject<ChatComposerHandle | null>;
+  readonly createAttachmentAssetUrl: Parameters<
+    typeof prepareRevertedMessageAttachments
+  >[0]["createAssetUrl"];
+  readonly setThreadError: (threadId: ThreadId, error: string | null) => void;
 }) {
   const {
     environmentId,
@@ -194,12 +207,26 @@ export function useQueuedRunEdit(input: {
     serverProjection,
     promptRef,
     composerRef,
+    createAttachmentAssetUrl,
+    setThreadError,
   } = input;
   const editQueuedRunCommand = useEditQueuedRunCommand();
+  const cancelQueuedRunCommand = useAtomCommand(threadEnvironment.cancelQueuedRun, {
+    reportFailure: false,
+  });
+  const currentThreadIdRef = useRef(activeThreadId);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publishes the committed thread for asynchronous queue commands to reject navigation races.
+  useEffect(() => {
+    currentThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+  const queuedEditTarget = (runId: RunId) => queuedEditDraftTarget(routeThreadRef, runId);
+  const saveInFlightRef = useRef(false);
+  const [isPausing, setIsSaving] = useState(false);
   const editKey = scopedThreadKey(routeThreadRef);
   const storedEdit = useAtomValue(queuedRunEdits.atom)[editKey] ?? null;
   const editing = activeThreadId === null ? null : storedEdit;
-  const isSaving = useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const saving = useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const isSaving = isPausing || saving;
   const draftTarget =
     editing === null ? threadDraftTarget : queuedEditDraftTarget(routeThreadRef, editing.runId);
 
@@ -226,14 +253,47 @@ export function useQueuedRunEdit(input: {
       .getState()
       .clearComposerContent(queuedEditDraftTarget(routeThreadRef, runId));
 
-  const beginEdit = useStableCallback((request: EditQueuedRunRequest) => {
-    if (activeThreadId === null) return;
-    if (editing !== null && editing.runId !== request.runId) clearEditDraft(editing.runId);
+  const beginEditingQueuedRun = async (request: EditQueuedRunRequest) => {
+    if (activeThreadId === null || (editing !== null && !isSaving) || saveInFlightRef.current)
+      return;
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    const result = await editQueuedRunCommand({
+      environmentId,
+      input: {
+        threadId: activeThreadId,
+        runId: request.runId,
+        text: request.text,
+        editing: true,
+      },
+    });
+    saveInFlightRef.current = false;
+    setIsSaving(false);
+    if (result._tag === "Failure") {
+      setThreadError(
+        activeThreadId,
+        "Could not pause the queue for editing. The message may have already started.",
+      );
+      return;
+    }
+    if (currentThreadIdRef.current !== activeThreadId) {
+      await editQueuedRunCommand({
+        environmentId,
+        input: {
+          threadId: activeThreadId,
+          runId: request.runId,
+          text: request.text,
+          editing: false,
+        },
+      });
+      return;
+    }
     const target = queuedEditDraftTarget(routeThreadRef, request.runId);
     const text = stripAttachmentOnlyBootstrapPrompt(request.text);
     const store = useComposerDraftStore.getState();
-    store.clearComposerContent(target);
-    store.setPrompt(target, text);
+    if (storedEdit?.runId !== request.runId || !store.getComposerDraft(target)) {
+      store.setPrompt(target, text);
+    }
     const threadRef = { environmentId, threadId: activeThreadId };
     queuedRunEdits.begin(
       editKey,
@@ -285,13 +345,133 @@ export function useQueuedRunEdit(input: {
       },
     );
     focusComposerSoon();
-  });
-  const cancelEdit = useStableCallback(() => {
-    if (editing === null) return;
-    clearEditDraft(editing.runId);
+  };
+  const beginEdit = useStableCallback(beginEditingQueuedRun);
+  const cancelEditingQueuedRun = async () => {
+    if (editing === null || saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
+    const result = await editQueuedRunCommand({
+      environmentId,
+      input: {
+        threadId: editing.threadId,
+        runId: editing.runId,
+        text: editing.originalText,
+        editing: false,
+      },
+    });
+    saveInFlightRef.current = false;
+    if (result._tag === "Failure") {
+      setThreadError(editing.threadId, "Could not cancel the edit. Try again after reconnecting.");
+      return;
+    }
+    useComposerDraftStore.getState().clearComposerContent(queuedEditTarget(editing.runId));
     queuedRunEdits.end(editKey);
     focusComposerSoon();
-  });
+  };
+  const cancelEdit = useStableCallback(cancelEditingQueuedRun);
+  const removeQueuedRun = async (request: EditQueuedRunRequest) => {
+    if (activeThreadId === null || editing !== null || saveInFlightRef.current) return;
+    const input = {
+      threadId: activeThreadId,
+      runId: request.runId,
+      text: request.text,
+    };
+    const paused = await editQueuedRunCommand({
+      environmentId,
+      input: {
+        ...input,
+        editing: true,
+      },
+    });
+    if (paused._tag === "Failure") return;
+    await (async () => {
+      const connection = readPreparedConnection(environmentId);
+      if (!connection) throw new Error("The environment is not connected.");
+      const files = await prepareRevertedMessageAttachments({
+        message: {
+          attachments: request.attachments,
+        },
+        environmentId,
+        httpBaseUrl: connection.httpBaseUrl,
+        createAssetUrl: createAttachmentAssetUrl,
+      });
+      const draft = useComposerDraftStore.getState().getComposerDraft(threadDraftTarget);
+      if (
+        (draft?.images.length ?? 0) + (draft?.files.length ?? 0) + files.length >
+        PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+      )
+        throw new Error("Make room for this message's attachments in the composer first.");
+      const result = await cancelQueuedRunCommand({
+        environmentId,
+        input,
+      });
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      const images: ComposerImageAttachment[] = [];
+      const restoredFiles: ComposerFileAttachment[] = [];
+      files.forEach((file, index) => {
+        const original = request.attachments[index]!;
+        const attachment = {
+          id: randomUUID(),
+          name: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          file,
+        };
+        if (original.type === "image")
+          images.push({
+            ...attachment,
+            type: "image",
+            previewUrl: URL.createObjectURL(file),
+            ...("source" in original
+              ? {
+                  source: original.source,
+                }
+              : {}),
+          });
+        else
+          restoredFiles.push({
+            ...attachment,
+            type: "file",
+            ...(original.type === "file" && "source" in original
+              ? {
+                  source: original.source,
+                }
+              : {}),
+          });
+      });
+      const prompt = restoreQueuedMessage({
+        threadId: activeThreadId,
+        target: threadDraftTarget,
+        text: request.text,
+        context: serverProjection?.messages.find((message) => message.id === request.messageId)
+          ?.context,
+        images,
+        files: restoredFiles,
+      });
+      if (currentThreadIdRef.current === activeThreadId) {
+        promptRef.current = prompt;
+        composerRef.current?.resetCursorState({
+          prompt,
+          cursor: prompt.length,
+        });
+        focusComposerSoon();
+      }
+    })().catch(async (error) => {
+      await editQueuedRunCommand({
+        environmentId,
+        input: {
+          ...input,
+          editing: false,
+        },
+      });
+      setThreadError(
+        activeThreadId,
+        error instanceof Error
+          ? error.message
+          : "Could not return the queued message to the composer.",
+      );
+    });
+  };
   const removeEditingAttachment = useStableCallback((attachmentId: string) => {
     queuedRunEdits.update(editKey, (current) => ({
       ...current,
@@ -353,6 +533,7 @@ export function useQueuedRunEdit(input: {
     draftTarget,
     editingAttachments,
     beginEdit,
+    removeQueuedRun,
     cancelEdit,
     removeEditingAttachment,
     saveEdit,

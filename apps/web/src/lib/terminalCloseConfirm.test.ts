@@ -15,6 +15,9 @@ const { confirmMock, readLocalApiMock } = vi.hoisted(() => {
 vi.mock("~/localApi", () => ({
   readLocalApi: () => readLocalApiMock(),
 }));
+vi.mock("../hooks/useSettings", () => ({
+  getClientSettings: () => ({ confirmTerminalClose: true }),
+}));
 
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "./terminalCloseConfirm";
 

@@ -18,7 +18,6 @@ type ProviderIconProps = {
   readonly iconUrl?: string | null | undefined;
   readonly size?: number;
 };
-
 function AcpRegistryFallbackIcon(props: { readonly color: string; readonly size: number }) {
   return (
     <Svg width={props.size} height={props.size} viewBox="0 0 576 220" fill="none">
@@ -29,7 +28,6 @@ function AcpRegistryFallbackIcon(props: { readonly color: string; readonly size:
     </Svg>
   );
 }
-
 function AcpRegistryProviderIcon(props: {
   readonly color: string;
   readonly iconUrl: string | null | undefined;
@@ -42,9 +40,13 @@ function AcpRegistryProviderIcon(props: {
   } | null>(null);
   const currentImage = image?.iconUrl === iconUrl ? image : null;
   const loaded = currentImage?.status === "loaded";
-
   return (
-    <View style={{ width: props.size, height: props.size }}>
+    <View
+      style={{
+        width: props.size,
+        height: props.size,
+      }}
+    >
       {!loaded ? <AcpRegistryFallbackIcon color={props.color} size={props.size} /> : null}
       {iconUrl !== null && currentImage?.status !== "failed" ? (
         <Image
@@ -52,7 +54,9 @@ function AcpRegistryProviderIcon(props: {
           cachePolicy="memory-disk"
           contentFit="contain"
           recyclingKey={iconUrl}
-          source={{ uri: iconUrl }}
+          source={{
+            uri: iconUrl,
+          }}
           style={{
             position: "absolute",
             width: props.size,
@@ -60,26 +64,37 @@ function AcpRegistryProviderIcon(props: {
             opacity: loaded ? 1 : 0,
             tintColor: props.color,
           }}
-          onError={() => setImage({ iconUrl, status: "failed" })}
-          onLoad={() => setImage({ iconUrl, status: "loaded" })}
+          onError={() =>
+            setImage({
+              iconUrl,
+              status: "failed",
+            })
+          }
+          onLoad={() =>
+            setImage({
+              iconUrl,
+              status: "loaded",
+            })
+          }
         />
       ) : null}
     </View>
   );
 }
-
 export function ProviderIcon(props: ProviderIconProps) {
   const { themeAppearance } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
   const gradientId = useId();
   const size = props.size ?? 16;
   const mono = isDarkMode ? "#e5e5e5" : "#171717";
-
   if (props.provider?.trim().toLowerCase() === "antigravity") {
     return (
       <Image
         source={require("../../assets/antigravity.png")}
-        style={{ width: size, height: size }}
+        style={{
+          width: size,
+          height: size,
+        }}
         contentFit="contain"
       />
     );
@@ -87,7 +102,6 @@ export function ProviderIcon(props: ProviderIconProps) {
   if (props.provider === "acpRegistry") {
     return <AcpRegistryProviderIcon color={mono} iconUrl={props.iconUrl} size={size} />;
   }
-
   if (props.provider === "claudeAgent") {
     return (
       <Svg width={size} height={size} viewBox="0 0 256 257" fill="none">
@@ -140,7 +154,6 @@ export function ProviderIcon(props: ProviderIconProps) {
       </Svg>
     );
   }
-
   return (
     <Svg width={size} height={size} viewBox="100 100 411 411" fill="none">
       <Path
@@ -152,7 +165,6 @@ export function ProviderIcon(props: ProviderIconProps) {
     </Svg>
   );
 }
-
 export function ProviderInstanceIcon(props: {
   readonly iconUrl?: string | null;
   readonly provider: string | null | undefined;
@@ -164,15 +176,29 @@ export function ProviderInstanceIcon(props: {
 }) {
   const accentColor = normalizeProviderAccentColor(props.accentColor);
   return (
-    <View style={{ position: "relative" }}>
-      <View style={{ opacity: 0.6 }}>
+    <View
+      style={{
+        position: "relative",
+      }}
+    >
+      <View
+        style={{
+          opacity: 0.6,
+        }}
+      >
         <ProviderIcon iconUrl={props.iconUrl} provider={props.provider} size={props.size} />
       </View>
       {props.showBadge ? (
         // An absolute badge alone is capped at icon width and clips initials.
         <View
           pointerEvents="none"
-          style={{ position: "absolute", right: -3, bottom: -3, width: 32, alignItems: "flex-end" }}
+          style={{
+            position: "absolute",
+            right: -3,
+            bottom: -3,
+            width: 32,
+            alignItems: "flex-end",
+          }}
         >
           <View
             className={cn(!accentColor && "bg-card", !props.surfaceColor && "border-screen")}
@@ -189,6 +215,7 @@ export function ProviderInstanceIcon(props: {
             }}
           >
             <Text
+              allowFontScaling={false}
               className={accentColor ? undefined : "text-foreground-muted"}
               style={{
                 fontSize: 7,

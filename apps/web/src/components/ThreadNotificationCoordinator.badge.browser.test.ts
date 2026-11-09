@@ -10,7 +10,8 @@ import { stubGlobal } from "../../test/render";
 const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
-  toast: vi.fn(),
+  toast: vi.fn(() => "toast-1"),
+  closeToast: vi.fn(),
   shells: null as unknown as { set: (id: string, value: unknown) => void },
   navigate: vi.fn(),
   sound: vi.fn(),
@@ -19,7 +20,10 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock(import("./ui/toast"), async (original) => {
   const actual = await original();
-  return { ...actual, toastManager: { ...actual.toastManager, add: state.toast as never } };
+  return {
+    ...actual,
+    toastManager: { ...actual.toastManager, add: state.toast as never, close: state.closeToast },
+  };
 });
 vi.mock(import("../state/shell"), async (original) => {
   const actual = await original();

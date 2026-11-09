@@ -135,6 +135,7 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
                 accessibilityLabel: menu.title,
                 customized: icon?.endsWith(".fill") === true,
                 actions: menuActionsFromAppBarItems(menu.items),
+                renderActionIcon: menu.renderActionIcon,
                 onSelect: (id) => selectMenuItem(menu.items, id),
               }
             : undefined
@@ -150,6 +151,7 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       isAnchoredToRight
       title={menu.status ?? menu.title}
       onPressAction={({ nativeEvent }) => selectMenuItem(menu.items, nativeEvent.event)}
+      renderActionIcon={menu.renderActionIcon}
     >
       <ScreenHeaderButton accessibilityLabel={menu.title} icon={menu.icon} />
     </Menu>

@@ -9,7 +9,7 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 
-export function useRememberThreadProject(project: EnvironmentProject | null) {
+export function useRememberNewThreadProject(project: EnvironmentProject | null) {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const serverConfig = useEnvironmentServerConfig(project?.environmentId ?? null);
   const environmentId = project?.environmentId;
@@ -24,9 +24,9 @@ export function useRememberThreadProject(project: EnvironmentProject | null) {
       if (!remember || !environmentId || !projectId) return;
       const preferences = appAtomRegistry.get(mobilePreferencesAtom);
       if (!AsyncResult.isSuccess(preferences)) return;
-      const last = preferences.value.lastThreadProject;
+      const last = preferences.value.lastNewThreadProjectRef;
       if (last?.environmentId === environmentId && last.projectId === projectId) return;
-      savePreferences({ lastThreadProject: { environmentId, projectId } });
+      savePreferences({ lastNewThreadProjectRef: { environmentId, projectId } });
     }, [environmentId, projectId, remember, savePreferences]),
   );
 }

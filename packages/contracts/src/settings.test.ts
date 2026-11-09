@@ -115,6 +115,18 @@ describe("storage cleanup settings", () => {
   });
 });
 
+describe("ClientSettings pull request links", () => {
+  it("opens pull requests in the system browser by default", () => {
+    expect(decodeClientSettings({}).pullRequestLinkTarget).toBe("system");
+  });
+
+  it("round-trips the in-app preference through patches and persistence", () => {
+    const preference = { pullRequestLinkTarget: "app" as const };
+    expect(decodeClientSettingsPatch(preference)).toEqual(preference);
+    expect(encodeClientSettings(decodeClientSettings(preference))).toMatchObject(preference);
+  });
+});
+
 describe("ServerSettings usage price overrides", () => {
   const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
 
@@ -324,6 +336,46 @@ describe("ClientSettings quit confirmation", () => {
   });
 });
 
+describe("ClientSettings sidebar", () => {
+  it("shows thread branches by default and persists a compact opt-out", () => {
+    expect(decodeClientSettings({}).sidebarShowThreadBranches).toBe(true);
+    const settings = decodeClientSettings({ sidebarShowThreadBranches: false });
+    expect(decodeClientSettings(encodeClientSettings(settings)).sidebarShowThreadBranches).toBe(
+      false,
+    );
+    expect(decodeClientSettingsPatch({ sidebarShowThreadBranches: false })).toEqual({
+      sidebarShowThreadBranches: false,
+    });
+  });
+
+  it("defaults terminal confirmation off and background thread creation on", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(false);
+    expect(decodeClientSettings({}).startThreadsInBackground).toBe(true);
+    expect(decodeClientSettings({}).defaultScratchEnvironmentId).toBeNull();
+    const settings = { confirmTerminalClose: true, startThreadsInBackground: false };
+    expect(decodeClientSettingsPatch(settings)).toEqual(settings);
+    expect(decodeClientSettings(settings)).toMatchObject(settings);
+    for (const defaultScratchEnvironmentId of ["desktop", null]) {
+      const preference = { defaultScratchEnvironmentId };
+      expect(decodeClientSettingsPatch(preference)).toEqual(preference);
+      expect(encodeClientSettings(decodeClientSettings(preference))).toMatchObject(preference);
+    }
+  });
+});
+
+describe("ClientSettings follow-up behavior", () => {
+  it("defaults to sending after the next tool and accepts all three timings", () => {
+    expect(decodeClientSettings({}).followUpBehavior).toBe("next-tool");
+    for (const followUpBehavior of ["queue", "next-tool", "steer"]) {
+      expect(decodeClientSettings({ followUpBehavior }).followUpBehavior).toBe(followUpBehavior);
+      expect(decodeClientSettingsPatch({ followUpBehavior }).followUpBehavior).toBe(
+        followUpBehavior,
+      );
+    }
+    expect(() => decodeClientSettingsPatch({ followUpBehavior: "invalid" })).toThrow();
+  });
+});
+
 describe("provider enabled defaults", () => {
   it("resolves instance enabled state with explicit false winning", () => {
     const grok = ProviderDriverKind.make("grok");
@@ -371,6 +423,21 @@ describe("ServerSettings worktree defaults", () => {
 });
 
 describe("ServerSettings.sourceControlWritingStyle", () => {
+  it("enables automatic thread titles and branch names by default and accepts opt-outs", () => {
+    const settings = decodeServerSettings({});
+    expect(settings.autoGenerateThreadTitles).toBe(true);
+    expect(settings.autoGenerateBranchNames).toBe(true);
+    expect(
+      decodeServerSettingsPatch({
+        autoGenerateThreadTitles: false,
+        autoGenerateBranchNames: false,
+      }),
+    ).toEqual({
+      autoGenerateThreadTitles: false,
+      autoGenerateBranchNames: false,
+    });
+  });
+
   it.each([
     { legacy: "", mode: "repo_conventions", customInstructions: "" },
     { legacy: " \t\n ", mode: "repo_conventions", customInstructions: "" },
@@ -435,6 +502,16 @@ it("validates remote device hosts and rejects ambiguous host ids", () => {
     decodeDeviceHostSettings({ deviceHosts: [{ ...host, target: "-oProxyCommand=bad" }] }),
   ).toThrow();
   expect(() => decodeDeviceHostSettings({ deviceHosts: [{ ...host, port: 0 }] })).toThrow();
+});
+
+describe("branch naming settings", () => {
+  it("defaults existing settings to no static prefix", () => {
+    expect(decodeServerSettings({})).toMatchObject({
+      branchNamingMode: "static",
+      branchNamePrefix: "",
+      branchNameInstructions: "",
+    });
+  });
 });
 
 describe("ServerSettings project overrides across versions", () => {

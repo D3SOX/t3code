@@ -20,36 +20,43 @@ import {
   useVisibleThreadShells,
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
-
+import { useUiStateStore } from "~/uiStateStore";
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments, isReady } = useEnvironments();
-
   if (authGateState.status === "hosted-static") {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedEmptyState />;
   }
-
   return <IndexDraftLanding />;
 }
-
 function IndexDraftLanding() {
   const projects = useProjects();
   const threads = useVisibleThreadShells();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
+  const lastNewThreadProjectRef = useUiStateStore((store) => store.lastNewThreadProjectRef);
   const router = useRouter();
   // Read at effect time; this page can stay mounted while the router is already navigating away.
   const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
   const startedAttemptRef = useRef<number | null>(null);
-  const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
-
+  const [startState, setStartState] = useState({
+    failed: false,
+    retryRequest: 0,
+  });
   const mostRecentProject =
+    projects.find(
+      (project) =>
+        project.archivedAt == null &&
+        project.environmentId === lastNewThreadProjectRef?.environmentId &&
+        project.id === lastNewThreadProjectRef.projectId,
+    ) ??
     sortScopedProjectsForSidebar(
       projects.filter((project) => project.archivedAt == null),
       threads,
       "updated_at",
-    )[0] ?? null;
+    )[0] ??
+    null;
   const attempt = startState.retryRequest;
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts a draft thread in the most recent project and navigates to it while still on the index
@@ -63,17 +70,24 @@ function IndexDraftLanding() {
       return;
     }
     startedAttemptRef.current = attempt;
-    void handleNewThread(projectRef, { replace: true })
+    void handleNewThread(projectRef, {
+      replace: true,
+    })
       .then((opened) => {
         if (opened === null) {
-          setStartState((state) => ({ ...state, retryRequest: state.retryRequest + 1 }));
+          setStartState((state) => ({
+            ...state,
+            retryRequest: state.retryRequest + 1,
+          }));
         }
       })
       .catch(() => {
-        setStartState((state) => ({ ...state, failed: true }));
+        setStartState((state) => ({
+          ...state,
+          failed: true,
+        }));
       });
   }, [attempt, handleNewThread, mostRecentProject]);
-
   if (mostRecentProject !== null) {
     return startState.failed ? (
       <DraftStartError
@@ -89,7 +103,6 @@ function IndexDraftLanding() {
   // A pending environment cannot prove the workspace is empty.
   return bootstrapped ? <NoProjectsHero /> : null;
 }
-
 function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
   const contentArea = workspaceAreaProps("home", 1, "Home");
   return (
@@ -116,7 +129,6 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
     </SidebarInset>
   );
 }
-
 export const Route = createFileRoute("/_chat/")({
   component: ChatIndexRouteView,
 });

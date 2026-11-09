@@ -220,6 +220,7 @@ export const make = Effect.gen(function* () {
     ...(databaseMigration === undefined ? {} : { databaseMigration }),
     capabilities: {
       repositoryIdentity: true,
+      nextToolQueue: true,
       connectionProbe: true,
       attachmentUploads: true,
       questionAttachments: true,
@@ -296,7 +297,7 @@ export const make = Effect.gen(function* () {
     getDescriptor: readAgentActivityPublishingActive(secrets).pipe(
       Effect.map((agentActivityPublishing) => ({
         ...descriptor,
-        capabilities: { ...descriptor.capabilities, agentActivityPublishing },
+        capabilities: { ...descriptor.capabilities, agentActivityPublishing, unifiedPush: true },
       })),
     ),
   });

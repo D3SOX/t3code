@@ -1,4 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 
@@ -10,6 +11,7 @@ export interface HomeListFilterMenuEnvironment {
 export interface HomeListFilterMenuProject {
   readonly key: string;
   readonly label: string;
+  readonly project: EnvironmentProject;
 }
 
 export function buildHomeListFilterMenuItems(props: {

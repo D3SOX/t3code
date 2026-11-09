@@ -415,6 +415,13 @@ export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMod
   });
 }
 
+/** Legacy sidebar opt-ins still count, so those users land in the boring sidebar. */
+export function useBoringSidebarEnabled(): boolean {
+  return useClientSettings(
+    (settings) => settings.boringSidebarEnabled || settings.legacySidebarEnabled,
+  );
+}
+
 export async function prepareModelPreferencesPatch(
   settings: ServerSettings,
   patch: ServerSettingsPatch,

@@ -142,6 +142,7 @@ export function HomeRouteScreen() {
       ).map((scope) => ({
         key: scope.key,
         label: scope.title,
+        project: scope.representative,
       })),
     [listOptions.projectGroupingMode, projects, selectedEnvironmentId],
   );

@@ -53,16 +53,30 @@ interface NewThreadWorkspaceOptions {
   envMode?: DraftThreadEnvMode;
   startFromOrigin?: boolean;
 }
-
 function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undefined) {
   return {
-    ...(options?.branch !== undefined ? { branch: options.branch } : {}),
-    ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
-    ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
-    ...(options?.startFromOrigin !== undefined ? { startFromOrigin: options.startFromOrigin } : {}),
+    ...(options?.branch !== undefined
+      ? {
+          branch: options.branch,
+        }
+      : {}),
+    ...(options?.worktreePath !== undefined
+      ? {
+          worktreePath: options.worktreePath,
+        }
+      : {}),
+    ...(options?.envMode !== undefined
+      ? {
+          envMode: options.envMode,
+        }
+      : {}),
+    ...(options?.startFromOrigin !== undefined
+      ? {
+          startFromOrigin: options.startFromOrigin,
+        }
+      : {}),
   };
 }
-
 export function useNewThreadHandler() {
   return createNewThreadHandler(useRouter());
 }
@@ -74,7 +88,6 @@ export function createNewThreadHandler(router: AnyRouter) {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
     return resolveThreadRouteTarget(currentRouteParams);
   };
-
   return (
     projectRef: ScopedProjectRef,
     options?: {
@@ -86,7 +99,10 @@ export function createNewThreadHandler(router: AnyRouter) {
       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
       prompt?: string;
     },
-  ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
+  ): Promise<{
+    draftId: DraftId;
+    threadId: ThreadId;
+  } | null> => {
     const projects = readProjects();
     const projectGroupingSettings = selectProjectGroupingSettings(getClientSettings());
     // Read at call time; status pushes replace the config map and would recreate every sidebar handler.
@@ -139,6 +155,9 @@ export function createNewThreadHandler(router: AnyRouter) {
         candidate.id === projectRef.projectId &&
         candidate.environmentId === projectRef.environmentId,
     );
+    if (project) {
+      useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
+    }
     const abandonedSinceRequest = () =>
       routeChangedSinceRequest() || (project !== undefined && readProject(projectRef) === null);
     const projectSettings = resolveProjectSettings(
@@ -283,8 +302,16 @@ export function createNewThreadHandler(router: AnyRouter) {
         if (workspaceContext) {
           setDraftThreadContext(emptyStoredDraftThread.draftId, {
             ...workspaceContext,
-            ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...(!isDraftAlreadyOpen
+              ? {
+                  runtimeMode: defaultRuntimeMode,
+                }
+              : {}),
+            ...(carryInteractionMode
+              ? {
+                  interactionMode: carryInteractionMode,
+                }
+              : {}),
           });
         }
         const storedDraft = getComposerDraft(emptyStoredDraftThread.draftId);
@@ -308,8 +335,16 @@ export function createNewThreadHandler(router: AnyRouter) {
           {
             threadId: emptyStoredDraftThread.threadId,
             ...workspaceContext,
-            ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...(!isDraftAlreadyOpen
+              ? {
+                  runtimeMode: defaultRuntimeMode,
+                }
+              : {}),
+            ...(carryInteractionMode
+              ? {
+                  interactionMode: carryInteractionMode,
+                }
+              : {}),
           },
         );
         const opened = {
@@ -326,13 +361,14 @@ export function createNewThreadHandler(router: AnyRouter) {
         }
         await router.navigate({
           to: "/draft/$draftId",
-          params: { draftId: emptyStoredDraftThread.draftId },
+          params: {
+            draftId: emptyStoredDraftThread.draftId,
+          },
           replace: options?.replace ?? false,
         });
         return opened;
       })();
     }
-
     if (
       latestActiveDraftThread &&
       currentRouteTarget?.kind === "draft" &&
@@ -361,7 +397,6 @@ export function createNewThreadHandler(router: AnyRouter) {
         threadId: latestActiveDraftThread.threadId,
       });
     }
-
     const draftId = newDraftId();
     const threadId = newThreadId();
     const createdAt = new Date().toISOString();
@@ -387,10 +422,15 @@ export function createNewThreadHandler(router: AnyRouter) {
         seedPrompt(racedDraft.draftId);
         await router.navigate({
           to: "/draft/$draftId",
-          params: { draftId: racedDraft.draftId },
+          params: {
+            draftId: racedDraft.draftId,
+          },
           replace: options?.replace ?? false,
         });
-        return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        return {
+          draftId: racedDraft.draftId,
+          threadId: racedDraft.threadId,
+        };
       }
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
         threadId,
@@ -405,20 +445,31 @@ export function createNewThreadHandler(router: AnyRouter) {
             newWorktreesStartFromOrigin: projectSettings.settings.newWorktreesStartFromOrigin,
           }),
         runtimeMode: defaultRuntimeMode,
-        ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+        ...(carryInteractionMode
+          ? {
+              interactionMode: carryInteractionMode,
+            }
+          : {}),
       });
       applyStickyState(draftId);
       const modelSelectionOverride = resolveModelSelectionOverride(draftId);
       if (modelSelectionOverride) {
-        setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
+        setModelSelection(draftId, modelSelectionOverride, {
+          replaceOptions: true,
+        });
       }
       seedPrompt(draftId);
       await router.navigate({
         to: "/draft/$draftId",
-        params: { draftId },
+        params: {
+          draftId,
+        },
         replace: options?.replace ?? false,
       });
-      return { draftId, threadId };
+      return {
+        draftId,
+        threadId,
+      };
     })();
   };
 }
@@ -438,9 +489,9 @@ export function resolveDefaultProjectRef(
   });
   return defaultProject ? scopeProjectRef(defaultProject.environmentId, defaultProject.id) : null;
 }
-
 export function useHandleNewThread() {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const lastNewThreadProjectRef = useUiStateStore((store) => store.lastNewThreadProjectRef);
   const routeTarget = useThreadRouteTarget();
   const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
   const routeDraftId = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
@@ -456,10 +507,18 @@ export function useHandleNewThread() {
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const defaultProjectRef = resolveDefaultProjectRef(projects, projectOrder);
-
   return {
     activeDraftThread,
     activeThread,
+    preferredProjectRef:
+      lastNewThreadProjectRef &&
+      projects.some(
+        (project) =>
+          project.environmentId === lastNewThreadProjectRef.environmentId &&
+          project.id === lastNewThreadProjectRef.projectId,
+      )
+        ? lastNewThreadProjectRef
+        : null,
     defaultProjectRef,
     handleNewThread,
     routeDraftId,

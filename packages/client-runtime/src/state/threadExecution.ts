@@ -35,6 +35,7 @@ import {
   withLegacyUltracodeEffort,
 } from "@t3tools/shared/model";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
 import * as DateTime from "effect/DateTime";
 
 import {
@@ -116,6 +117,12 @@ function summarizeThreadRun(
     requestedAt: DateTime.formatIso(run.requestedAt),
     startedAt: run.startedAt === null ? null : DateTime.formatIso(run.startedAt),
     completedAt: run.completedAt === null ? null : DateTime.formatIso(run.completedAt),
+    ...(isThreadCompletionSilent({
+      latestRunUserMessageId: run.userMessageId,
+      latestRunCompletionSilent: run.completionSilent,
+    })
+      ? { completionSilent: true }
+      : {}),
     assistantMessageId:
       projection.messages.findLast(
         (message) => message.runId === run.id && message.role === "assistant",

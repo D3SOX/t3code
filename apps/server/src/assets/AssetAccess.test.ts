@@ -22,13 +22,19 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClientRequest, HttpClientResponse, HttpServerResponse } from "effect/http";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { vi } from "vite-plus/test";
 
 import * as AssetSigner from "./AssetSigner.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as ResourceCleanup from "../orchestration-v2/ResourceCleanupService.ts";
+import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as PreviewManager from "../preview/Manager.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -126,7 +132,121 @@ const layerTest = Layer.mergeAll(
   ),
 ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
+const readImageAsset = Effect.fn(function* (asset: { readonly relativeUrl: string }) {
+  const suffix = asset.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+  const separator = suffix.indexOf("/");
+  const resolved = yield* resolveAsset(suffix.slice(0, separator), suffix.slice(separator + 1));
+  if (resolved?.kind !== "file") throw new Error("The image became unavailable");
+  const response = HttpServerResponse.toWeb(yield* assetFileResponse(resolved));
+  return new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()));
+});
+
 describe("AssetAccess", () => {
+  it.effect("keeps an earlier image readable after a later test run cleans its results", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-history-" });
+      const results = path.join(root, "results");
+      const firstPath = path.join(results, "first.png");
+      const threadId = ThreadId.make("image-history");
+      yield* fs.makeDirectory(results);
+      yield* fs.writeFile(firstPath, screenshotPng);
+      const first = yield* issueAssetUrl({
+        resource: { _tag: "media-file", threadId, path: firstPath },
+      });
+      yield* fs.remove(results, { recursive: true });
+      yield* fs.makeDirectory(results);
+      const secondPath = path.join(results, "second.png");
+      yield* fs.writeFile(secondPath, screenshotPng);
+      yield* issueAssetUrl({ resource: { _tag: "media-file", threadId, path: secondPath } });
+
+      for (const asset of [
+        first,
+        yield* issueAssetUrl({
+          resource: { _tag: "media-file", threadId, path: firstPath },
+        }),
+      ]) {
+        expect(yield* readImageAsset(asset)).toEqual(screenshotPng);
+      }
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("refreshes edited images and retains each preview version after source deletion", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-revisions-" });
+      const imagePath = path.join(root, "screenshot.png");
+      const resource = {
+        _tag: "media-file" as const,
+        threadId: ThreadId.make("image-revisions"),
+        path: imagePath,
+      };
+      yield* fs.writeFile(imagePath, screenshotPng);
+      const first = yield* issueAssetUrl({ resource });
+      // Repeated previews reuse the retained file without invalidating earlier URLs.
+      yield* issueAssetUrl({ resource });
+      const updated = screenshotPng.slice();
+      new DataView(updated.buffer).setUint32(16, 800);
+      yield* fs.writeFile(imagePath, updated);
+      const second = yield* issueAssetUrl({ resource });
+      expect(yield* readImageAsset(second)).toEqual(updated);
+      yield* fs.remove(imagePath);
+      expect(yield* readImageAsset(first)).toEqual(screenshotPng);
+      expect(yield* readImageAsset(second)).toEqual(updated);
+      const renewed = yield* issueAssetUrl({ resource });
+      expect(renewed.relativeUrl.endsWith("/screenshot.png")).toBe(true);
+      expect(renewed.imageDimensions).toEqual({ width: 800, height: 844 });
+      expect(yield* readImageAsset(renewed)).toEqual(updated);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("removes only the deleted thread's retained images, even without uploads", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-cleanup-" });
+      const imagePath = path.join(root, "screenshot.png");
+      const firstResource = {
+        _tag: "media-file" as const,
+        threadId: ThreadId.make("image-delete"),
+        path: imagePath,
+      };
+      const otherResource = { ...firstResource, threadId: ThreadId.make("image-keep") };
+      yield* fs.writeFile(imagePath, screenshotPng);
+      yield* issueAssetUrl({ resource: firstResource });
+      const other = yield* issueAssetUrl({ resource: otherResource });
+      yield* fs.remove(imagePath);
+      const cleanup = yield* ResourceCleanup.ResourceCleanupService;
+      yield* cleanup.cleanupAttachments([], firstResource.threadId);
+      const deleted = yield* Effect.flip(issueAssetUrl({ resource: firstResource }));
+      expect(deleted._tag).toBe("AssetWorkspaceAssetNotFoundError");
+      expect(yield* readImageAsset(other)).toEqual(screenshotPng);
+      expect(yield* readImageAsset(yield* issueAssetUrl({ resource: otherResource }))).toEqual(
+        screenshotPng,
+      );
+      const unrelated = yield* Effect.flip(
+        issueAssetUrl({
+          resource: { ...firstResource, threadId: ThreadId.make("image-unrelated") },
+        }),
+      );
+      expect(unrelated._tag).toBe("AssetWorkspaceAssetNotFoundError");
+    }).pipe(
+      Effect.provide(
+        ResourceCleanup.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
+              Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
+              Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+            ),
+          ),
+          Layer.provideMerge(layerTest),
+        ),
+      ),
+    ),
+  );
   describe("readMcpAppHtml", () => {
     it.effect("accepts snapshots at the stored HTML byte limit", () =>
       Effect.gen(function* () {
@@ -894,6 +1014,49 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("shows updated image bytes when the same signed URL is loaded again", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-image-cache-" });
+      const filePath = path.join(root, "image.png");
+      const threadId = ThreadId.make("thread-1");
+      for (const resource of [
+        { _tag: "media-file", threadId, path: filePath },
+        { _tag: "workspace-file", threadId, path: "image.png" },
+        { _tag: "draft-workspace-file", cwd: root, path: "image.png" },
+      ] as const) {
+        yield* fs.writeFile(filePath, screenshotPng);
+        const signed = yield* issueAssetUrl({
+          resource,
+          workspaceRoot: root,
+        });
+        const suffix = signed.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const separator = suffix.indexOf("/");
+        let cachedBytes: Uint8Array | null = null;
+        const loadImage = Effect.gen(function* () {
+          if (cachedBytes !== null) return cachedBytes;
+          const asset = yield* resolveAsset(
+            suffix.slice(0, separator),
+            suffix.slice(separator + 1),
+          );
+          if (asset?.kind !== "file") throw new Error("Expected a local image");
+          const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
+          const bytes = new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()));
+          // A fresh HTTP cache entry bypasses the server on subsequent image loads.
+          if (/max-age=[1-9]\d*/.test(response.headers.get("cache-control") ?? ""))
+            cachedBytes = bytes;
+          return bytes;
+        });
+        expect(yield* loadImage).toEqual(screenshotPng);
+        const updated = screenshotPng.slice();
+        new DataView(updated.buffer).setUint32(16, 780);
+        yield* fs.writeFile(filePath, updated);
+        expect(yield* loadImage).toEqual(updated);
+      }
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("keeps in-place edits readable but requires a new URL after atomic replacement", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -974,10 +1137,12 @@ describe("AssetAccess", () => {
       expect(yield* resolveAsset(token, "report.html")).toEqual({
         kind: "file",
         path: canonicalHtmlPath,
+        mutable: true,
       });
       expect(yield* resolveAsset(token, "report.css")).toEqual({
         kind: "file",
         path: canonicalCssPath,
+        mutable: true,
       });
       for (const extension of ["otf", "ttf", "woff", "woff2"]) {
         const fontName = `preview.${extension}`;
@@ -993,6 +1158,7 @@ describe("AssetAccess", () => {
           expect(yield* resolveAsset(suffix.slice(0, suffix.indexOf("/")), fontName)).toEqual({
             kind: "file",
             path: canonicalFontPath,
+            mutable: true,
           });
         }
       }
@@ -1073,6 +1239,68 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("issues draft workspace URLs without a thread", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-",
+      });
+      const htmlPath = path.join(root, "report.html");
+      const cssPath = path.join(root, "report.css");
+      yield* fileSystem.writeFileString(htmlPath, '<link rel="stylesheet" href="report.css">');
+      yield* fileSystem.writeFileString(cssPath, "body { color: red; }");
+      const canonicalHtmlPath = yield* fileSystem.realPath(htmlPath);
+      const canonicalCssPath = yield* fileSystem.realPath(cssPath);
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: root, path: "report.html" },
+        workspaceRoot: root,
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      const token = suffix.slice(0, separatorIndex);
+
+      expect(yield* resolveAsset(token, "report.html")).toEqual({
+        kind: "file",
+        path: canonicalHtmlPath,
+        mutable: true,
+      });
+      expect(yield* resolveAsset(token, "report.css")).toEqual({
+        kind: "file",
+        path: canonicalCssPath,
+        mutable: true,
+      });
+      expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("falls back to the resource cwd for relative draft paths", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-fallback-",
+      });
+      const htmlPath = path.join(root, "report.html");
+      yield* fileSystem.writeFileString(htmlPath, "<p>draft</p>");
+      const canonicalHtmlPath = yield* fileSystem.realPath(htmlPath);
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: root, path: "report.html" },
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      const token = suffix.slice(0, separatorIndex);
+
+      expect(yield* resolveAsset(token, "report.html")).toEqual({
+        kind: "file",
+        path: canonicalHtmlPath,
+        mutable: true,
+      });
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("issues exact workspace URLs for every non-HTML preview", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -1135,7 +1363,11 @@ describe("AssetAccess", () => {
           const result = yield* issueAssetUrl({ resource, workspaceRoot: root });
           const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
           const token = suffix.slice(0, suffix.indexOf("/"));
-          expect(yield* resolveAsset(token, name)).toEqual({ kind: "file", path: canonicalPath });
+          expect(yield* resolveAsset(token, name)).toEqual({
+            kind: "file",
+            path: canonicalPath,
+            mutable: true,
+          });
           expect(yield* resolveAsset(token, siblingName)).toBeNull();
           expect(yield* resolveAsset(token, "private.docx")).toBeNull();
           expect(yield* resolveAsset(token, `../${name}`)).toBeNull();
@@ -1187,7 +1419,11 @@ describe("AssetAccess", () => {
         const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
         const token = suffix.slice(0, suffix.indexOf("/"));
 
-        expect(yield* resolveAsset(token, name)).toEqual({ kind: "file", path: canonicalFile });
+        expect(yield* resolveAsset(token, name)).toEqual({
+          kind: "file",
+          path: canonicalFile,
+          mutable: true,
+        });
         if (name.endsWith(".png")) {
           expect(yield* resolveAsset(token, "other.png")).toBeNull();
         }

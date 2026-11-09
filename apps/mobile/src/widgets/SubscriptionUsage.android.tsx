@@ -47,9 +47,9 @@ export function SubscriptionUsage(props: SubscriptionUsageProps, environment: Wi
   return (
     // Android lacks widgetURL; one card Button routes taps to the app listener opening props.url.
     <Button
+      {...{ target: props.url ?? "expo-widgets://open-app" }}
       colors={{ containerColor: colors.surface }}
       modifiers={[fillMaxSize()]}
-      onClick={() => {}}
     >
       <Column modifiers={[fillMaxSize(), paddingAll(16)]}>
         {providers.map((provider, index) => {

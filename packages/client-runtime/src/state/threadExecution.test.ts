@@ -130,6 +130,34 @@ describe("thread execution presentation", () => {
     expect(deriveProviderExtensionStatuses(null)).toEqual([]);
   });
 
+  it("keeps an empty response quiet without silencing the next run", () => {
+    const empty = { ...run("empty", 1, "completed"), completionSilent: true, completedAt: now };
+    expect(deriveLatestThreadRun({ ...v2Projection, runs: [empty] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(deriveThreadActivityRun({ ...v2Projection, runs: [empty] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(
+      deriveLatestThreadRun({ ...v2Projection, runs: [empty, run("next", 2, "completed")] })
+        ?.completionSilent,
+    ).toBeUndefined();
+  });
+
+  it("keeps PR-watch completions quiet without silencing the next user run", () => {
+    const watch = {
+      ...run("pr-watch", 1, "completed"),
+      userMessageId: MessageId.make("message:pr-watch:wake"),
+      completedAt: now,
+    };
+    expect(deriveLatestThreadRun({ ...v2Projection, runs: [watch] })).toMatchObject({
+      completionSilent: true,
+    });
+    expect(
+      deriveLatestThreadRun({ ...v2Projection, runs: [watch, run("user", 2, "completed")] })
+        ?.completionSilent,
+    ).toBeUndefined();
+  });
   it("derives the current root failure without inheriting errors from children or previous runs", () => {
     const failed = { ...run("limited", 1, "failed"), rootNodeId: NodeId.make("root") };
     const item = {

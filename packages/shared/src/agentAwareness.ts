@@ -71,6 +71,8 @@ export interface ProjectThreadAwarenessV2Input {
   readonly thread: Pick<
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
+    | "latestRunUserMessageId"
+    | "latestRunCompletionSilent"
     | "id"
     | "lineage"
     | "latestRunStopRequested"
@@ -131,6 +133,20 @@ export function projectThreadAwarenessV2(
   };
 }
 
+/** PR-watch wakes use this reserved message ID prefix rather than a user prompt. */
+function isPullRequestWatchRun(
+  thread: Pick<OrchestrationV2ThreadShell, "latestRunUserMessageId">,
+): boolean {
+  return thread.latestRunUserMessageId?.startsWith("message:pr-watch:") === true;
+}
+
+/** Background watch updates and empty final responses have no completion to announce. */
+export function isThreadCompletionSilent(
+  thread: Pick<OrchestrationV2ThreadShell, "latestRunUserMessageId" | "latestRunCompletionSilent">,
+): boolean {
+  return thread.latestRunCompletionSilent === true || isPullRequestWatchRun(thread);
+}
+
 function resolveThreadAwarenessPhaseV2(
   thread: ProjectThreadAwarenessV2Input["thread"],
   childAwaitsApproval: boolean,
@@ -155,7 +171,9 @@ function resolveThreadAwarenessPhaseV2(
     case "completed":
       return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
         ? "running"
-        : "completed";
+        : isThreadCompletionSilent(thread)
+          ? null
+          : "completed";
     case "failed":
       return "failed";
     case "idle":
