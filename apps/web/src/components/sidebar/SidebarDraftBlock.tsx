@@ -1,6 +1,7 @@
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { SquarePenIcon, XIcon } from "lucide-react";
+import * as Schema from "effect/Schema";
 import {
   memo,
   useState,
@@ -10,9 +11,11 @@ import {
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "~/lib/utils";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -147,6 +150,11 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   onNavigateToDraft: (draftId: DraftId) => void;
   onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
 }) {
+  const [expanded, setExpanded] = useLocalStorage(
+    "t3code:sidebar:drafts-expanded",
+    true,
+    Schema.Boolean,
+  );
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const draftsByThreadKey = useComposerDraftStore(
     useShallow((store) =>
@@ -206,22 +214,33 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   }
   return (
     <>
-      {drafts.map(({ composer, draftId, session }) => {
-        const projectKey = `${session.environmentId}:${session.projectId}`;
-        return (
-          <SidebarDraftRow
-            key={draftId}
-            draftId={draftId}
-            composer={composer}
-            project={props.projectByKey.get(projectKey) ?? null}
-            projectDisplayName={props.projectDisplayNameByKey.get(projectKey) ?? null}
-            isActive={draftId === props.routeDraftId}
-            onNavigate={props.onNavigateToDraft}
-            onDiscard={discardComposerDraft}
-            onContextMenu={props.onDraftContextMenu}
-          />
-        );
-      })}
+      <li className="mx-0.5 h-8 list-none" data-thread-selection-safe>
+        <CollapsibleSectionHeader
+          expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          accessory={<span className="font-normal tabular-nums">{drafts.length}</span>}
+        >
+          Drafts
+        </CollapsibleSectionHeader>
+      </li>
+      {expanded
+        ? drafts.map(({ composer, draftId, session }) => {
+            const projectKey = `${session.environmentId}:${session.projectId}`;
+            return (
+              <SidebarDraftRow
+                key={draftId}
+                draftId={draftId}
+                composer={composer}
+                project={props.projectByKey.get(projectKey) ?? null}
+                projectDisplayName={props.projectDisplayNameByKey.get(projectKey) ?? null}
+                isActive={draftId === props.routeDraftId}
+                onNavigate={props.onNavigateToDraft}
+                onDiscard={discardComposerDraft}
+                onContextMenu={props.onDraftContextMenu}
+              />
+            );
+          })
+        : null}
       <li
         aria-hidden
         data-testid="sidebar-draft-divider"

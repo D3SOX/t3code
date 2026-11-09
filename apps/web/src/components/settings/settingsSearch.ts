@@ -880,7 +880,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "mobile-app",
     title: "Mobile app",
     to: "/settings/about",
-    searchTerms: ["phone tablet iPhone iPad iOS Android App Store Google Play QR"],
+    searchTerms: ["phone tablet Android nightly APK Obtainium"],
   },
   {
     id: "privacy-policy",
