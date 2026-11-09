@@ -214,13 +214,13 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   }
   return (
     <>
-      <li className="mx-0.5 h-8 list-none" data-thread-selection-safe>
+      <li className="relative mx-0.5 -mb-px h-8 list-none" data-thread-selection-safe>
         <CollapsibleSectionHeader
           expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
-          accessory={<span className="font-normal tabular-nums">{drafts.length}</span>}
+          tone="emphasized"
         >
-          Drafts
+          {expanded ? "Drafts" : `Drafts (${drafts.length})`}
         </CollapsibleSectionHeader>
       </li>
       {expanded
@@ -241,11 +241,6 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
             );
           })
         : null}
-      <li
-        aria-hidden
-        data-testid="sidebar-draft-divider"
-        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-      />
     </>
   );
 });
