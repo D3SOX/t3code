@@ -1,8 +1,10 @@
 import {
+  CommandId,
   GitCommandError,
   OrchestrationV2AppThreadJson,
   OrchestrationV2ProviderSessionJson,
 } from "@t3tools/contracts";
+import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type {
@@ -1115,16 +1117,17 @@ const make = Effect.gen(function* () {
               headSha: head.commitSha,
               integrated,
             };
+            const branchHint = checkout.branch ?? thread.branch;
             const pullRequest =
-              checkout.branch === null
+              branchHint === null
                 ? null
                 : yield* gitManager
-                    .branchPullRequest(
-                      { cwd: worktreePath, branch: checkout.branch },
-                      { refresh: true },
-                    )
+                    .branchPullRequest({ cwd: worktreePath, branch: branchHint }, { refresh: true })
                     .pipe(Effect.orElseSucceed(() => null));
-            eligible = storageCleanupPullRequestMerged(pullRequest, proof);
+            eligible = storageCleanupPullRequestMerged(pullRequest, {
+              ...proof,
+              integrated: checkout.branch === null ? false : integrated,
+            });
             if (!eligible) {
               const links = [
                 ...(thread.pullRequests ?? []).filter((link) => link.source !== "stack-dismissed"),
@@ -1295,6 +1298,23 @@ const make = Effect.gen(function* () {
             if (submodules.force) {
               const changes = yield* localChangesReason(worktreePath, settings);
               if (changes !== null) return keep(changes);
+            }
+            const changedBranches = group.filter(
+              (member) => checkout.branch === null || member.branch !== checkout.branch,
+            );
+            if (changedBranches.length > 0) {
+              const branch = checkout.branch ?? `t3/${yield* randomUuidV4}`;
+              if (checkout.branch === null)
+                yield* cleanupGit(worktreePath, ["branch", branch, head.commitSha], "git branch");
+              for (const member of changedBranches)
+                yield* engine.dispatch({
+                  type: "thread.metadata.update",
+                  commandId: CommandId.make(yield* randomUuidV4),
+                  threadId: member.id,
+                  branch,
+                  expectedBranch: member.branch,
+                  expectedWorktreePath: member.worktreePath,
+                });
             }
             yield* removeLinkedWorktree({
               operation: "StorageCleanup.cleanupGit",

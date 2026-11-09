@@ -442,6 +442,17 @@ const cleanupFixture = (
       } as unknown as ProviderSessionManager.ProviderSessionManagerV2["Service"]),
       Effect.provideService(Orchestrator.OrchestratorV2, {
         streamDomainEvents: Stream.suspend(() => events),
+        dispatch: (command: Parameters<Orchestrator.OrchestratorV2["Service"]["dispatch"]>[0]) =>
+          Effect.sync(() => {
+            if (command.type !== "thread.metadata.update")
+              throw new Error("Unexpected cleanup command");
+            threads = threads.map((thread) =>
+              thread.id === command.threadId
+                ? { ...thread, branch: command.branch ?? thread.branch }
+                : thread,
+            );
+            return { sequence: 1, storedEvents: [] };
+          }),
       } as unknown as Orchestrator.OrchestratorV2["Service"]),
       Effect.provideService(SqlClient.SqlClient, ((strings: TemplateStringsArray) =>
         Effect.sync(() =>
@@ -544,6 +555,7 @@ const cleanupFixture = (
           },
         };
       },
+      threadBranch: () => threads[0]?.branch ?? null,
       setThreads: (next: typeof threads) => {
         threads = next;
       },
@@ -708,89 +720,109 @@ it.live("does not repeat a deterministic removal failure until HEAD changes", ()
   ),
 );
 
-it.live.each(["renamed", "detached", "null-branch", "wrong-head", "wrong-base"] as const)(
-  "checks the actual checkout against its merged pull request: %s",
-  (scenario) =>
-    runCleanupTest(
-      Effect.gen(function* () {
-        const fixture = yield* cleanupFixture({
-          ...DEFAULT_SERVER_SETTINGS.storageCleanup,
-          worktreeOnMerge: true,
-        });
-        const { repo, worktree, fs, command, service } = fixture;
-        const remote = yield* fs.makeTempDirectoryScoped({ prefix: "cleanup-remote-" });
-        yield* command(remote, ["init", "--bare", "-b", "main"]);
-        yield* command(repo, ["remote", "add", "origin", remote]);
-        yield* command(repo, ["push", "origin", "main"]);
-        yield* command(repo, [
-          "symbolic-ref",
-          "refs/remotes/origin/HEAD",
-          "refs/remotes/origin/main",
-        ]);
-        yield* fs.writeFileString(`${worktree}/tracked.txt`, "feature\n");
-        yield* command(worktree, ["commit", "-am", "feature"]);
-        if (scenario === "renamed") yield* command(worktree, ["branch", "-m", "renamed"]);
-        const branch = scenario === "renamed" ? "renamed" : "feature";
-        yield* command(worktree, ["push", "origin", branch]);
-        const headSha = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
-        yield* command(repo, ["merge", "--squash", branch]);
-        yield* command(repo, ["commit", "-m", "squashed feature"]);
-        yield* command(repo, ["push", "origin", "main"]);
-        const url = "https://github.com/acme/repo/pull/1";
-        const linked = scenario !== "renamed" && scenario !== "null-branch";
-        if (linked) yield* command(worktree, ["checkout", "--detach"]);
-        fixture.setThreads([
-          shell({
-            branch: scenario === "null-branch" ? null : "feature",
-            worktreePath: worktree,
-            ...(linked
-              ? {
-                  linkedPullRequest: {
-                    projectId: ProjectId.make("project-1"),
-                    repository: "acme/repo",
-                    number: 1,
-                    url,
-                  },
-                }
-              : {}),
-          }),
-        ]);
-        const pr = {
-          number: 1,
-          title: "Feature",
+it.live.each([
+  "renamed",
+  "detached",
+  "detached-unlinked",
+  "detached-null",
+  "null-branch",
+  "wrong-head",
+  "wrong-base",
+] as const)("checks the actual checkout against its merged pull request: %s", (scenario) =>
+  runCleanupTest(
+    Effect.gen(function* () {
+      const fixture = yield* cleanupFixture({
+        ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+        worktreeOnMerge: true,
+      });
+      const { repo, worktree, fs, command, service } = fixture;
+      const remote = yield* fs.makeTempDirectoryScoped({ prefix: "cleanup-remote-" });
+      yield* command(remote, ["init", "--bare", "-b", "main"]);
+      yield* command(repo, ["remote", "add", "origin", remote]);
+      yield* command(repo, ["push", "origin", "main"]);
+      yield* command(repo, [
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main",
+      ]);
+      yield* fs.writeFileString(`${worktree}/tracked.txt`, "feature\n");
+      yield* command(worktree, ["commit", "-am", "feature"]);
+      if (scenario === "renamed") yield* command(worktree, ["branch", "-m", "renamed"]);
+      const branch = scenario === "renamed" ? "renamed" : "feature";
+      yield* command(worktree, ["push", "origin", branch]);
+      const headSha = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* command(repo, ["merge", "--squash", branch]);
+      yield* command(repo, ["commit", "-m", "squashed feature"]);
+      yield* command(repo, ["push", "origin", "main"]);
+      const url = "https://github.com/acme/repo/pull/1";
+      const linked =
+        scenario !== "renamed" && scenario !== "null-branch" && scenario !== "detached-unlinked";
+      if (linked || scenario === "detached-unlinked") {
+        yield* command(worktree, ["checkout", "--detach"]);
+        yield* command(repo, ["branch", "-D", branch]);
+        yield* command(repo, ["update-ref", "-d", `refs/remotes/origin/${branch}`]);
+      }
+      fixture.setThreads([
+        shell({
+          branch: scenario === "null-branch" || scenario === "detached-null" ? null : "feature",
+          worktreePath: worktree,
+          ...(linked
+            ? {
+                linkedPullRequest: {
+                  projectId: ProjectId.make("project-1"),
+                  repository: "acme/repo",
+                  number: 1,
+                  url,
+                },
+              }
+            : {}),
+        }),
+      ]);
+      const pr = {
+        number: 1,
+        title: "Feature",
+        url,
+        state: "merged" as const,
+        baseRef: scenario === "wrong-base" ? "release" : "main",
+        headRef: branch,
+        headSha: scenario === "wrong-head" ? "a".repeat(40) : headSha,
+        repositoryKey: null,
+        updatedAt: null,
+      };
+      if (linked) {
+        fixture.setLinkedPullRequest({
+          provider: SourceControlProviderKind.make("github"),
+          projectId: ProjectId.make("project-1"),
+          repository: "acme/repo",
+          number: pr.number,
+          title: pr.title,
           url,
-          state: "merged" as const,
-          baseRef: scenario === "wrong-base" ? "release" : "main",
-          headRef: branch,
-          headSha: scenario === "wrong-head" ? "a".repeat(40) : headSha,
-          repositoryKey: null,
-          updatedAt: null,
-        };
-        if (linked) {
-          fixture.setLinkedPullRequest({
-            provider: SourceControlProviderKind.make("github"),
-            projectId: ProjectId.make("project-1"),
-            repository: "acme/repo",
-            number: pr.number,
-            title: pr.title,
-            url,
-            state: pr.state,
-            headBranch: pr.headRef,
-            baseBranch: pr.baseRef,
-            headSha: pr.headSha,
-            updatedAt: "2026-06-10T12:00:00.000Z",
-          });
-        } else fixture.setPullRequest(pr);
-        const removed = scenario !== "wrong-head" && scenario !== "wrong-base";
-        const report = yield* service.runNow;
-        expect(report.entries[0]).toMatchObject({
-          outcome: removed ? "removed" : "kept",
-          reason: removed ? "Pull request was merged" : "Not merged",
+          state: pr.state,
+          headBranch: pr.headRef,
+          baseBranch: pr.baseRef,
+          headSha: pr.headSha,
+          updatedAt: "2026-06-10T12:00:00.000Z",
         });
-        expect(yield* fs.exists(worktree)).toBe(!removed);
-        expect(fixture.pullRequestBranches).toEqual(linked ? [] : [branch]);
-      }),
-    ),
+      } else fixture.setPullRequest(pr);
+      const removed = scenario !== "wrong-head" && scenario !== "wrong-base";
+      const report = yield* service.runNow;
+      expect(report.entries[0]).toMatchObject({
+        outcome: removed ? "removed" : "kept",
+        reason: removed ? "Pull request was merged" : "Not merged",
+      });
+      expect(yield* fs.exists(worktree)).toBe(!removed);
+      expect(fixture.pullRequestBranches).toEqual(scenario === "detached-null" ? [] : [branch]);
+      if (removed) {
+        const savedBranch = fixture.threadBranch();
+        expect(savedBranch).not.toBeNull();
+        expect(
+          (yield* command(repo, ["rev-parse", `refs/heads/${savedBranch}`])).stdout.trim(),
+        ).toBe(headSha);
+        yield* command(repo, ["worktree", "add", worktree, savedBranch!]);
+        expect((yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim()).toBe(headSha);
+      }
+    }),
+  ),
 );
 
 it.live.each(["inactive", "settled"] as const)(
