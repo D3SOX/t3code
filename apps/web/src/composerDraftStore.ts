@@ -3206,14 +3206,6 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 ? instanceKey
                 : (base.activeProvider ?? instanceKey);
             }
-            if (
-              Equal.equals(base.modelSelectionByProvider, nextMap) &&
-              Equal.equals(state.stickyModelSelectionByProvider, nextStickyMap) &&
-              Equal.equals(state.stickyOptionsByModelByProvider, nextOptionsByModel) &&
-              state.stickyActiveProvider === nextStickyActiveProvider
-            ) {
-              return state;
-            }
             const { modelSelectionExplicit: _previousExplicit, ...restBase } = base;
             const nextDraft: ComposerThreadDraftState = {
               ...restBase,
