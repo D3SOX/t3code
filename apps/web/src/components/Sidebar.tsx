@@ -1252,6 +1252,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       : { projectIds: scopedProjectRefs.map((projectRef) => projectRef.projectId) },
   );
   const routeDraftIdForRows = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
+  const [draftsExpanded] = useLocalStorage("t3code:sidebar:drafts-expanded", true, Schema.Boolean);
   const visibleDraftSessionCount = useComposerDraftStore((store) => {
     let count = 0;
     for (const [draftKey, session] of Object.entries(store.draftThreadsByThreadKey)) {
@@ -2090,6 +2091,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ?.map((folder) => `${folder.group.projectKey}:${folder.threads.length}`)
       .join("\n") ?? "",
     visibleDraftSessionCount,
+    draftsExpanded,
     routeDraftIdForRows ?? "",
   ].join("\0");
   const listMotionAnimate =
