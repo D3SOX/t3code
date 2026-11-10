@@ -22,10 +22,67 @@ import {
   paceOf,
   paceRemainingPercent,
   usesChatGptSharing,
+  formatCreditBalance,
+  limitsNotice,
   resolveNewThreadModelSelection,
 } from "./usageLimits.ts";
 
 const now = Date.parse("2026-09-03T12:00:00.000Z");
+
+describe("credit balances", () => {
+  it("shows grouped whole credits, zero, unlimited, and unknown without inventing a currency", () => {
+    expect(formatCreditBalance({ balance: "123.4500", hasCredits: true, unlimited: false })).toBe(
+      "124",
+    );
+    expect(formatCreditBalance({ hasCredits: false, unlimited: false })).toBe("0");
+    expect(formatCreditBalance({ hasCredits: true, unlimited: true })).toBe("Unlimited");
+    expect(formatCreditBalance({ hasCredits: true, unlimited: false })).toBe("Unavailable");
+  });
+
+  it.each([
+    ["17524.1215355000", "17,525"],
+    ["17525.0000000000", "17,525"],
+    ["0.01", "1"],
+    ["0.0000", "0"],
+    ["invalid", "Unavailable"],
+    ["Infinity", "Unavailable"],
+    [" ", "Unavailable"],
+  ])("formats balance %s as %s", (balance, expected) => {
+    expect(formatCreditBalance({ balance, hasCredits: true, unlimited: false })).toBe(expected);
+  });
+
+  it("keeps credit-only accounts and balances omitted by a newer host's windows", () => {
+    const credits = { balance: "75", hasCredits: true, unlimited: false };
+    const limits = { checkedAt: "2026-09-03T11:00:00.000Z", windows: [], credits };
+    expect(limitsNotice(limits)).toBeNull();
+    const native = provider({
+      auth: { status: "authenticated", email: "test@example.com" },
+      usageLimits: limits,
+    });
+    const entry = { target: { label: "Fixture" } };
+    const accounts = collectLimitAccounts(
+      new Map([
+        [EnvironmentId.make("host-a"), { entry, serverConfig: { providers: [native] } }],
+        [
+          EnvironmentId.make("host-b"),
+          {
+            entry,
+            serverConfig: {
+              providers: [
+                {
+                  ...native,
+                  usageLimits: { checkedAt: "2026-09-03T12:00:00.000Z", windows: [window] },
+                },
+              ],
+            },
+          },
+        ],
+      ]),
+    );
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.limits).toMatchObject({ credits, windows: [window] });
+  });
+});
 
 const window = {
   id: "five_hour",

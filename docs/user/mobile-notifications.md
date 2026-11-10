@@ -1,6 +1,6 @@
 # Mobile notifications
 
-Sign in to T3 Connect, link your environments, and enable **Device Notifications** in **Settings → Notifications** to receive alerts when an agent finishes, fails, needs approval, or asks for input. Tap a notification to open its thread. Your environment must have agent activity publishing enabled.
+Enable notifications in **Settings → Notifications** to receive alerts when an agent finishes, fails, needs approval, or asks for input. Tap an alert to open its thread. Empty completions stay quiet, and completion alerts wait for queued turns to finish.
 
 Enable **Live Activity Updates** on iOS, **Agent Live Updates** on Android 16 and newer, or **Ongoing Agent Activity** on older Android versions to follow work without opening the app. Finished results remain visible for up to 15 minutes. You can dismiss an Android activity card without disabling alerts; turn off the same switch to stop future cards.
 
@@ -10,6 +10,22 @@ On iOS you can also add the **Agent Activity** widget to your Home Screen or Loc
 
 Ordinary alerts stay quiet while the mobile app is in the foreground. Ongoing activity continues to update. Viewing a thread on another device does not silence your phone's alerts.
 
-Android notifications require Android 7.0 or newer and Google Play services. Android 16 and newer can promote ongoing activity to a Live Update, subject to system settings and device support. Other devices show a regular ongoing notification. If Live Updates don't appear on Android 16 or newer, check **Live Update Settings** in T3 Code's **Settings → Notifications**. Android 7's battery-saving modes can delay removal of expired cards.
+## Android
 
-Notification permission and Android notification channels are controlled in system Settings. Background delivery requires T3 Connect; a direct or Tailscale connection alone does not enable push notifications. The mobile app does not need to maintain a connection to your environment. Force-stopping the Android app in system Settings prevents push delivery until you open it again.
+Choose **Notification delivery** in Settings:
+
+- **Local** uses the app's existing connection. Enable Device notifications to receive alerts and Agent Live Updates on Android 16 and newer, or Ongoing Agent Activity on older versions, to follow working agents in an activity card. Enable Background connection to keep receiving updates after switching apps. This shows an ongoing notification and stops when you remove T3 from recents. Without it, Android may suspend delivery in the background. Local mode needs no distributor, Google services, cloud account, or host update.
+- **UnifiedPush** delivers encrypted alerts through an optional distributor such as [ntfy](https://unifiedpush.org/users/distributors/). Install and open your distributor and complete its background-delivery setup, including any battery permission it requests. Select UnifiedPush in T3, then enable Device notifications and choose the distributor. Each paired host registers directly and must support UnifiedPush; Settings shows its registration status or asks you to update it. Direct, Tailscale, and T3 Connect connections are supported. No Google registration, API key, or T3 Connect account is required.
+- **FCM / microG** uses the existing T3 Connect notification service. It requires an app build with Firebase configuration and Google Play services or compatible microG support. Our Android builds do not include Firebase credentials. Selecting FCM does not set up Firebase or register anything with Google.
+
+If Live Updates do not appear on Android 16 or newer, check **Live Update Settings** in T3 Code's **Settings → Notifications**. Android battery-saving modes can delay expired-card removal.
+
+Local and UnifiedPush alerts stay quiet for the thread currently visible on your phone. Viewing it on another device does not silence your phone. Disable Device notifications to stop that delivery mode, or change Notification delivery to use another one. Removing a host also unregisters its UnifiedPush receiver.
+
+For FCM, sign in to T3 Connect, link your environments, and enable Device Notifications. Your host must have agent activity publishing enabled. Ongoing Agent Activity is also available through this mode; Android 16 can promote it to a Live Update, subject to system settings. Dismissing an activity card does not disable alerts.
+
+Notification permission and channels are controlled in Android Settings. Force-stopping T3 or its distributor prevents delivery until you open it again. Local background connections restart when you open T3, if the setting is enabled. UnifiedPush does not require T3's background connection.
+
+## iOS
+
+Sign in to T3 Connect, link your environments, and enable Device Notifications. Your host must have agent activity publishing enabled. Enable Live Activity Updates to follow work without opening T3. Finished results remain visible for up to 15 minutes.

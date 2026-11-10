@@ -1,3 +1,6 @@
+import * as Duration from "effect/Duration";
+import * as TestClock from "effect/testing/TestClock";
+import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
@@ -22,6 +25,7 @@ import {
   SERVICE_LAUNCHER_PROTOCOL,
   SERVICE_STATE_FILE,
   SERVICE_STOP_MARKER_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   type ServiceUpdateRecord,
 } from "./serviceProtocol.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -158,6 +162,20 @@ describe("releaseManagedTunnelOnShutdown", () => {
         }),
       );
     });
+
+  const writeRestartMarker = Effect.fn("test.writeRestartMarker")(function* (
+    markerFile = DESKTOP_UPDATE_RESTART_MARKER_FILE,
+  ) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const config = yield* ServerConfigModule.ServerConfig;
+    const runtimeDir = path.join(config.baseDir, "runtime");
+    const markerPath = path.join(runtimeDir, markerFile);
+    yield* fs.makeDirectory(runtimeDir, { recursive: true });
+    yield* fs.writeFileString(markerPath, "");
+    const { mtime } = yield* fs.stat(markerPath);
+    return Option.getOrThrow(mtime).getTime();
+  });
 
   const provideReleaseHarness =
     (harness: ReleaseHarness) =>
@@ -338,6 +356,35 @@ describe("releaseManagedTunnelOnShutdown", () => {
       expect(applyConfigCalls).toEqual([]);
       expect(requests).toEqual([]);
       expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+    }).pipe(provideReleaseHarness({ store, applyConfigCalls, requests }));
+  });
+
+  it.effect("keeps the tunnel once across service install or restart", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+    return Effect.gen(function* () {
+      const link = yield* CloudLink.CloudLink;
+      yield* TestClock.setTime(yield* writeRestartMarker(SERVICE_RESTART_INTENT_FILE));
+      expect(yield* link.releaseManagedTunnelOnShutdown()).toBe(false);
+      expect(applyConfigCalls).toEqual([]);
+      expect(requests).toEqual([]);
+      expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+      expect(yield* link.releaseManagedTunnelOnShutdown()).toBe(true);
+      expect(requests).toHaveLength(1);
+    }).pipe(provideReleaseHarness({ store, applyConfigCalls, requests }));
+  });
+
+  it.effect("releases the tunnel when a service restart intent is stale", () => {
+    const { store } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+    return Effect.gen(function* () {
+      const link = yield* CloudLink.CloudLink;
+      const writtenAt = yield* writeRestartMarker(SERVICE_RESTART_INTENT_FILE);
+      yield* TestClock.setTime(writtenAt + Duration.toMillis(Duration.minutes(2)));
+      expect(yield* link.releaseManagedTunnelOnShutdown()).toBe(true);
+      expect(requests).toHaveLength(1);
     }).pipe(provideReleaseHarness({ store, applyConfigCalls, requests }));
   });
 

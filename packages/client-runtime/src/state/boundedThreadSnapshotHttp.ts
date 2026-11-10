@@ -77,6 +77,37 @@ export const layer: Layer.Layer<
         prepared: PreparedConnection,
         threadId: ThreadId,
       ) {
+        const loadFullFallback = ThreadSnapshotLoader.fetchEnvironmentThreadSnapshot({
+          prepared,
+          threadId,
+          signer,
+          remoteAuthorization,
+        }).pipe(
+          Effect.map((snapshot): ThreadSnapshotLoader.ThreadSnapshotLoadResult => ({
+            _tag: "present",
+            snapshot,
+          })),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.catchTags({
+            EnvironmentResourceNotFoundError: () =>
+              Effect.logDebug("Bounded thread snapshot not found over HTTP.").pipe(
+                Effect.annotateLogs({ threadId }),
+                Effect.as({
+                  _tag: "missing",
+                } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult),
+              ),
+          }),
+          Effect.catchCause((cause) =>
+            Effect.logWarning(
+              "Could not load the full thread snapshot over HTTP after bounded fallback; using the socket snapshot instead.",
+            ).pipe(
+              Effect.annotateLogs({ threadId, cause: Cause.pretty(cause) }),
+              Effect.as({
+                _tag: "unavailable",
+              } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult),
+            ),
+          ),
+        );
         return fetchEnvironmentBoundedThreadSnapshot({
           prepared,
           threadId,
@@ -99,14 +130,15 @@ export const layer: Layer.Layer<
           Effect.provideService(HttpClient.HttpClient, httpClient),
           Effect.catchTags({
             EnvironmentResourceNotFoundError: () =>
-              Effect.logDebug(
-                "Bounded thread snapshot not found over HTTP; treating the thread as deleted.",
-              ).pipe(
+              Effect.logDebug("Bounded thread snapshot not found over HTTP.").pipe(
                 Effect.annotateLogs({ threadId }),
                 Effect.as({
                   _tag: "missing",
                 } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult),
               ),
+            RemoteEnvironmentAuthInvalidJsonError: () => loadFullFallback,
+            RemoteEnvironmentAuthUndeclaredStatusError: (error) =>
+              error.status === 404 ? loadFullFallback : Effect.fail(error),
           }),
           Effect.catchCause((cause) =>
             Effect.logWarning(

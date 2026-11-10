@@ -1,12 +1,17 @@
-import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
+import type {
+  EnvironmentConnectionPhase,
+  EnvironmentServerConfig,
+} from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { hasBackgroundCommand } from "@t3tools/client-runtime/state/thread-inbox";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
+  settlePromise,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
@@ -68,6 +73,8 @@ export function resolveSidebarRowAccessibility(input: {
   readonly isActive: boolean;
 }): { readonly label: string; readonly current: "page" | undefined } {
   return {
+    // The title is the row's identity and must lead when users scan tasks.
+    // Only static context belongs here; nested action labels remain separate controls.
     label: [input.title, input.statusLabel, input.projectDisplayName].filter(Boolean).join(", "),
     current: input.isActive ? "page" : undefined,
   };
@@ -152,7 +159,6 @@ export function useSnoozeWakeClock(
   }
   return clockMs;
 }
-
 export function useRetainedValue<T>(key: string | null, value: T | null): T | null {
   const [retained, setRetained] = React.useState<{
     readonly key: string;
@@ -173,6 +179,8 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 
 export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
 
+/** Resolve the shelf a visible thread belongs to. Snooze is temporary and
+ * wins until its wake boundary; settlement then wins over a stale pin. */
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
   readonly settled: boolean;
@@ -184,12 +192,37 @@ export function resolveSidebarThreadSection(input: {
   return "active";
 }
 
+// Connection retries do not invalidate the cached working state.
+export function isSidebarEnvironmentDisconnected(phase: EnvironmentConnectionPhase): boolean {
+  return phase !== "connecting" && phase !== "reconnecting" && phase !== "connected";
+}
+
+export function belongsInSidebarWorkingShelf<T extends { readonly environmentId: EnvironmentId }>(
+  thread: T,
+  input: {
+    readonly enabled: boolean;
+    readonly disconnectedEnvironmentIds: ReadonlySet<EnvironmentId>;
+    readonly isWorking: (thread: T) => boolean;
+  },
+): boolean {
+  return (
+    input.enabled &&
+    !input.disconnectedEnvironmentIds.has(thread.environmentId) &&
+    input.isWorking(thread)
+  );
+}
+
+/** Sortable ids: thread rows use their scoped key; structural items use a
+    colon-free prefix: scoped thread keys always contain a colon. */
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =
+  /** The top boundary is also a landing target when there are no pins. */
   | "pinned-header"
+  /** Stand-in rows so an empty section has somewhere for the gap to open. */
   | "active-placeholder"
   | "settled-placeholder"
+  /** The boundary between pinned and active rows. */
   | "pinned-divider"
   | "working-header"
   | "snoozed-header"
@@ -207,6 +240,10 @@ export function sidebarListItemId(item: SidebarListItem): string {
   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
 }
 
+/** The section a slot belongs to, read off the markers around it: from
+    the top down, everything before the pinned divider is pinned, then the
+    inbox until the first shelf header, each shelf until the next header,
+    then settled. */
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
   let section: SidebarSection = "pinned";
   for (let i = 0; i < index && i < items.length; i += 1) {
@@ -258,11 +295,15 @@ export function resolveSidebarDropTarget(
 
 type SidebarThreadDropPlan =
   | { readonly kind: "none" }
+  /** Within the pinned block: the existing key writes. */
   | {
       readonly kind: "reorder-pinned";
       readonly order: readonly string[];
       readonly assignments: ReadonlyArray<{ readonly id: string; readonly orderKey: string }>;
     }
+  /** From another section into the pinned block. Fresh pins take `orderKey`
+      on the pin command. `extraAssignments` land afterward, including the
+      moved row when it was already pinned beneath a snooze. */
   | {
       readonly kind: "pin";
       readonly order: readonly string[];
@@ -271,7 +312,7 @@ type SidebarThreadDropPlan =
     }
   | {
       readonly kind: "move-active";
-      readonly order: readonly string[] | null;
+      readonly order: readonly string[];
       readonly assignments: ReadonlyArray<{ readonly id: string; readonly orderKey: string }>;
       readonly unpin: boolean;
       readonly unsettle: boolean;
@@ -279,6 +320,9 @@ type SidebarThreadDropPlan =
     }
   | { readonly kind: "settle" };
 
+/** What dropping in `to` does to a thread lifted from `from`, for the badge
+    on the lifted row. Null while reordering inside one section and for the
+    working and snoozed shelves, which cannot be drop targets. */
 export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle" | "wake";
 
 export function resolveSidebarDropVerb(
@@ -293,6 +337,7 @@ export function resolveSidebarDropVerb(
   return "wake";
 }
 
+/** Eligible rows between the pressed action and the pointer, in sidebar order. */
 export function resolveSidebarSweepKeys(
   orderedKeys: readonly string[],
   originKey: string,
@@ -305,6 +350,10 @@ export function resolveSidebarSweepKeys(
   return orderedKeys.slice(Math.min(origin, target), Math.max(origin, target) + 1).filter(canApply);
 }
 
+/** The thread row at a pointer height, clamped to the rows visible in the
+    sidebar's scroll viewport. A gap between rows resolves to the row above
+    it. Rows carry their key in data-thread-item, which departing motion
+    clones drop. */
 export function sidebarThreadKeyAtY(list: HTMLElement, y: number): string | null {
   const viewport = list.closest('[data-slot="scroll-area-viewport"]')?.getBoundingClientRect();
   const visibleY = viewport ? Math.min(Math.max(y, viewport.top), viewport.bottom - 1) : y;
@@ -345,17 +394,18 @@ export function resolveSidebarReorderableThreadKeys(input: {
 export function planSidebarThreadDrop(input: {
   readonly activeKey: string;
   readonly activeSection: SidebarSection;
+  /** Snoozed threads can retain pinning and settlement beneath the shelf. */
   readonly activePinned?: boolean;
   readonly activeSettled?: boolean;
   readonly supportsSettlement?: boolean;
   readonly target: SidebarDropTarget;
+  /** All pinned keys in displayed order before the drop. */
   readonly pinnedOrder: readonly string[];
   readonly pinnedKeysById: ReadonlyMap<string, string | null | undefined>;
   readonly reorderableKeys?: ReadonlySet<string>;
   readonly activeOrder: readonly string[];
   readonly activeKeysById: ReadonlyMap<string, string | null | undefined>;
   readonly activeReorderableKeys?: ReadonlySet<string>;
-  readonly activeTimeOrdered?: boolean;
 }): SidebarThreadDropPlan {
   const {
     activeKey,
@@ -374,6 +424,10 @@ export function planSidebarThreadDrop(input: {
   if (input.supportsSettlement === false && (target.section === "settled" || activeSettled)) {
     return { kind: "none" };
   }
+  // Rows whose server cannot store an order (an older server, or a machine
+  // that is offline) are never written. Keyless ones sort outside the keyed
+  // run, so they leave the plan; keyed ones stay as bounds. Before, one keyless row
+  // refused every drop that needed fresh keys for its neighbors.
   const arrange = (
     order: readonly string[],
     keysById: ReadonlyMap<string, string | null | undefined>,
@@ -411,18 +465,6 @@ export function planSidebarThreadDrop(input: {
   };
   switch (target.section) {
     case "active": {
-      if (input.activeTimeOrdered) {
-        return activeSection === "active"
-          ? { kind: "none" }
-          : {
-              kind: "move-active",
-              order: null,
-              assignments: [],
-              unpin: activePinned,
-              unsettle: activeSettled,
-              unsnooze: activeSection === "snoozed",
-            };
-      }
       const order = target.activeOrder;
       if (
         activeSection === "active" &&
@@ -446,6 +488,7 @@ export function planSidebarThreadDrop(input: {
       return activeSection === "settled" ? { kind: "none" } : { kind: "settle" };
     case "pinned": {
       const order = target.pinnedOrder;
+      // Dropped back where it started: nothing to write.
       if (
         activeSection === "pinned" &&
         order.length === pinnedOrder.length &&
@@ -472,6 +515,8 @@ export function planSidebarThreadDrop(input: {
   }
 }
 
+/** Project a drop's lifecycle fields before sorting its destination. Reusing
+    the server's re-entry rules keeps the preview in place when events arrive. */
 export function applySidebarThreadDrop<
   T extends Pick<
     SidebarThreadSummary,
@@ -536,7 +581,29 @@ type LogicalSidebarProject = SidebarProject & {
 
 type ThreadTraversalDirection = "previous" | "next";
 
-/** Exclude only successful deletions from shared-worktree checks. */
+export async function archiveSettledThreadEntries<TEntry>(input: {
+  readonly entries: readonly TEntry[];
+  readonly archive: (entry: TEntry) => Promise<AtomCommandResult<unknown, unknown> | null>;
+}): Promise<AsyncResult.Failure<unknown, unknown> | null> {
+  let next = 0;
+  let failure: AsyncResult.Failure<unknown, unknown> | null = null;
+  await Promise.all(
+    Array.from({ length: Math.min(8, input.entries.length) }, async () => {
+      while (next < input.entries.length && failure === null) {
+        const entry = input.entries[next++]!;
+        const outcome = await settlePromise(() => input.archive(entry));
+        const result = outcome._tag === "Failure" ? outcome : outcome.value;
+        if (result?._tag === "Failure") failure ??= result;
+      }
+    }),
+  );
+  return failure;
+}
+
+/**
+ * Shared-worktree checks must exclude only successful deletions, never the
+ * whole batch. A null result skips an entry that the caller can no longer find.
+ */
 export async function deleteSelectedThreadEntries<
   TEntry extends { readonly threadKey: string },
 >(input: {
@@ -631,6 +698,11 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
   };
 }
 
+/**
+ * Bulk unpin follows the same "count only what the action will touch" rule
+ * as title regeneration: on a mixed selection the label counts the pinned
+ * rows alone, and the item disappears when nothing selected is pinned.
+ */
 export function buildBulkUnpinContextMenuItem(input: {
   pinnedCount: number;
 }): ContextMenuItem<"unpin"> | null {
@@ -641,6 +713,7 @@ export function buildBulkUnpinContextMenuItem(input: {
 export interface ThreadStatusPill {
   label:
     | "Working"
+    | "Background"
     | "Connecting"
     | "Completed"
     | "Failed"
@@ -685,6 +758,7 @@ export function useThreadJumpHintsVisible(shouldShow: boolean): boolean {
   return useDeadlinePassed(showAt);
 }
 
+/** The server's visited watermark wins across devices; only older servers use the local watermark. */
 export function resolveThreadLastVisitedAt(
   serverLastVisitedAt: string | null | undefined,
   localLastVisitedAt: string | undefined,
@@ -696,6 +770,7 @@ export function resolveThreadLastVisitedAt(
 }
 
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
+  if (thread.latestRun?.completionSilent) return false;
   if (!thread.latestRun?.completedAt) return false;
   const completedAt = Date.parse(thread.latestRun.completedAt);
   if (Number.isNaN(completedAt)) return false;
@@ -726,6 +801,7 @@ function nodeClosest(node: object | null, selector: string): unknown {
   return node.closest(selector);
 }
 
+/** Clicks on a nested link keep the link's meaning. The row must not treat them as multi-select. */
 export function isSidebarNestedLinkClick(target: EventTarget | null): boolean {
   if (target == null || typeof target !== "object") return false;
   if (nodeClosest(target, "a[href]") !== null) return true;
@@ -738,13 +814,13 @@ export function isSidebarNestedLinkClick(target: EventTarget | null): boolean {
   return nodeClosest(parent, "a[href]") !== null;
 }
 
-/** The "New thread in" picker opens unless there is one open project or none; then the current context decides. */
+// Shift-click opens the project picker when multiple open projects are available.
 export function shouldCreateNewThreadInCurrentProject(
   shiftKey: boolean,
   openProjectGroupCount: number,
   projectGroupCount: number,
 ): boolean {
-  return shiftKey || openProjectGroupCount === 1 || projectGroupCount === 0;
+  return !shiftKey || openProjectGroupCount <= 1 || projectGroupCount === 0;
 }
 
 export function orderItemsByPreferredIds<TItem, TId>(input: {
@@ -819,10 +895,19 @@ export type SidebarThreadStatus =
   | "request"
   | "preparing"
   | "working"
+  | "background"
   | "waiting"
   | "failed"
   | "limited"
   | "ready";
+
+export function shouldShowCollapsedSidebarThread(input: {
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isActive: boolean;
+}): boolean {
+  return input.isActive || input.status === "input" || (input.status === "ready" && input.isUnread);
+}
 
 export function shouldRecedeSidebarThread(input: {
   status: SidebarThreadStatus;
@@ -839,7 +924,12 @@ export function shouldRecedeSidebarThread(input: {
   ) {
     return false;
   }
-  if (input.status === "preparing" || input.status === "working" || input.status === "waiting") {
+  if (
+    input.status === "preparing" ||
+    input.status === "background" ||
+    input.status === "working" ||
+    input.status === "waiting"
+  ) {
     return true;
   }
   if (input.status === "ready" || input.status === "approval") {
@@ -856,7 +946,8 @@ type SidebarThreadStatusInput = Pick<
   | "pendingGuestMessageCount"
   | "runtime"
   | "blockedOnThreadWait"
->;
+> &
+  Partial<Pick<SidebarThreadSummary, "pendingBackgroundTasks">>;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -881,6 +972,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   ) {
     return "working";
   }
+  if (hasBackgroundCommand(thread)) return "background";
   if (thread.runtime?.status === "idle") {
     return "waiting";
   }
@@ -965,7 +1057,6 @@ export function groupSidebarThreadsByProject<
   }
   return folders.filter((folder) => folder.threads.length > 0 || keepEmpty(folder.group));
 }
-
 export type SidebarV2TopStatusKind =
   | "approval"
   | "done"
@@ -975,8 +1066,42 @@ export type SidebarV2TopStatusKind =
   | "request"
   | "waiting"
   | "woke"
-  | "working";
+  | "working"
+  | "background";
 
+export function resolveSidebarV2TopStatus(input: {
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isWoke: boolean;
+}): SidebarV2TopStatusKind | null {
+  if (input.status === "working" || input.status === "background") {
+    return input.status;
+  }
+  if (input.status === "waiting") {
+    return "waiting";
+  }
+  if (input.status === "approval") {
+    return "approval";
+  }
+  if (input.status === "input" || input.status === "request") {
+    return input.status;
+  }
+  if (input.status === "failed" || input.status === "limited") {
+    return input.status;
+  }
+  if (input.isWoke) {
+    return "woke";
+  }
+  return input.isUnread ? "done" : null;
+}
+
+export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
+  return status === "working" || status === "background";
+}
+
+/** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
+    yet-malformed string must also fall through to the next candidate rather
+    than sink the row to the epoch. */
 export function firstValidTimestampMs(
   ...candidates: ReadonlyArray<string | null | undefined>
 ): number {
@@ -989,11 +1114,14 @@ export function firstValidTimestampMs(
 }
 
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
+// The Working section beta folds and orders the inbox the same way on mobile.
 export {
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "@t3tools/client-runtime/state/thread-inbox";
 
+// Pinned-reorder key math and the keyed sort live in client-runtime
+// (state/thread-sort) so web and mobile compute identical pinned orders.
 export { pinOrderKeyBetween } from "@t3tools/client-runtime/state/thread-sort";
 export { sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 
@@ -1038,6 +1166,11 @@ export function searchSidebarThreads<
   return { titleMatches, contentMatches };
 }
 
+/**
+ * Whether a PR's search terms contain every whitespace-separated token of the
+ * query. Search results use this to pick the PR number to show, so it has to
+ * accept the multi-token queries the command palette matches on.
+ */
 export function pullRequestMatchesSearchQuery(
   pullRequest: Parameters<typeof threadPullRequestSearchTerms>[0],
   query: string,
@@ -1082,6 +1215,9 @@ export function reduceSidebarProjectScopeMenuState(
   }
 }
 
+/** The timestamp a working thread's elapsed label counts from: when its
+    current work started (request time until adoption). Background wakes do
+    not reset it. Malformed timestamps fall through to the next candidate. */
 export function resolveWorkingStartedAt(
   thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
 ): string | null {
@@ -1116,6 +1252,15 @@ export function resolveThreadStatusPill(input: {
       label: "Guest Request",
       colorClass: "text-guest-foreground",
       dotClass: "bg-guest",
+      pulse: false,
+    };
+  }
+
+  if (hasBackgroundCommand(thread)) {
+    return {
+      label: "Background",
+      colorClass: "text-teal-700 dark:text-teal-300",
+      dotClass: "bg-teal-700 dark:bg-teal-300",
       pulse: false,
     };
   }
@@ -1324,6 +1469,11 @@ export function sortSidebarV2ProjectGroups<
   );
 }
 
+/**
+ * Sorts the cross-environment project collection used by landing surfaces.
+ * Project ids are only unique within an environment, and archived threads
+ * must not make a project appear recently active.
+ */
 export function sortScopedProjectsForSidebar<
   TProject extends ScopedSidebarProject,
   TThread extends ScopedSidebarThread,

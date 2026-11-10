@@ -96,7 +96,9 @@ describe("mobile themes", () => {
         themeColorToNativeColor(colors.sidebarForeground),
       );
       expect(variables["--color-primary"]).toBe(themeColorToNativeColor(colors.messageAction));
-      if (themeId !== DEFAULT_MOBILE_THEME_ID) {
+      if (themeId === "t3-code-dim") {
+        expect(variables).toEqual(readDefaultMobileThemeVariables(appearance));
+      } else if (themeId !== DEFAULT_MOBILE_THEME_ID) {
         expect(variables["--color-user-bubble"]).toBe(
           themeColorToNativeColor(colors.messageSurface),
         );

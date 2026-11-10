@@ -3,13 +3,14 @@ import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useDeviceType } from "../../native/native-layout-metrics";
+import { ModelCapacityRetryNotice } from "./ModelCapacityRetryNotice";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import {
   useAppearancePreferences,
   useAndroidFloatingTabs,
 } from "../settings/appearance/AppearancePreferencesProvider";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
@@ -21,6 +22,8 @@ import {
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
+  type ProviderInteractionMode,
+  type ScopedThreadRef,
   type ServerConfig as T3ServerConfig,
   type UsageLimitsReport,
 } from "@t3tools/contracts";
@@ -30,6 +33,7 @@ import {
   isUsageLimitsCommand,
 } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
 import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
@@ -69,7 +73,6 @@ import { useProject, useVisibleThreadShells } from "../../state/entities";
 import { useMentionableEnvironments } from "../../state/environments";
 import { useLinkedEnvironments } from "../../state/peerLinks";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-
 import { AppText as Text } from "../../components/ui/AppText";
 import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
 import {
@@ -121,6 +124,10 @@ import {
   type NavigationWithFinishTransitioning,
 } from "./use-thread-settings-sheet-presentation";
 
+/**
+ * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
+ * Exported so the parent can compute feed overlap / content insets.
+ */
 export const COMPOSER_COLLAPSED_CHROME = 60;
 
 const NO_MACHINES: ReadonlyArray<ComposerEnvironmentCandidate> = [];
@@ -212,7 +219,14 @@ export interface ThreadComposerProps {
   readonly bottomInset?: number;
   readonly connectionState: RemoteClientConnectionState;
   readonly environmentLabel: string | null;
+  /**
+   * Message sync phase for the selected thread (drives the status pill):
+   * "loading" = first fetch, nothing to show yet; "syncing" = cached messages
+   * are on screen while they reconcile with the server.
+   */
+  readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: EnvironmentThreadShell;
+  readonly selectedThreadDetailRef: ScopedThreadRef | null;
   readonly reportedModelSelection?: ModelSelection | null;
   readonly hasCompactableConversation: boolean;
   /** Arms a fresh session for the next message; absent where `/clear` is unavailable. */
@@ -224,15 +238,23 @@ export interface ThreadComposerProps {
   readonly canStopThread: boolean;
   readonly environmentId: EnvironmentId;
   readonly projectCwd: string | null;
+  /** Why sending is blocked right now (shown as the send button's label), or null. */
   readonly sendBlockedReason?: string | null;
   readonly interactionLocked?: boolean;
   readonly draftKey?: string;
+  /**
+   * Set while a queued message is open for editing: the send button saves the
+   * edit instead of sending, and the message's server attachments stay visible
+   * above the composer so they can be removed.
+   */
   readonly queuedEdit?: {
     readonly existingAttachments: ReadonlyArray<ChatAttachment>;
     readonly saving: boolean;
     readonly onRemoveExistingAttachment: (attachmentId: string) => void;
   } | null;
+  /** The user's configured behavior for a message sent during a running turn. */
   readonly followUpBehavior: FollowUpBehavior;
+  /** Whether the live turn can actually be steered by this provider. */
   readonly canSteerActiveTurn: boolean;
   readonly hidden: boolean;
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
@@ -242,7 +264,7 @@ export interface ThreadComposerProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
-  readonly onStopThread: () => void;
+  readonly onStopThread: () => void | Promise<unknown>;
   /** Present while the thread's queue is held. */
   readonly onResumeQueue: (() => Promise<void>) | null;
   /** `stillSendable` reports whether the draft is unchanged after any wait before sending. */
@@ -251,7 +273,12 @@ export interface ThreadComposerProps {
     stillSendable?: () => boolean,
   ) => Promise<MessageId | null>;
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
+  /**
+   * Whether the model picker may offer providers other than this thread's.
+   * False keeps the catalog on the instance the thread's session runs on.
+   */
   readonly canSwitchProvider: boolean;
+  readonly onUpdateInteractionMode?: (interactionMode: ProviderInteractionMode) => void;
   readonly onHeightChange?: (height: number) => void;
   readonly onEditorFocusChange?: (focused: boolean) => void;
 }
@@ -261,6 +288,7 @@ const COMPOSER_TRANSITION_DURATION_MS = 220;
 // Side panes animate dock width; nested horizontal transitions would make the surface trail the toolbar.
 const composerHeightTransition: LayoutAnimationFunction = (values) => {
   "worklet";
+
   const timing = {
     duration: COMPOSER_TRANSITION_DURATION_MS,
     reduceMotion: ReduceMotion.System,
@@ -289,26 +317,31 @@ const COMPOSER_ATTACHMENT_ENTERING =
   Platform.OS === "android"
     ? FadeIn.duration(160)
     : FadeIn.delay(COMPOSER_TRANSITION_DURATION_MS).duration(160).reduceMotion(ReduceMotion.System);
-
 const AnimatedGlassSurface = Animated.createAnimatedComponent(GlassSurface);
-
 const FOLLOW_UP_ACTION_LABEL = {
-  queue: "Queue",
+  queue: "After current turn",
+  "next-tool": "After next tool call",
   steer: "Steer now",
   restart: "Restart turn",
 } as const;
-
 const FOLLOW_UP_ACTION_SUBTITLE = {
   queue: "Run after the current turn",
+  "next-tool": "Steer when the next tool finishes",
   steer: "Interrupt what the agent is doing",
   restart: "Start the turn over with this message",
 } as const;
 
+/**
+ * The composer's primary button. While a turn is running it also long-presses
+ * into the follow-up timings, which is mobile's stand-in for the Command
+ * modifier a hardware keyboard has.
+ */
 function SendActionButton(props: {
   readonly size?: "regular" | "large";
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
   readonly disabled: boolean;
+  readonly busy: boolean;
   readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
 }) {
   const { presentation } = props;
@@ -319,15 +352,14 @@ function SendActionButton(props: {
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
+      busy={props.busy}
       onPress={() => props.onSend()}
     />
   );
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
     return button;
   }
-  const actions = [presentation.action, presentation.alternate].filter(
-    (action): action is ActiveTurnComposerAction => action !== null,
-  );
+  const actions = ["queue", "next-tool", "steer"] as const;
   return (
     <Menu
       accessibilityLabel="Choose how to send this message"
@@ -346,10 +378,10 @@ function SendActionButton(props: {
     </Menu>
   );
 }
-
-function ComposerSurface(props: {
+export function ComposerSurface(props: {
   readonly children: ReactNode;
   readonly style: ViewStyle;
+  /** Morphs between the compact and expanded composer layouts. */
   readonly animateLayout?: boolean;
 }) {
   const colors = useUniwindTheme();
@@ -390,10 +422,18 @@ function ComposerSurface(props: {
         fallbackColor={colors["--color-composer-surface"]}
         fallbackClassName="border border-composer-border"
         glassEffectStyle="regular"
+        // The composer is a passive material containing interactive controls.
+        // Keep native glass out of the interactive content's layout path.
         pointerEvents="none"
         tintColor="transparent"
         layout={layoutTransition}
-        style={[{ position: "absolute", inset: 0 }, animatedShapeStyle]}
+        style={[
+          {
+            position: "absolute",
+            inset: 0,
+          },
+          animatedShapeStyle,
+        ]}
       >
         {null}
       </AnimatedGlassSurface>
@@ -412,6 +452,23 @@ function ComposerSurface(props: {
 export const THREAD_COMPOSER_BOTTOM_GUTTER = 6;
 
 export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps) {
+  const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const [sendingThreadKey, setSendingThreadKey] = useState<string | null>(null);
+  const [stoppingThreadKey, setStoppingThreadKey] = useState<string | null>(null);
+  const stoppingThreads = useRef(new Set<string>());
+  const sending = sendingThreadKey === threadKey;
+  const stopping = stoppingThreadKey === threadKey;
+  const handleStopThread = async () => {
+    if (stoppingThreads.current.has(threadKey)) return;
+    stoppingThreads.current.add(threadKey);
+    setStoppingThreadKey(threadKey);
+    await (async () => {
+      await props.onStopThread();
+    })().finally(() => {
+      stoppingThreads.current.delete(threadKey);
+      setStoppingThreadKey((key) => (key === threadKey ? null : key));
+    });
+  };
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
@@ -456,8 +513,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     draftMessage.trim().length > 0 ||
     draftAttachments.length > 0 ||
     (queuedEdit?.existingAttachments.length ?? 0) > 0;
+  // Only media belongs above the composer; every other file reads as its inline chip.
   const stripAttachments = composerStripAttachments(draftAttachments);
-  const showStopAction = !hasContent && props.canStopThread && queuedEdit === null;
+  // Stopping the agent is not what the send button means in edit mode.
+  const showStopAction =
+    stopping || (!sending && !hasContent && props.canStopThread && queuedEdit === null);
   const onResumeQueue = props.onResumeQueue;
   const [resumingQueue, setResumingQueue] = useState(false);
   const showResumeAction =
@@ -468,7 +528,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     await onResumeQueue();
     setResumingQueue(false);
   };
-
   const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
   const attachmentsUploading =
     props.connectionState === "connected" &&
@@ -478,6 +537,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       serverConfig: props.serverConfig,
       states: uploadStates,
     });
+  // Every send goes through the outbox; the label says whether it leaves now
+  // or waits (for the connection, an earlier queued message, or an upload).
   const sendPresentation = resolveComposerSendPresentation({
     editingQueuedMessage: queuedEdit !== null,
     running: props.activeThreadBusy,
@@ -516,6 +577,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     });
   };
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  // T3 owns /usage-limits only where Limits has data for the selected provider;
+  // elsewhere the name stays the provider's own and is sent through untouched.
   const usageLimitsOffered =
     selectedProviderStatus !== null &&
     hasProviderUsageLimits(
@@ -523,6 +586,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       props.serverConfig?.providers ?? [],
       props.serverConfig?.usageLimitSources ?? [],
     );
+  // Answered locally from the last Limits snapshot; the agent never sees it.
   const openUsageLimits = () => {
     const report = collectProviderUsageLimits(
       currentModelSelection.instanceId,
@@ -563,6 +627,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     hasThread: !props.isDraft,
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
+    onUpdateInteractionMode:
+      selectedProviderStatus?.showInteractionModeToggle === false
+        ? undefined
+        : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
@@ -587,6 +655,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     voiceInput.elapsedSeconds,
   );
   const isVoiceInputPresented = voicePresentation.statusKind === "active";
+  // An open draft stays visible; only a collapsed composer becomes a voice strip.
   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { layout } = useAdaptiveWorkspaceLayout();
   const floatingSidebarComposer = useAndroidFloatingTabs() && layout.usesSplitView;
@@ -611,6 +680,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
+    (sending && queuedEdit ? "Saving…" : null) ??
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
     (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
@@ -626,7 +696,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   // A pending sheet presentation or focus restore has no composer left to act on.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- disposes the pending settings sheet presentation and focus restore on unmount
   useEffect(() => () => disposeSettingsSheetPresentation(), []);
-
   const onPressPreview = (source: FilePreviewSource) => {
     wasExpandedBeforePreviewRef.current = isFocused;
     setPreviewVideo(null);
@@ -638,7 +707,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         },
     );
   };
-
   const closePreview = () => {
     setPreviewFile(null);
     setPreviewVideo(null);
@@ -648,20 +716,24 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       }, 100);
     }
   };
-
   const onPressVideo = (attachment: DraftComposerFileAttachment, sourceIdentifier: string) => {
     wasExpandedBeforePreviewRef.current = isFocused;
     setPreviewFile(null);
-    setPreviewVideo((current) => current ?? { type: "local", attachment, sourceIdentifier });
+    setPreviewVideo(
+      (current) =>
+        current ?? {
+          type: "local",
+          attachment,
+          sourceIdentifier,
+        },
+    );
   };
-
   const onEditorFocusChange = props.onEditorFocusChange;
   const handleFocus = () => {
     setIsFocused(true);
     settingsSheetPresentation.onEditorFocusChange(true);
     onEditorFocusChange?.(true);
   };
-
   const handleBlur = () => {
     setIsFocused(false);
     settingsSheetPresentation.onEditorFocusChange(false);
@@ -680,9 +752,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       return;
     }
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
-    if (inFlightThreadIdsRef.current.has(threadKey)) return;
+    if (queuedEdit !== null && inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
     await inputRef.current?.flushPendingInput();
+    setSendingThreadKey(threadKey);
     const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
     const stillSendable = () => {
       const draft = getComposerDraftSnapshot(composerDraftKey);
@@ -698,6 +771,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     };
     const sent = await settlePromise(() => onSendMessage(followUp, stillSendable));
     inFlightThreadIdsRef.current.delete(threadKey);
+    setSendingThreadKey((key) => (key === threadKey ? null : key));
     if (AsyncResult.isFailure(sent)) {
       console.error("[composer] send failed", squashAtomCommandFailure(sent));
       return;
@@ -711,6 +785,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     });
   };
 
+  // ── Model menu ───────────────────────────────────────────
+  // A session that hands the conversation to another provider lets the picker
+  // offer the whole catalog; one that can't stays on its own instance.
   const lockedProviderInstanceId = props.canSwitchProvider
     ? undefined
     : currentModelSelection.instanceId;
@@ -734,7 +811,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     if (!settingsRoutePresentedRef.current) {
       return;
     }
-
     settingsRoutePresentedRef.current = false;
     settingsSheetPresentation.onDismissed();
   });
@@ -811,7 +887,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       />
     </View>
   );
-
   return (
     <Animated.View
       onLayout={(event) => props.onHeightChange?.(event.nativeEvent.layout.height)}
@@ -836,6 +911,11 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         className="relative w-full self-center"
         style={{ maxWidth: props.contentMaxWidth }}
       >
+        <ModelCapacityRetryNotice
+          threadRef={props.selectedThreadDetailRef}
+          thread={props.selectedThread}
+          onCancel={handleStopThread}
+        />
         {props.draftControls}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
@@ -1123,6 +1203,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     size={usesLargeControls ? "large" : "regular"}
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
                     presentation={sendPresentation}
+                    busy={(sending && !hasContent) || queuedEdit?.saving === true}
                     disabled={!canSend}
                     onSend={handleSend}
                   />
@@ -1145,7 +1226,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 paddingBottom={0}
                 paddingHorizontal={0}
                 paddingTop={0}
-                style={{ gap: 0 }}
+                style={{
+                  gap: 0,
+                }}
               >
                 <ComposerDictationCancelAction
                   size={usesLargeControls ? "large" : "regular"}
@@ -1172,11 +1255,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   {showStopAction ? (
                     <ComposerActionButton
                       size={usesLargeControls ? "large" : "regular"}
-                      accessibilityLabel="Stop agent"
+                      accessibilityLabel={stopping ? "Interrupting" : "Stop agent"}
+                      busy={stopping}
                       icon="stop.fill"
                       variant="danger"
                       disabled={!props.canOperateThread}
-                      onPress={props.onStopThread}
+                      onPress={handleStopThread}
                     />
                   ) : showResumeAction && voicePresentation.showsSend ? (
                     <ComposerActionButton
@@ -1186,11 +1270,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                       disabled={!props.canOperateThread || resumingQueue}
                       onPress={() => void handleResumeQueue()}
                     />
-                  ) : voicePresentation.showsSend ? (
+                  ) : voicePresentation.showsSend || sending || queuedEdit?.saving === true ? (
                     <SendActionButton
                       size={usesLargeControls ? "large" : "regular"}
                       accessibilityLabel={sendBlockedReason ?? sendLabel}
                       presentation={sendPresentation}
+                      busy={(sending && !hasContent) || queuedEdit?.saving === true}
                       disabled={!canSend}
                       onSend={handleSend}
                     />

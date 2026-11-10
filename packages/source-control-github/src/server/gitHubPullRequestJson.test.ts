@@ -2,6 +2,19 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { evaluatePullRequestWatch } from "../../../../apps/server/src/orchestration-v2/pullRequestWatch.ts";
+
+const watchCapabilities: Parameters<typeof evaluatePullRequestWatch>[1]["capabilities"] = {
+  diff: true,
+  comment: true,
+  actions: [],
+  mergeMethods: [],
+  search: false,
+  review: { inlineComment: false, reply: false, resolve: false, verdicts: [] },
+  reviewers: { request: false, listCandidates: false },
+  checksAlwaysReport: true,
+};
+
 import {
   buildReviewSubmission,
   buildReviewerRequest,
@@ -9,6 +22,8 @@ import {
   referenceSearchQuery,
   toRepositoryReferences,
   toPullRequestWatchFingerprint,
+  toPullRequestCheckContextsPage,
+  pullRequestChecksFromContexts,
   decodePullRequestFilesJson,
   decodePullRequestStacksJson,
   LenientPullRequestList,
@@ -29,6 +44,7 @@ import {
   LabelCandidates,
   PullRequestActivity,
   PullRequestCore,
+  PullRequestCheckContexts,
   PullRequestFilesViewed,
   ReviewerCandidates,
   ViewerPermissions,
@@ -89,6 +105,15 @@ const decodePullRequestActivityJson = through(
   toPullRequestActivityPage,
 );
 const decodePullRequestCoreJson = through(PullRequestCore.result, toPullRequestCore);
+const decodePullRequestCheckContextsJson = through(
+  PullRequestCheckContexts.result,
+  toPullRequestCheckContextsPage,
+);
+/**
+ * Fills in what every review read answers with, so each fixture below says only what it is about:
+ * a page with no more after it, an actor typed as a person, no reactions, no edits.
+ */
+// Fixtures are loose JSON on purpose: each one writes only the fields its test is about.
 type Json = Record<string, any>;
 const LAST_PAGE = { hasNextPage: false, endCursor: null };
 const nodesIn = (connection: Json | null | undefined): ReadonlyArray<Json> =>
@@ -584,6 +609,118 @@ describe("pull request detail decoding", () => {
     expect(detail.checksState).toBe("pending");
   });
 
+  it.each([
+    { source: "detail", last: "newer" },
+    { source: "contexts", last: "newer" },
+    { source: "detail", last: "older" },
+    { source: "contexts", last: "older" },
+  ])(
+    "keeps overlapping CI pending until the last run finishes: $source, $last",
+    ({ source, last }) => {
+      const older = {
+        __typename: "CheckRun",
+        name: "ios",
+        workflowName: "CI",
+        checkSuite: { workflowRun: { workflow: { name: "CI" } } },
+        status: "COMPLETED",
+        conclusion: "SUCCESS",
+        startedAt: "2026-10-10T10:07:24Z",
+        completedAt: "2026-10-10T10:19:48Z",
+      };
+      const newer = {
+        ...older,
+        status: "IN_PROGRESS",
+        conclusion: "",
+        startedAt: last === "older" ? "2026-10-10T10:06:00Z" : "2026-10-10T10:08:37Z",
+        completedAt: "0001-01-01T00:00:00Z",
+      };
+      const decode = (checks: ReadonlyArray<typeof older>) => {
+        if (source === "detail") {
+          return detailOf(checks.map(check));
+        }
+        const page = expectSuccess(
+          decodePullRequestCheckContextsJson(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    headRefOid: "head",
+                    commits: {
+                      nodes: [
+                        {
+                          commit: {
+                            statusCheckRollup: {
+                              contexts: {
+                                nodes: checks.map(check),
+                                pageInfo: { hasNextPage: false, endCursor: null },
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        );
+        return pullRequestChecksFromContexts(page.contexts);
+      };
+      for (const checks of [
+        [newer, older],
+        [older, newer],
+      ]) {
+        const pending = decode(checks);
+        expect(pending.checks.some((check) => check.status === "pending")).toBe(true);
+        expect(pending.checksState).toBe("pending");
+      }
+      const finished = decode([
+        {
+          ...newer,
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          completedAt: "2026-10-10T10:25:00Z",
+        },
+        older,
+      ]);
+      expect(finished.checks.map((check) => check.status)).toEqual(["success"]);
+      expect(finished.checksState).toBe("passing");
+      const waiting = evaluatePullRequestWatch(
+        {
+          startedAt: "2026-10-10T09:53:31Z",
+          headSha: "head",
+          failedChecks: [],
+          passed: false,
+          passedChecks: [],
+          remarksThrough: "2026-10-10T09:53:31Z",
+          remarkIds: [],
+          conflicting: false,
+          wakes: 0,
+        },
+        {
+          capabilities: watchCapabilities,
+          headSha: "head",
+          checks: decode([newer, older]).checks,
+          mergeability: "mergeable",
+          author: null,
+        },
+        [],
+        0,
+      );
+      expect(waiting.changes).toEqual([]);
+      const ready = {
+        capabilities: watchCapabilities,
+        headSha: "head",
+        checks: finished.checks,
+        mergeability: "mergeable" as const,
+        author: null,
+      };
+      const notified = evaluatePullRequestWatch(waiting.next, ready, [], 0);
+      expect(notified.changes).toEqual([{ kind: "checks-passed", count: 1, required: false }]);
+      expect(evaluatePullRequestWatch(notified.next, ready, [], 0).changes).toEqual([]);
+    },
+  );
   it("keeps a check pending while another run of it on the same commit is still going", () => {
     const finished = {
       name: "check",

@@ -203,12 +203,14 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
               "eventCount" to nativeEventCount,
             ),
           )
+          editor.revealSelection()
           emitContentSizeIfNeeded()
         }
       },
     )
-    editor.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+    editor.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
       if (right - left != oldRight - oldLeft) applyTokenSpans()
+      if (bottom - top != oldBottom - oldTop) editor.revealSelection()
       emitContentSizeIfNeeded()
     }
     addView(
@@ -256,6 +258,8 @@ class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
     } finally {
       applyingNativeValue = false
     }
+    // Token spans can change layout after Android's automatic caret scroll.
+    editor.revealSelection()
     emitContentSizeIfNeeded()
   }
 
@@ -625,6 +629,32 @@ internal class SelectionAwareEditText(
   context: Context,
   private val currentActivity: () -> Activity? = { context as? Activity }
 ) : EditText(context) {
+  private var pendingRevealSelection: Runnable? = null
+
+  fun revealSelection() {
+    if (!hasFocus()) return
+    pendingRevealSelection?.let(::removeCallbacks)
+    val task = Runnable {
+      pendingRevealSelection = null
+      if (!hasFocus() || selectionEnd < 0) return@Runnable
+      bringPointIntoView(selectionEnd)
+      val textLayout = layout ?: return@Runnable
+      val line = textLayout.getLineForOffset(selectionEnd)
+      val lineTop = textLayout.getLineTop(line)
+      val lineBottom = textLayout.getLineBottom(line)
+      val visibleHeight = height - totalPaddingTop - totalPaddingBottom
+      if (visibleHeight <= 0) return@Runnable
+      when {
+        lineBottom > scrollY + visibleHeight ->
+          scrollTo(scrollX, lineBottom - visibleHeight)
+        lineTop < scrollY ->
+          scrollTo(scrollX, lineTop.coerceAtLeast(0))
+      }
+    }
+    pendingRevealSelection = task
+    post(task)
+  }
+
   var readOnly = false
   var selectionListener: ((Int, Int) -> Unit)? = null
   var pasteImagesListener: ((List<String>) -> Unit)? = null
@@ -809,6 +839,7 @@ internal class SelectionAwareEditText(
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
+    revealSelection()
     selectionListener?.invoke(selStart, selEnd)
   }
 
