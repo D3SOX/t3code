@@ -152,6 +152,15 @@ describe("mobile connection storage", () => {
     expect(fallback.updatedAt).toEqual(expect.any(Number));
   });
 
+  it("persists collapsed Pinned and Active sections", async () => {
+    const preferences = {
+      threadListPinnedShelfExpanded: false,
+      threadListActiveShelfExpanded: false,
+    };
+    await expect(savePreferencesPatch(preferences)).resolves.toEqual(preferences);
+    await expect(loadPreferences()).resolves.toEqual(preferences);
+  });
+
   it("reconciles fallback preferences after SQLite recovers", async () => {
     mocks.setPreferencesJson(JSON.stringify({ baseFontSize: 15 }), 10);
     await mocks.setItemAsync(

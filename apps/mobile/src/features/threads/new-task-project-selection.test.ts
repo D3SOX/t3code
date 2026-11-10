@@ -187,7 +187,7 @@ describe("newTaskDestination", () => {
     });
   }
 
-  it("starts in the current thread's project ahead of the remembered one", () => {
+  it("keeps the last new-thread project while viewing another project's thread", () => {
     const projects = [makeProject("remembered"), makeProject("current", "other-environment")];
     expect(
       destination({
@@ -197,7 +197,7 @@ describe("newTaskDestination", () => {
         last: { environmentId: "environment", projectId: "remembered" },
       }),
     ).toEqual({
-      draft: { requestId: "request", environmentId: "other-environment", projectId: "current" },
+      draft: { requestId: "request", environmentId: "environment", projectId: "remembered" },
     });
   });
 

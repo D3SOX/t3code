@@ -26,12 +26,33 @@ const divider = marker("pinned-divider");
 const settledHeader = marker("settled-header");
 const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 
+it("keeps expanded section headers at their measured height during a drag", () => {
+  const items = [
+    pinnedHeader,
+    thread("pin", "pinned"),
+    divider,
+    thread("active", "active"),
+    settledHeader,
+  ];
+  const transforms = preview(
+    { items, settledOrder: [], settledExpanded: true, boundaryLabelHeight: 24 },
+    "active",
+    "active",
+    1,
+    32,
+  );
+  expect(transforms.get("pin")).toEqual(stationary);
+  expect(transforms.get(sidebarMarkerId("pinned-divider"))).toEqual(stationary);
+  expect(transforms.get(sidebarMarkerId("settled-header"))).toEqual(stationary);
+});
+
 function layout(
   items: readonly SidebarListItem[],
   active: string,
   over: string,
   scale = 1,
   cardHeight = 82,
+  boundaryHeight = 0,
 ) {
   let top = 100;
   const rects = items.map((item) => {
@@ -39,7 +60,7 @@ function layout(
       item.kind === "thread"
         ? (item.section === "pinned" || item.section === "active" ? cardHeight : 36) * scale
         : item.marker === "pinned-header" || item.marker === "pinned-divider"
-          ? 0
+          ? boundaryHeight * scale
           : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
     const rect = { top, height, bottom: top + height, left: 0, right: 260, width: 260 };
     top += height + 1;
@@ -60,9 +81,10 @@ function preview(
   active: string,
   over: string,
   scale = 1,
+  boundaryHeight = 0,
 ) {
   const strategy = createSidebarSortingStrategy(input);
-  const args = layout(input.items, active, over, scale);
+  const args = layout(input.items, active, over, scale, 82, boundaryHeight);
   return new Map(
     input.items.map((item, index) => [sidebarListItemId(item), strategy({ ...args, index })]),
   );
@@ -377,6 +399,30 @@ describe("sidebar drag projection", () => {
     expect(result.get("s")?.y).toBe(32);
   });
 
+  it("does not add label space when pinned headings are already visible", () => {
+    const items = [
+      pinnedHeader,
+      thread("p", "pinned"),
+      divider,
+      thread("a1", "active"),
+      thread("a2", "active"),
+      settledHeader,
+      thread("s", "settled"),
+    ];
+    const result = preview(
+      { items, settledOrder: [], settledExpanded: true, boundaryLabelHeight: 24 },
+      "a2",
+      "a1",
+      1,
+      24,
+    );
+    expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
+    expect(result.get("p")).toEqual(stationary);
+    expect(result.get(sidebarMarkerId("pinned-divider"))).toEqual(stationary);
+    expect(result.get("a1")?.y).toBe(83);
+    expect(result.get(sidebarMarkerId("settled-header"))).toEqual(stationary);
+  });
+
   it.each(["s1", "missing-target"])(
     "keeps label clearance when a settled drag is over %s",
     (over) => {
@@ -510,7 +556,7 @@ describe("sidebar drag projection", () => {
     expect(result.get(sidebarMarkerId("settled-placeholder"))).toEqual({ ...stationary, y: -83 });
   });
 
-  it("previews a time-ordered inbox drop at its time slot, above the Working shelf", () => {
+  it("reorders Active threads at the pointer with the Working shelf enabled", () => {
     const items = [
       pinnedHeader,
       thread("p", "pinned"),
@@ -522,12 +568,15 @@ describe("sidebar drag projection", () => {
       settledHeader,
       marker("settled-placeholder"),
     ];
-    const input = { items, settledOrder: [], settledExpanded: false };
-    expect(preview(input, "p", "a1").get("a2")?.y).toBe(0);
-    const byTime = preview({ ...input, activeOrder: ["a1", "a2", "p"] }, "p", "a1");
-    expect(byTime.get("a2")?.y).toBe(-83);
-    expect(byTime.get(sidebarMarkerId("working-header"))).toEqual(stationary);
-    expect(byTime.get("w")).toEqual(stationary);
+    const input = {
+      items,
+      settledOrder: [],
+      settledExpanded: false,
+    };
+    const moved = preview(input, "a2", "a1");
+    expect(moved.get("a1")?.y).toBe(83);
+    expect(moved.get(sidebarMarkerId("working-header"))).toEqual(stationary);
+    expect(moved.get("w")).toEqual(stationary);
   });
 
   it("updates the projection when the target or measured geometry changes", () => {

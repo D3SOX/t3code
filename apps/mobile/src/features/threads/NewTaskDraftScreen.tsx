@@ -6,7 +6,7 @@ import { useWorkspaceBackNavigation } from "../layout/workspace/useAndroidWorksp
 import { submittedThreadParams } from "./thread-route-state";
 import { ThreadScreenBinding, ThreadScreenFallback } from "./ThreadScreenHost";
 import { draftThreadShell } from "./draft-thread-shell";
-import { useRememberThreadProject } from "./useRememberThreadProject";
+import { useRememberNewThreadProject } from "./useRememberNewThreadProject";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { connectionTone } from "../connection/connectionTone";
 import { AppBar } from "../../components/ui/AppBar";
@@ -33,7 +33,6 @@ import { KeyboardController } from "react-native-keyboard-controller";
 
 import {
   AuthOrchestrationOperateScope,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
@@ -50,6 +49,7 @@ import {
   composerAttachmentUploadsAtom,
 } from "../../state/composer-attachment-uploads";
 
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
@@ -169,7 +169,7 @@ export function NewTaskDraftScreen(props: {
   const { getShare, isLoading: isIncomingShareInboxLoading } = useIncomingShare();
   const { projectScopes, selectedProject, selectedProjectKey, setProject } = flow;
   // selectedProject falls back to the environment's first project; remember only a chosen one.
-  useRememberThreadProject(
+  useRememberNewThreadProject(
     selectedProject &&
       selectedProjectKey === scopedProjectKey(selectedProject.environmentId, selectedProject.id)
       ? selectedProject
@@ -767,10 +767,20 @@ export function NewTaskDraftScreen(props: {
             accessibilityRole="button"
             disabled={isComposerInteractionLocked}
             onPress={chooseProject}
-            className="min-w-0 max-w-[250px] border-b border-foreground-muted active:opacity-65"
+            className="min-w-0 max-w-[250px] flex-row items-center gap-1.5 border-b border-foreground-muted active:opacity-65"
           >
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <ProjectFavicon
+                environmentId={selectedProject.environmentId}
+                projectTitle={selectedProject.title}
+                workspaceRoot={selectedProject.workspaceRoot}
+                faviconPath={selectedProject.faviconPath}
+                projectIcon={selectedProject.projectIcon}
+                size={20}
+              />
+            </View>
             <Text
-              className="text-2xl font-t3-medium tracking-tight text-foreground"
+              className="min-w-0 shrink text-2xl font-t3-medium tracking-tight text-foreground"
               numberOfLines={1}
             >
               {selectedProjectLabel ?? selectedProject.title}
@@ -953,7 +963,7 @@ export function NewTaskDraftScreen(props: {
     threadId: ThreadId.make(creationMetadata.threadId),
     modelSelection: flow.selectedModel,
     runtimeMode: flow.runtimeMode,
-    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    interactionMode: flow.interactionMode,
     branch: flow.selectedBranchName,
     worktreePath: flow.selectedWorktreePath,
     createdAt: creationMetadata.createdAt,
@@ -1023,6 +1033,7 @@ export function NewTaskDraftScreen(props: {
         offersSideChat={false}
         onReconnectEnvironment={() => onReconnectEnvironment(selectedProject.environmentId)}
         canSwitchThreadProvider
+        onUpdateThreadInteractionMode={flow.planModeEnabled ? flow.setInteractionMode : undefined}
         onRespondToApproval={async () => {}}
         onSelectUserInputOption={() => {}}
         onChangeUserInputCustomAnswer={() => {}}

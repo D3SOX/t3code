@@ -1,3 +1,4 @@
+/** Banked resets use the CLI's OAuth usage endpoint and organization credentials. Keychain-only macOS credentials are unsupported. */
 import type {
   ProviderConsumeResetCreditOutcome,
   ServerProviderResetCredits,
@@ -10,6 +11,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import type { ClaudeSubscriptionUsage } from "./claudeUsageLimits.ts";
 
 const API_BASE = "https://api.anthropic.com";
 const PROGRAM = "cedar_ember";
@@ -38,7 +40,23 @@ const CedarEmber = Schema.Struct({
   grants: Schema.optional(Schema.Array(Schema.Unknown)),
   next_grant_id: Schema.optional(Schema.NullOr(Schema.String)),
 });
+const UsageWindow = Schema.Struct({
+  utilization: Schema.NullOr(Schema.Number),
+  resets_at: Schema.NullOr(Schema.String),
+});
 const UsageResponse = Schema.Struct({
+  five_hour: Schema.optionalKey(Schema.NullOr(UsageWindow)),
+  seven_day: Schema.optionalKey(Schema.NullOr(UsageWindow)),
+  model_scoped: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          display_name: Schema.String,
+          ...UsageWindow.fields,
+        }),
+      ),
+    ),
+  ),
   cedar_ember: Schema.optional(Schema.NullOr(Schema.Unknown)),
 });
 const decodeCedarEmber = Schema.decodeUnknownOption(CedarEmber);
@@ -87,6 +105,7 @@ export const isSettledClaudeResetCreditFailure = (error: unknown) =>
   error.reason !== "requestFailed" &&
   error.reason !== "unconfirmed";
 
+/** Rejects unparseable and calendar-invalid timestamps such as February 30. */
 const isFutureTimestamp = (value: string, nowMs: number) => {
   if (!COMPLETE_TIMESTAMP.test(value)) return false;
   const [year, month, day] = value.slice(0, 10).split("-").map(Number);
@@ -95,6 +114,7 @@ const isFutureTimestamp = (value: string, nowMs: number) => {
   );
 };
 
+/** Grants that are paused or past `ends_at` cannot be claimed and do not count. */
 export function claudeResetCreditsToContract(
   block: unknown,
   nowMs: number,
@@ -150,7 +170,11 @@ const withClaudeHeaders = (token: string, version: string) =>
     "user-agent": `claude-cli/${version} (external, cli)`,
   });
 
-export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
+/**
+ * Reads limits and banked resets for the login in `configDir` in one request.
+ * Limits also recover SDK responses that claim support but return no windows.
+ */
+export const readClaudeSubscriptionUsage = Effect.fn("readClaudeSubscriptionUsage")(
   function* (configDir: string, version: string) {
     const token = yield* readAccessToken(configDir);
     if (!token) return undefined;
@@ -163,15 +187,30 @@ export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
     const body = yield* HttpClientResponse.schemaBodyJson(UsageResponse)(
       yield* HttpClientResponse.filterStatusOk(response),
     );
-    return claudeResetCreditsToContract(
-      body.cedar_ember,
-      DateTime.toEpochMillis(yield* DateTime.now),
-    );
+    return {
+      response: {
+        rate_limits_available: true,
+        rate_limits:
+          body.five_hour || body.seven_day || body.model_scoped?.length
+            ? {
+                ...(body.five_hour !== undefined ? { five_hour: body.five_hour } : {}),
+                ...(body.seven_day !== undefined ? { seven_day: body.seven_day } : {}),
+                ...(body.model_scoped ? { model_scoped: [...body.model_scoped] } : {}),
+              }
+            : null,
+      },
+      resetCredits: claudeResetCreditsToContract(
+        body.cedar_ember,
+        DateTime.toEpochMillis(yield* DateTime.now),
+      ),
+    } satisfies ClaudeSubscriptionUsage;
   },
   Effect.timeout("10 seconds"),
   Effect.orElseSucceed(() => undefined),
 );
 
+/** The CLI keeps the account record beside its settings, or in the home directory by default. */
+/** The organization the login is signed in to; one email can belong to several. */
 export const readClaudeOrganizationId = (accountConfigPath: string) =>
   readJson(Config, accountConfigPath).pipe(
     Effect.map((config) => config.oauthAccount?.organizationUuid?.trim() || undefined),

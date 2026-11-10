@@ -19,6 +19,7 @@ import {
 } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
+import type { QueuedRunEdit } from "./queued-run-edit";
 import { sendApprovalFeedback } from "@t3tools/client-runtime/state/thread-requests";
 import { DateTime } from "effect";
 import { AsyncResult, type Atom } from "effect/reactivity";
@@ -27,6 +28,13 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const state = vi.hoisted(() => ({
   grantedEnvironments: new Set<string>(),
   connectionState: "connected",
+  running: false,
+  queuedEdit: null as QueuedRunEdit | null,
+  editDraft: {
+    text: "Updated queued message",
+    attachments: [] as DraftComposerImageAttachment[],
+  },
+  edit: vi.fn(),
   draft: {
     text: "Keep my draft",
     attachments: [] as DraftComposerImageAttachment[],
@@ -81,11 +89,26 @@ vi.mock("@t3tools/client-runtime/state/context-window", async (importOriginal) =
   ...(await importOriginal<typeof import("@t3tools/client-runtime/state/context-window")>()),
   shouldCompactBeforeSend: () => state.compactDue,
 }));
-vi.mock("../lib/attachmentUpload", () => ({ prepareTurnAttachments: vi.fn() }));
+vi.mock("../lib/attachmentUpload", () => ({
+  prepareTurnAttachments: vi.fn(async () => ({ status: "ready", attachments: [] })),
+}));
 vi.mock("../lib/uuid", () => ({ uuidv4: () => "uuid" }));
-vi.mock("./queued-run-edit", () => ({
-  useQueuedRunEdit: () => null,
-  getQueuedRunEdit: () => null,
+vi.mock("./queued-run-edit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./queued-run-edit")>()),
+  useQueuedRunEdit: () => state.queuedEdit,
+  getQueuedRunEdit: () => state.queuedEdit,
+  endQueuedRunEdit: () => {
+    state.queuedEdit = null;
+  },
+  startQueuedRunEditSave: () => {
+    const edit = state.queuedEdit;
+    if (edit === null) return null;
+    return (saved: boolean) => {
+      if (state.queuedEdit !== edit) return false;
+      if (saved) state.queuedEdit = null;
+      return true;
+    };
+  },
 }));
 vi.mock("./preferences", async () => {
   const { Atom, AsyncResult } = await import("effect/reactivity");
@@ -103,7 +126,19 @@ vi.mock("./session", () => ({
 }));
 vi.mock("./use-thread-selection", () => ({
   useThreadSelection: () => ({
-    selectedThread: state.thread,
+    selectedThread: {
+      ...state.thread,
+      runtime: state.running
+        ? {
+            status: "running",
+            activeRunId: "active-run",
+            providerInstanceId: "codex",
+            providerName: "codex",
+            lastError: null,
+            updatedAt: "2026-09-05T00:00:00.000Z",
+          }
+        : null,
+    },
     selectedThreadCreation: null,
     selectedEnvironmentRuntime: {
       connectionState: state.connectionState,
@@ -122,7 +157,7 @@ vi.mock("./threads", async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     environmentThreadDetails: {
-      queueWorkflowAtom: () => Atom.make(null),
+      queueWorkflowAtom: () => Atom.make({ canPromoteToSteer: state.running }),
       checkpointSummariesAtom: () => Atom.make([]),
       sequenceAtom: () => Atom.make(0),
       pendingRequestsAtom: () => Atom.make(state.pendingRequests),
@@ -131,6 +166,7 @@ vi.mock("./threads", async () => {
       respondToApproval: state.approve,
       respondToUserInput: state.answer,
       uploadFeedback: state.feedback,
+      editQueuedRun: state.edit,
     },
   };
 });
@@ -152,13 +188,14 @@ vi.mock("./use-composer-drafts", async () => {
   return {
     composerDraftsAtom: Atom.make({}),
     composerContextImportsAtom: Atom.make({}),
-    getComposerDraftSnapshot: () => state.draft,
+    getComposerDraftSnapshot: (key: string) =>
+      key === "secondary:thread" ? state.draft : state.editDraft,
     isFreshSessionPending: () => state.freshPending,
     setFreshSessionPending: state.setFreshPending,
     clearComposerDraftContent: state.clearDraft,
     clearComposerDraft: state.clearDraft,
-    setComposerDraftText: (_key: string, text: string) => {
-      state.draft.text = text;
+    setComposerDraftText: (key: string, text: string) => {
+      (key === "secondary:thread" ? state.draft : state.editDraft).text = text;
     },
     updateComposerDraftSettings: state.updateSettings,
     ensureComposerDraftsLoaded: () => {},
@@ -205,6 +242,9 @@ beforeEach(() => {
   state.freshPending = false;
   state.compactDue = false;
   state.thread.latestRun = null;
+  state.running = false;
+  state.queuedEdit = null;
+  state.editDraft = { text: "Updated queued message", attachments: [] };
   state.projection = null;
   state.serverConfig = {
     providers: [{ instanceId: "codex", driver: "codex", enabled: true }],
@@ -225,6 +265,49 @@ beforeEach(() => {
   state.approve.mockResolvedValue(AsyncResult.success(undefined));
   state.answer.mockResolvedValue(AsyncResult.success(undefined));
   state.feedback.mockResolvedValue(AsyncResult.success({ feedbackId: "feedback" }));
+  state.edit.mockResolvedValue(AsyncResult.success(undefined));
+});
+
+describe("mobile queued-message edits", () => {
+  it.each([false, true])(
+    "ignores a saved edit's repeated submit with late text: %s",
+    async (lateText) => {
+      state.grantedEnvironments.add("secondary");
+      state.running = true;
+      state.queuedEdit = {
+        runId: RunId.make("queued-run"),
+        messageId: MessageId.make("queued-message"),
+        originalText: "Original queued message",
+        existingAttachments: [],
+      };
+      const editor = useThreadComposerState(NO_SIDE_CHATS);
+      expect(await editor.onSendMessage("steer")).toBeNull();
+      expect(state.edit).toHaveBeenCalledWith({
+        environmentId: "secondary",
+        input: {
+          threadId: "thread",
+          runId: "queued-run",
+          text: "Updated queued message",
+          edit: { messageId: "queued-message", attachments: [] },
+        },
+      });
+      expect(state.queuedEdit).toBeNull();
+
+      // A native text event and keyboard submission can still be delivered from
+      // the editor that just saved, before React replaces its callbacks.
+      if (lateText) editor.onChangeDraftMessage("Updated queued message");
+      expect(await editor.onSendMessage("steer")).toBeNull();
+      expect(state.enqueue).not.toHaveBeenCalled();
+      expect(state.draft.text).toBe("Keep my draft");
+      expect(state.edit).toHaveBeenCalledTimes(1);
+
+      // The next render belongs to the normal draft and can submit it normally.
+      expect(await useThreadComposerState(NO_SIDE_CHATS).onSendMessage("queue")).toBe("message");
+      expect(state.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Keep my draft", dispatchMode: "queue" }),
+      );
+    },
+  );
 });
 
 describe("mobile task permissions", () => {
@@ -271,7 +354,11 @@ describe("mobile task permissions", () => {
     expect(state.enqueue).not.toHaveBeenCalled();
     expect(state.clearDraft).not.toHaveBeenCalled();
     composer.onChangeDraftMessage("Edited locally");
+    composer.onUpdateInteractionMode("plan");
     expect(state.draft.text).toBe("Edited locally");
+    expect(state.updateSettings).toHaveBeenCalledWith("secondary:thread", {
+      interactionMode: "plan",
+    });
   });
 
   it("keeps an armed fresh session for the message after an approval redirect", async () => {

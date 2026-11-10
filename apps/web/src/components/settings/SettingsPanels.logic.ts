@@ -114,10 +114,10 @@ export type BrowserDefaultSettings = Pick<
   | "browserRecordingShowKeyPresses"
   | "browserRecordingShowMousePresses"
   | "browserLinkTarget"
+  | "pullRequestLinkTarget"
   | "browserSearchEngine"
   | "browserCustomSearchUrl"
   | "browserAutoShowFloatingPreview"
-  | "pullRequestLinksOpenInApp"
 >;
 
 function isSamePreviewViewport(
@@ -154,6 +154,9 @@ export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings)
     ...(settings.browserLinkTarget !== DEFAULT_UNIFIED_SETTINGS.browserLinkTarget
       ? ["Open links in"]
       : []),
+    ...(settings.pullRequestLinkTarget !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinkTarget
+      ? ["Open pull requests in"]
+      : []),
     ...(settings.browserSearchEngine !== DEFAULT_UNIFIED_SETTINGS.browserSearchEngine ||
     settings.browserCustomSearchUrl !== DEFAULT_UNIFIED_SETTINGS.browserCustomSearchUrl
       ? ["Search engine"]
@@ -161,9 +164,6 @@ export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings)
     ...(settings.browserAutoShowFloatingPreview !==
     DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview
       ? ["Floating preview"]
-      : []),
-    ...(settings.pullRequestLinksOpenInApp !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp
-      ? ["Open pull requests in T3 Code"]
       : []),
   ];
 }

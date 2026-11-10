@@ -13,6 +13,7 @@ import {
 import {
   formatDuration,
   formatResetsIn,
+  formatCreditBalance,
   limitsNotice,
   paceOf,
   paceRemainingPercent,
@@ -206,6 +207,14 @@ export function AccountLimits(props: {
           ))}
         </View>
       )}
+      {limits.credits ? (
+        <View className="flex-row justify-between gap-3">
+          <Text className="text-sm text-foreground-muted">Credits remaining</Text>
+          <Text className="text-sm font-t3-medium tabular-nums text-foreground">
+            {formatCreditBalance(limits.credits)}
+          </Text>
+        </View>
+      ) : null}
       {externalUsage ? (
         <Pressable
           accessibilityRole="link"

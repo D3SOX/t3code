@@ -472,7 +472,22 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
-      const customConfig = runtimeConfig.keybindings;
+      let migratedLegacyDefaults = false;
+      const customConfig = runtimeConfig.keybindings.map((entry) => {
+        const replacement =
+          entry.command === "terminal.split" && entry.key === "mod+d"
+            ? "ctrl+)"
+            : entry.command === "terminal.splitVertical" && entry.key === "mod+shift+d"
+              ? "ctrl+("
+              : null;
+        if (entry.when !== "terminalFocus" || replacement === null) return entry;
+        const migrated = { ...entry, key: replacement };
+        if (runtimeConfig.keybindings.some((rule) => hasSameShortcutContext(rule, migrated))) {
+          return entry;
+        }
+        migratedLegacyDefaults = true;
+        return migrated;
+      });
       const existingCommands = new Set(customConfig.map((entry) => entry.command));
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
@@ -542,7 +557,7 @@ const make = Effect.gen(function* () {
           commands: skippedDefaults.map((rule) => rule.command),
         });
       }
-      if (defaultsToAppend.length > 0) {
+      if (defaultsToAppend.length > 0 || migratedLegacyDefaults) {
         yield* writeConfigAtomically([...defaultsToAppend, ...customConfig]);
       }
       const settledLateDefaults = pendingLateDefaults.filter(

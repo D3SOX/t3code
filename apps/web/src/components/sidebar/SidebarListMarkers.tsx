@@ -79,15 +79,28 @@ export function SidebarDragBoundary(props: {
   marker: "pinned-header" | "pinned-divider";
   label: string;
   visible: boolean;
+  persistent: boolean;
   isDropTarget: boolean;
+  toggle: {
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="pointer-events-none relative mx-0.5 -mb-px h-0"
+      className={cn("relative mx-0.5 -mb-px", props.persistent ? "h-8" : "pointer-events-none h-0")}
     >
-      {props.visible ? (
+      {props.persistent ? (
+        <CollapsibleSectionHeader
+          expanded={props.toggle.expanded}
+          onClick={props.toggle.onToggle}
+          tone={props.isDropTarget ? "accent" : "emphasized"}
+        >
+          {props.label}
+        </CollapsibleSectionHeader>
+      ) : props.visible ? (
         <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
           <span
             className={cn(
@@ -118,7 +131,11 @@ export function SidebarSectionHeader(props: {
   className?: string;
   dragging?: boolean;
   isDropTarget?: boolean;
-  toggle: { expanded: boolean; onToggle: () => void };
+  toggle: {
+    expanded: boolean;
+    onToggle: () => void;
+  };
+  onContextMenu?: (position: { x: number; y: number }) => void;
 }) {
   const shelf =
     props.marker === "working-header"
@@ -130,11 +147,36 @@ export function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("relative mx-0.5 h-8", props.className)}
+      className={cn("mx-0.5 h-8", props.className)}
     >
       <CollapsibleSectionHeader
         data-sidebar-row={`shelf:${shelf}`}
         onClick={props.toggle.onToggle}
+        onContextMenu={
+          props.onContextMenu
+            ? (event) => {
+                event.preventDefault();
+                props.onContextMenu?.({
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              }
+            : undefined
+        }
+        onKeyDown={
+          props.onContextMenu
+            ? (event) => {
+                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  props.onContextMenu?.({
+                    x: rect.left,
+                    y: rect.bottom,
+                  });
+                }
+              }
+            : undefined
+        }
         expanded={props.toggle.expanded}
         tone={props.isDropTarget ? "accent" : props.dragging ? "emphasized" : "muted"}
         data-testid={`sidebar-${shelf}-shelf-toggle`}
