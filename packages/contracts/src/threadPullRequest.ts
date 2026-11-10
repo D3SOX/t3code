@@ -112,6 +112,12 @@ export const ThreadPullRequestWatch = Schema.Struct({
   passedChecks: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
+  /** Checks still pending when required ones passed early, owed one wake once all settle. */
+  owedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** Approval holds keyed by workflow run URL, or check name when no run URL is known. */
+  awaitingApproval: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** The agent was told checks await approval on this head, so later ones stay quiet. */
+  approvalAnnounced: Schema.optional(Schema.Boolean),
   /** All checks that passed, independently of the required gate. Empty while CI is pending. */
   allPassedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** All finished checks, including failures. Empty while any check is pending. */

@@ -94,6 +94,7 @@ function makeFakeBrowserWindow() {
     replaceMisspelling: vi.fn(),
     send: vi.fn(),
     setBackgroundThrottling: vi.fn(),
+    setIgnoreMenuShortcuts: vi.fn(),
     setWindowOpenHandler: vi.fn(),
     toggleDevTools: vi.fn(),
   };
@@ -143,6 +144,7 @@ function makeFakeBrowserWindow() {
     reloadIgnoringCache: webContents.reloadIgnoringCache,
     toggleDevTools: webContents.toggleDevTools,
     navigationHistory: webContents.navigationHistory,
+    setIgnoreMenuShortcuts: webContents.setIgnoreMenuShortcuts,
     send: webContents.send,
     setZoomLevel: webContents.setZoomLevel,
     setWindowButtonPosition: window.setWindowButtonPosition,
@@ -542,6 +544,30 @@ describe("DesktopWindow", () => {
     );
   });
 
+  it("restores a window saved 1px past a display edge, and nothing further out", () => {
+    const displays = [
+      { x: 0, y: 0, width: 1920, height: 1280 },
+      { x: 1920, y: 0, width: 1280, height: 1920 },
+    ];
+    const snappedBounds = { x: 1921, y: 30, width: 1280, height: 945 };
+
+    assert.strictEqual(
+      DesktopWindow.resolveInitialMainWindowBounds(snappedBounds, displays),
+      snappedBounds,
+    );
+    for (const bounds of [
+      { x: 1922, y: 30, width: 1280, height: 945 },
+      { x: 1918, y: 30, width: 1280, height: 945 },
+      { x: 1921, y: -2, width: 1279, height: 945 },
+      { x: 1920, y: 976, width: 1280, height: 946 },
+    ]) {
+      assert.deepEqual(
+        DesktopWindow.resolveInitialMainWindowBounds(bounds, displays),
+        DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
+      );
+    }
+  });
+
   it("rejects renderer navigations whose origin only serializes as null", () => {
     for (const applicationUrl of ["t3code://app/", "t3code-dev://app/"]) {
       assert.isTrue(
@@ -685,7 +711,7 @@ describe("DesktopWindow", () => {
       }),
   );
 
-  it.effect("does not intercept repeated Ctrl+W terminal input", () =>
+  it.effect("leaves Cmd+W to the renderer without intercepting Ctrl+W terminal input", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
       const createCount = yield* Ref.make(0);
@@ -722,6 +748,18 @@ describe("DesktopWindow", () => {
         prevented = false;
         beforeInput(event, { ...input, isAutoRepeat: false });
         assert.isFalse(prevented);
+
+        assert.deepEqual(
+          fakeWindow.setIgnoreMenuShortcuts.mock.calls.map(([ignore]) => ignore),
+          [false, false],
+        );
+        beforeInput(event, { ...input, meta: true, control: false, isAutoRepeat: false });
+        assert.isFalse(prevented);
+        assert.isTrue(fakeWindow.setIgnoreMenuShortcuts.mock.lastCall?.[0]);
+        beforeInput(event, { ...input, meta: true, control: false });
+        assert.isTrue(prevented);
+        beforeInput(event, { ...input, key: "r", isAutoRepeat: false });
+        assert.isFalse(fakeWindow.setIgnoreMenuShortcuts.mock.lastCall?.[0]);
       }).pipe(Effect.provide(layer));
     }),
   );
@@ -1208,6 +1246,56 @@ describe("DesktopWindow", () => {
 
         assert.isTrue(prevented);
         assert.deepEqual(openedExternalUrls, ["https://accounts.microsoft.com/oauth"]);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("offers to copy the bare address when right-clicking a mailto link", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const popup = yield* Deferred.make<ElectronMenu.ElectronMenuTemplateInput>();
+      const copied = yield* Deferred.make<string>();
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        onPopupTemplate: (input) => Deferred.succeed(popup, input),
+        onCopyText: (text) => Deferred.succeed(copied, text),
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const contextMenu = fakeWindow.webContentsListeners.get("context-menu");
+        if (!contextMenu) {
+          return yield* Effect.die("context-menu listener was not registered");
+        }
+        contextMenu(
+          { preventDefault: vi.fn() },
+          {
+            linkURL: "mailto:restaurant%40example.com?subject=Hi",
+            misspelledWord: "",
+            dictionarySuggestions: [],
+            mediaType: "none",
+            editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: true },
+          },
+        );
+
+        const { template } = yield* Deferred.await(popup);
+        const copyEmail = template.find((item) => item.label === "Copy Email Address");
+        assert.isDefined(
+          copyEmail,
+          `no "Copy Email Address" item in ${JSON.stringify(template.map((item) => item.label ?? item.role ?? item.type))}`,
+        );
+        copyEmail?.click?.(
+          {} as Electron.MenuItem,
+          fakeWindow.window,
+          {} as Electron.KeyboardEvent,
+        );
+        assert.equal(yield* Deferred.await(copied), "restaurant@example.com");
       }).pipe(Effect.provide(layer));
     }),
   );

@@ -53,12 +53,18 @@ class ContextMenuImageCopyError extends Schema.TaggedError<ContextMenuImageCopyE
 const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
-function emailAddressFromLink(href: string): string | null {
+function parseMailtoAddress(rawUrl: string): Option.Option<string> {
+  let url: URL;
   try {
-    const url = new URL(href);
-    return url.protocol === "mailto:" ? decodeURIComponent(url.pathname) || null : null;
+    url = new URL(rawUrl);
   } catch {
-    return null;
+    return Option.none();
+  }
+  if (url.protocol !== "mailto:" || url.pathname === "") return Option.none();
+  try {
+    return Option.some(decodeURIComponent(url.pathname));
+  } catch {
+    return Option.some(url.pathname);
   }
 }
 
@@ -183,15 +189,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
 
 type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
 
+// A window snapped to a display edge can be reported 1px past that edge.
+const SAVED_BOUNDS_EDGE_TOLERANCE_PX = 1;
+
 function windowFitsWithinDisplay(
   windowBounds: DesktopAppSettings.DesktopWindowBounds,
   displayBounds: DisplayBounds,
 ): boolean {
+  const tolerance = SAVED_BOUNDS_EDGE_TOLERANCE_PX;
   return (
-    windowBounds.x >= displayBounds.x &&
-    windowBounds.y >= displayBounds.y &&
-    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width &&
-    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height
+    windowBounds.x >= displayBounds.x - tolerance &&
+    windowBounds.y >= displayBounds.y - tolerance &&
+    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width + tolerance &&
+    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height + tolerance
   );
 }
 
@@ -456,6 +466,7 @@ export const make = Effect.gen(function* () {
         sandbox: true,
         webviewTag: true,
         // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
+        // The app's own fullscreen elements reach OS fullscreen through syncHtmlFullscreen.
         disableHtmlFullscreenWindowResize: true,
       },
     });
@@ -612,16 +623,25 @@ export const make = Effect.gen(function* () {
           menuTemplate.push({ type: "separator" });
         }
 
-        const emailAddress = emailAddressFromLink(params.linkURL);
-        if (
-          emailAddress !== null ||
-          Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))
-        ) {
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
           menuTemplate.push(
             {
-              label: emailAddress === null ? "Copy Link" : "Copy Email Address",
+              label: "Copy Link",
               click: () => {
-                void runPromise(electronShell.copyText(emailAddress ?? params.linkURL));
+                void runPromise(electronShell.copyText(params.linkURL));
+              },
+            },
+            { type: "separator" },
+          );
+        }
+
+        const mailtoAddress = parseMailtoAddress(params.linkURL);
+        if (Option.isSome(mailtoAddress)) {
+          menuTemplate.push(
+            {
+              label: "Copy Email Address",
+              click: () => {
+                void runPromise(electronShell.copyText(mailtoAddress.value));
               },
             },
             { type: "separator" },
@@ -715,6 +735,13 @@ export const make = Effect.gen(function* () {
     });
     window.webContents.on("before-input-event", (event, input) => {
       quitShortcutHandler(event, input);
+      // Cmd/Ctrl+W reaches the renderer; DevTools uses the native menu shortcut.
+      window.webContents.setIgnoreMenuShortcuts(
+        (environment.platform === "darwin" ? input.meta : input.control) &&
+          !input.alt &&
+          !input.shift &&
+          input.key.toLowerCase() === "w",
+      );
       // A held Cmd/Ctrl+W closes one tab or terminal, not each one behind it.
       if (input.type !== "keyDown" || !input.isAutoRepeat) return;
       const modifier = environment.platform === "darwin" ? input.meta : input.control;
