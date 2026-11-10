@@ -191,6 +191,7 @@ export function evaluatePullRequestWatch(
     // An early failure already woke the agent, but it may be waiting for the other jobs.
     // New failures and an all-pass result already produce their own wake on this pass.
     if (
+      !checksUnread &&
       completed &&
       failed.length > 0 &&
       newlyFailed.length === 0 &&
@@ -198,7 +199,7 @@ export function evaluatePullRequestWatch(
     ) {
       changes.push({ kind: "checks-completed", count: allNames.length, failed });
     }
-    completedChecks = completed ? allNames : [];
+    if (!checksUnread || !completed) completedChecks = completed ? allNames : [];
   }
 
   // Only a head never read with checks waits for them: an empty read after checks were seen is

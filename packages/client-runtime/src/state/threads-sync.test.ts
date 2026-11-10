@@ -806,13 +806,12 @@ describe("EnvironmentThreads", () => {
   );
 
   it.effect.each([
-    // The HTTP retry decides, so a missing thread never flashes an error.
     {
       label: "a socket-only open asks HTTP",
       socketSnapshots: true,
       httpSnapshot: { _tag: "missing" },
       failure: new Error("Thread not found"),
-      status: "deleted",
+      status: "empty",
       loads: [0, 1],
     },
     // A defect never retries on its own, so the socket-only open resubscribes once.
@@ -821,7 +820,7 @@ describe("EnvironmentThreads", () => {
       socketSnapshots: true,
       httpSnapshot: { _tag: "missing" },
       failure: TEST_DEFECT,
-      status: "deleted",
+      status: "empty",
       loads: [0, 1],
     },
     // Authorization failures are never retried, so the error must show at once.
@@ -911,11 +910,10 @@ describe("EnvironmentThreads", () => {
 
       // A timed-out session never reaches onExpectedFailure.
       yield* harness.replaceSession;
-      const settled = yield* awaitThreadState(
-        harness.observed,
-        (value) => value.status === "deleted",
+      const settled = yield* awaitThreadState(harness.observed, (value) =>
+        Option.isSome(value.error),
       );
-      expect(settled.status).toBe("deleted");
+      expect(settled.status).toBe("empty");
       expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
     }),
   );

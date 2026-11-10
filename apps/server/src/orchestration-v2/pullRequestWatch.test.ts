@@ -209,6 +209,39 @@ describe("evaluatePullRequestWatch", () => {
       evaluatePullRequestWatch(blocked.next, detail({ checks: [bot] }), noRemarks).changes,
       [{ kind: "checks-passed", count: 1, required: false }],
     );
+    const failed = check("lint", "failure");
+    const running = evaluatePullRequestWatch(
+      watch(),
+      detail({ checks: [failed, check("test", "pending"), unknown] }),
+      noRemarks,
+    );
+    assert.deepEqual(running.changes, [{ kind: "checks-failed", failed: [failed] }]);
+    const finishedChecks = [failed, check("test", "success")];
+    const unreadCompletion = evaluatePullRequestWatch(
+      running.next,
+      detail({ checks: [...finishedChecks, unknown] }),
+      noRemarks,
+    );
+    assert.deepEqual(unreadCompletion.changes, []);
+    assert.deepEqual(unreadCompletion.next.completedChecks, []);
+    const finished = evaluatePullRequestWatch(
+      unreadCompletion.next,
+      detail({ checks: finishedChecks }),
+      noRemarks,
+    );
+    assert.deepEqual(finished.changes, [{ kind: "checks-completed", count: 2, failed: [failed] }]);
+    const laterUnread = evaluatePullRequestWatch(
+      finished.next,
+      detail({ checks: [...finishedChecks, unknown] }),
+      noRemarks,
+    );
+    assert.deepEqual(laterUnread.changes, []);
+    assert.deepEqual(laterUnread.next.completedChecks, finished.next.completedChecks);
+    assert.deepEqual(
+      evaluatePullRequestWatch(laterUnread.next, detail({ checks: finishedChecks }), noRemarks)
+        .changes,
+      [],
+    );
   });
 
   it("wakes when remaining CI finishes after an earlier failure", () => {

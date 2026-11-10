@@ -2336,6 +2336,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const performSnooze = async (
     threadRef: ScopedThreadRef,
     preset: Pick<SnoozePreset, "snoozedUntil">,
+    opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
   ) => {
     const threadKey = scopedThreadKey(threadRef);
     if (snoozingThreadKeysRef.current.has(threadKey)) {
@@ -2344,26 +2345,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       } as const;
     }
     snoozingThreadKeysRef.current.add(threadKey);
-    const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
-    const result = await snoozeThread(threadRef, preset.snoozedUntil);
-    snoozingThreadKeysRef.current.delete(threadKey);
-    if (result._tag === "Failure") {
-      return isAtomCommandInterrupted(result)
-        ? ({ status: "interrupted" } as const)
-        : ({ status: "failure", error: squashAtomCommandFailure(result) } as const);
-    }
-    if (
-      shouldNavigateAfterThreadPark({
-        threadKey,
-        currentThreadKey: readRouteThreadKey(router),
-        action: "snooze",
-        now: new Date().toISOString(),
-        thread: readThreadShell(threadRef),
-      })
-    ) {
-      navigateAfterSnooze?.();
-    }
-    return { status: "success" } as const;
+    return await (async () => {
+      const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
+      const result = await snoozeThread(threadRef, preset.snoozedUntil);
+      if (result._tag === "Failure") {
+        return isAtomCommandInterrupted(result)
+          ? ({ status: "interrupted" } as const)
+          : ({ status: "failure", error: squashAtomCommandFailure(result) } as const);
+      }
+      if (
+        shouldNavigateAfterThreadPark({
+          threadKey,
+          currentThreadKey: readRouteThreadKey(router),
+          action: "snooze",
+          now: new Date().toISOString(),
+          thread: readThreadShell(threadRef),
+        })
+      ) {
+        navigateAfterSnooze?.();
+      }
+      return { status: "success" } as const;
+    })().finally(() => {
+      snoozingThreadKeysRef.current.delete(threadKey);
+    });
   };
   const attemptSnooze = useStableCallback(
     (

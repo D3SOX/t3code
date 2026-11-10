@@ -5051,7 +5051,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
   );
 
   it.effect.each(["deadline", "fingerprint lost", "fingerprint changed", "mixed-age remarks"])(
-    "delivers edited cached review replies: %s",
+    "refreshes cached review edits without waking: %s",
     (mode) =>
       Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -5208,31 +5208,17 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           thread.comments[0] = visibleReply;
           yield* TestClock.adjust("5 minutes");
           yield* reactor.sweep;
-          const intermediateWatch = yield* watch;
-          const intermediatePageReads = [...pageReads];
           yield* TestClock.adjust("5 minutes");
           yield* reactor.sweep;
           const wakes = yield* messages;
-          assert.isTrue(wakes.every((wake) => wake.notification?.summary === "#12: new comments"));
-          assert.equal((yield* watch)?.remarksThrough, visibleReply.editedAt);
-          assert.deepEqual((yield* watch)?.remarkIds, [visibleReply.id]);
+          assert.deepEqual(wakes, []);
+          assert.deepEqual(yield* watch, baseline);
           assert.deepEqual(pageReads, [...expectedPages, ...expectedPages]);
-          const wakeText = wakes.map((wake) => wake.text).join("\n");
-          for (const reply of [visibleReply, ...replies]) {
-            assert.include(wakeText, reply.body);
-            assert.equal(wakeText.split(reply.body).length - 1, 1);
-          }
-          // A watermark past the deep edit requires a fresh tail, even before its deadline.
-          if (intermediateWatch?.remarksThrough === visibleReply.editedAt) {
-            assert.deepEqual(intermediatePageReads, [...expectedPages, ...expectedPages]);
-          } else {
-            assert.equal(intermediateWatch?.remarksThrough, baseline?.remarksThrough);
-          }
           yield* reactor.sweep;
           yield* TestClock.adjust("30 minutes");
           yield* reactor.sweep;
           assert.deepEqual(yield* messages, wakes);
-          assert.equal((yield* watch)?.remarksThrough, visibleReply.editedAt);
+          assert.deepEqual(yield* watch, baseline);
           assert.deepEqual(pageReads, [...expectedPages, ...expectedPages, ...expectedPages]);
           return;
         }
@@ -5265,14 +5251,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         }
         yield* reactor.sweep;
         const wakes = yield* messages;
-        assert.deepEqual(
-          wakes.map((message) => message.notification?.summary),
-          ["#12: new comments"],
-        );
-        for (const reply of replies) {
-          assert.include(wakes[0]?.text ?? "", reply.body);
-        }
-        assert.notInclude(wakes[0]?.text ?? "", "Original feedback.");
+        assert.deepEqual(wakes, []);
+        assert.deepEqual(yield* watch, baseline);
         assert.deepEqual(
           pageReads,
           Array.from(
@@ -5280,15 +5260,12 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
             () => expectedPages,
           ).flat(),
         );
-        const latestReply = replies.at(-1)!;
-        assert.equal((yield* watch)?.remarksThrough, latestReply.editedAt);
-        assert.deepEqual((yield* watch)?.remarkIds, [latestReply.id]);
         yield* reactor.sweep;
-        assert.lengthOf(yield* messages, 1);
+        assert.deepEqual(yield* messages, []);
         assert.lengthOf(pageReads, mode === "fingerprint changed" ? 6 : 2);
         yield* TestClock.adjust("30 minutes");
         yield* reactor.sweep;
-        assert.lengthOf(yield* messages, 1);
+        assert.deepEqual(yield* messages, []);
         assert.lengthOf(pageReads, mode === "fingerprint changed" ? 8 : 3);
       }),
   );
