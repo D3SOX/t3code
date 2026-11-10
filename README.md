@@ -6,9 +6,9 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 - Follow-up messages wait until the next tool call finishes by default. You can also queue them after the current turn or steer the agent immediately. All clients offer these choices. The server saves queued messages, which you can edit, reorder, or send immediately. On web and desktop, Up Arrow in an empty composer edits the last queued message. Completion notifications wait until all queued turns finish.
 - Editing a queued message pauses the queue until you save or cancel. Saving updates the message in place and keeps its delivery timing. Removing a queued message returns its text and attachments to the composer alongside any existing draft.
-- You can send or queue messages before attachments finish uploading or an earlier send finishes. They wait locally and send in order. You can keep composing while they wait. Keep web and desktop open until the messages send. Mobile saves its local queue across restarts.
+- You can keep composing and sending while earlier messages or their attachments wait. Messages queue locally and send in order. Keep web and desktop open until the messages send. Mobile saves its local queue across restarts.
 - On web and desktop, Enter or the send button starts a new thread in the background and opens a fresh draft. Ctrl+Enter or Command+Enter opens the submitted thread. Turn off Start threads in background under General in Settings to reverse these actions. You can customize the shortcuts.
-- Send and interrupt buttons show a loading indicator while requests are pending. You can submit another message while an earlier send is pending.
+- The interrupt button shows a loading indicator until the request finishes.
 - Images the agent opens have their own timeline rows, even when the turn is collapsed. Open a row to see its preview, then click the preview to see the full image.
 - Images and videos the agent cites have previews below its message on all clients. Videos have playback controls and do not autoplay.
 - Local image previews refresh when an agent updates the file and shows it again, or when you reopen its preview. Thread previews keep saved copies so older images remain available after their source files are removed.
@@ -19,6 +19,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Short PR-monitoring updates and intermediate background-job completions do not send completion alerts, play sounds, or mark the thread Done while work continues.
 - Awaited background tasks resume the agent even if another notification arrives first. Automatic settlement waits until pending background work finishes, and task completion can wake a settled thread.
 - Missing required checks stay pending, including checks that appear later. When the remaining CI checks finish, PR monitoring wakes the agent even if it already reported that the required checks passed. Overlapping CI runs remain pending until they finish, and CI notifications for outdated commits are ignored.
+- PR monitoring ignores edits to existing comments and bot status messages, acknowledgements, and rate-limit notices. New human comments, review findings, check results, and conflicts still wake the agent.
 - On web and desktop, the same provider usage limit alerts once per environment instead of once per affected thread.
 - Agent instructions limit PR links to the task's pull requests. Incidental release-note edits, labels, and coordination updates do not qualify.
 - PR links open in your system browser by default. On desktop, right-click a link to open it in T3 Code instead. If a repository has both `origin` and `upstream`, T3 Code uses `origin` for the fork's pull requests.
@@ -28,10 +29,13 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 ## Navigation and terminals
 
+- On web and desktop, drafts have their own collapsible section at the top of the sidebar. Your device remembers whether it is expanded.
 - You can collapse the Pinned and Active sections of the thread list. Each client remembers your choice. Both sections start expanded. Done threads, Input threads, and the thread you are viewing stay visible in collapsed sections.
 - You can rearrange Active threads with the Working section enabled, and your order stays saved.
 - The sidebar distinguishes background work from active agent turns and shows pending input while the agent is still running. Working threads stay in their section during synchronization.
 - The new-thread button remembers the project last selected for a new thread. Opening another chat does not change that choice. On web and desktop, right-click or Shift-click the sidebar button to choose another project. All clients show the selected project's icon beside its name in the composer.
+- On web and desktop, choose a machine for threads without a project under General, New threads in Settings. The choice is saved on this device, and the selected machine must be connected.
+- Opening or closing Settings and Usage on web and desktop does not add entries to navigation history. Back and Forward keep following your thread navigation.
 - On web and desktop, when a sidebar action takes you out of the current thread, you return to a new-thread draft in the same project instead of opening another thread.
 - On web and desktop, right-click the Settled section to archive all settled threads, including older threads that are not currently loaded. Several threads archive at once, with one undo action for the batch. This always asks for confirmation, even when individual archive confirmations are turned off.
 - Search archived threads under Settings by thread title, branch, project name or path, or environment name.
@@ -43,6 +47,7 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 
 - Choose T3 Code Dim under Appearance in Settings for the previous gray dark-theme colors on every client.
 - Turn off Show thread branches under Appearance in Settings for more compact thread rows and more room for thread titles.
+- Web and desktop retain the Build/Plan toggle, plan commands, and circular context-window indicator as optional settings under Labs, Legacy.
 - Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your device saves the choice.
 
 ## Mobile and accounts
@@ -54,15 +59,14 @@ This fork tracks [upstream T3 Code](https://github.com/pingdotgg/t3code) with th
 - Mobile project filters and the Settings scope picker show project icons.
 - The Android composer keeps the cursor visible as long messages wrap onto new lines.
 - Mobile marks threads with unsent drafts with a yellow pen and a subtle highlight, as upstream does on web and desktop. Send or remove the draft to clear the indicator.
-- Switching Codex accounts in a thread keeps its agent-session context.
-- If Codex archives an idle session, your next follow-up unarchives it and retries once with the same conversation and context. You do not need to run `codex unarchive`. Update the host server to use this fix.
-- Codex model-capacity failures retry after 10 seconds, then 20, 40, and so on. All clients show a countdown and a Cancel retry button. Retries keep your context and count as one T3 turn for checkpoint restore. Update the client and host server to use this feature.
+- Codex capacity retries start after 10 seconds and double the delay on each attempt, with no attempt limit. All clients show a countdown and a Cancel retry button. Retries keep your context and count as one T3 turn for checkpoint restore. Update the client and host server to use this feature.
 
 ## Connections and recovery
 
 - Background services installed through the desktop CLI use the installed fork runtime and follow desktop updates.
 - After host updates or service restarts, clients retry temporary tunnel errors instead of staying offline until refreshed.
 - After a Codex process exits unexpectedly, you can send another turn without restarting the host.
+- Storage cleanup can remove clean, merged worktrees after branch renames or a detached checkout, including worktrees with submodules. It checks submodules for local changes and unpublished commits before removal. Repeated submodule-removal failures do not produce a warning on every sweep.
 
 ## Privacy
 

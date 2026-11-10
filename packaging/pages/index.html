@@ -129,10 +129,9 @@
           and attachments to the composer alongside any existing draft.
         </li>
         <li>
-          You can send or queue messages before attachments finish uploading or an earlier send
-          finishes. They wait locally and send in order. You can keep composing while they wait.
-          Keep web and desktop open until the messages send. Mobile saves its local queue across
-          restarts.
+          You can keep composing and sending while earlier messages or their attachments wait.
+          Messages queue locally and send in order. Keep web and desktop open until the messages
+          send. Mobile saves its local queue across restarts.
         </li>
         <li>
           On web and desktop, Enter or the send button starts a new thread in the background and
@@ -140,10 +139,7 @@
           Start threads in background under General in Settings to reverse these actions. You can
           customize the shortcuts.
         </li>
-        <li>
-          Send and interrupt buttons show a loading indicator while requests are pending. You can
-          submit another message while an earlier send is pending.
-        </li>
+        <li>The interrupt button shows a loading indicator until the request finishes.</li>
         <li>
           Images the agent opens have their own timeline rows, even when the turn is collapsed. Open
           a row to see its preview, then click the preview to see the full image.
@@ -181,6 +177,11 @@
           notifications for outdated commits are ignored.
         </li>
         <li>
+          PR monitoring ignores edits to existing comments and bot status messages,
+          acknowledgements, and rate-limit notices. New human comments, review findings, check
+          results, and conflicts still wake the agent.
+        </li>
+        <li>
           On web and desktop, the same provider usage limit alerts once per environment instead of
           once per affected thread.
         </li>
@@ -211,6 +212,10 @@
       <h3>Navigation and terminals</h3>
       <ul>
         <li>
+          On web and desktop, drafts have their own collapsible section at the top of the sidebar.
+          Your device remembers whether it is expanded.
+        </li>
+        <li>
           You can collapse the Pinned and Active sections of the thread list. Each client remembers
           your choice. Both sections start expanded. Done threads, Input threads, and the thread you
           are viewing stay visible in collapsed sections.
@@ -229,6 +234,15 @@
           another chat does not change that choice. On web and desktop, right-click or Shift-click
           the sidebar button to choose another project. All clients show the selected project's icon
           beside its name in the composer.
+        </li>
+        <li>
+          On web and desktop, choose a machine for threads without a project under General, New
+          threads in Settings. The choice is saved on this device, and the selected machine must be
+          connected.
+        </li>
+        <li>
+          Opening or closing Settings and Usage on web and desktop does not add entries to
+          navigation history. Back and Forward keep following your thread navigation.
         </li>
         <li>
           On web and desktop, when a sidebar action takes you out of the current thread, you return
@@ -272,6 +286,10 @@
           and more room for thread titles.
         </li>
         <li>
+          Web and desktop retain the Build/Plan toggle, plan commands, and circular context-window
+          indicator as optional settings under Labs, Legacy.
+        </li>
+        <li>
           Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under
           Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your
           device saves the choice.
@@ -305,16 +323,11 @@
           Mobile marks threads with unsent drafts with a yellow pen and a subtle highlight, as
           upstream does on web and desktop. Send or remove the draft to clear the indicator.
         </li>
-        <li>Switching Codex accounts in a thread keeps its agent-session context.</li>
         <li>
-          If Codex archives an idle session, your next follow-up unarchives it and retries once with
-          the same conversation and context. You do not need to run <code>codex unarchive</code>.
-          Update the host server to use this fix.
-        </li>
-        <li>
-          Codex model-capacity failures retry after 10 seconds, then 20, 40, and so on. All clients
-          show a countdown and a Cancel retry button. Retries keep your context and count as one T3
-          turn for checkpoint restore. Update the client and host server to use this feature.
+          Codex capacity retries start after 10 seconds and double the delay on each attempt, with
+          no attempt limit. All clients show a countdown and a Cancel retry button. Retries keep
+          your context and count as one T3 turn for checkpoint restore. Update the client and host
+          server to use this feature.
         </li>
       </ul>
 
@@ -331,6 +344,12 @@
         <li>
           After a Codex process exits unexpectedly, you can send another turn without restarting the
           host.
+        </li>
+        <li>
+          Storage cleanup can remove clean, merged worktrees after branch renames or a detached
+          checkout, including worktrees with submodules. It checks submodules for local changes and
+          unpublished commits before removal. Repeated submodule-removal failures do not produce a
+          warning on every sweep.
         </li>
       </ul>
 
