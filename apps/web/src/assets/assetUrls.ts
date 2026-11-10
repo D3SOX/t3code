@@ -93,7 +93,7 @@ export function useAssetUrls(
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   const allowedResources = canReadFiles
     ? resources
-    : resources.filter((resource) => !isMutableAssetResource(resource));
+    : resources.filter((resource) => !isFileResource(resource));
   const results = useAtomValue(
     assetEnvironment.createUrls({
       environmentId,
@@ -104,7 +104,7 @@ export function useAssetUrls(
   const urls: Array<string | null> = [];
   let resultIndex = 0;
   for (const resource of resources) {
-    if (!canReadFiles && isMutableAssetResource(resource)) {
+    if (!canReadFiles && isFileResource(resource)) {
       urls.push(null);
       continue;
     }
@@ -117,4 +117,13 @@ export function useAssetUrls(
     );
   }
   return urls;
+}
+
+function isFileResource(resource: AssetResource): boolean {
+  return (
+    resource._tag === "workspace-file" ||
+    resource._tag === "media-file" ||
+    resource._tag === "draft-workspace-file" ||
+    (resource._tag === "native-app-icon" && resource.app._tag === "app-path")
+  );
 }
