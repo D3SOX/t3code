@@ -30,7 +30,12 @@ const BOT_STATUS_PREFIXES = [
 
 function isActionableRemark(remark: PullRequestComment) {
   if (!(remark.author?.isBot ?? remark.author?.login.toLowerCase().endsWith("[bot]"))) return true;
-  if (remark.kind === "review" && remark.reviewState === "CHANGES_REQUESTED") return true;
+  if (
+    remark.kind === "review" &&
+    (remark.reviewState === "APPROVED" || remark.reviewState === "CHANGES_REQUESTED")
+  ) {
+    return true;
+  }
   const body = remark.body
     .replaceAll(/<!--[\s\S]*?-->/g, " ")
     .replaceAll(/\s+/g, " ")

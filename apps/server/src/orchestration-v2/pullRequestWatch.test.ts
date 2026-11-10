@@ -660,6 +660,13 @@ describe("evaluatePullRequestWatch", () => {
         reviewState: "APPROVED",
       },
       {
+        ...remark("coderabbitai[bot]", at, ""),
+        id: "bot-approval",
+        kind: "review" as const,
+        path: null,
+        reviewState: "APPROVED",
+      },
+      {
         ...remark(bot.login, at, "This dereferences a nullable value."),
         id: "inline-finding",
         author: bot,
