@@ -59,12 +59,12 @@ describe("main app return location", () => {
   ] as const)("keeps modals out of native %s history", async (_, createHistory) => {
     const frame = document.createElement("iframe");
     using _frame = { [Symbol.dispose]: () => frame.remove() };
-    frame.src = "/favicon.ico";
-    const loaded = new Promise<void>((resolve) =>
-      frame.addEventListener("load", () => resolve(), { once: true }),
-    );
+    frame.src = "/favicon-16x16.png";
     document.body.append(frame);
-    await loaded;
+    await vi.waitFor(() => {
+      expect(frame.contentDocument?.URL).toBe(frame.src);
+      expect(frame.contentDocument?.readyState).toBe("complete");
+    });
     const browserWindow = frame.contentWindow!;
     const browser = createHistory({ window: browserWindow });
     using _history = { [Symbol.dispose]: () => browser.destroy() };
