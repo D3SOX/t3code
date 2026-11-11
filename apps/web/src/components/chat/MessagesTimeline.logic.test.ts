@@ -2262,7 +2262,7 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  it("shows images the agent viewed outside their collapsed tool group", () => {
+  it("keeps viewed images visible outside collapsed turns", () => {
     const threadId = ThreadId.make("viewed-images-thread");
     const runId = RunId.make("viewed-images-run");
     const at = (second: number) =>
@@ -2349,16 +2349,13 @@ describe("deriveMessagesTimelineRows", () => {
         turnDiffSummaries: [],
         supportsConversationRollback: false,
       });
-      return rows.flatMap((row, index) =>
-        row.kind === "viewed-images" ? [{ after: rows[index - 1]?.kind, paths: row.paths }] : [],
-      );
+      return rows.flatMap((row) => (row.kind === "viewed-image" ? [row.imagePath] : []));
     };
-    const paths = ["/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
+    const paths = ["/repo/docs/sidebar.png", "/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
 
-    expect(viewedImages(false)).toEqual([{ after: "work-live", paths }]);
-    // A settled turn's fold keeps hiding its work, images included, until it is opened.
-    expect(viewedImages(true)).toEqual([]);
-    expect(viewedImages(true, new Set([runId]))).toEqual([{ after: "work-toggle", paths }]);
+    expect(viewedImages(false)).toEqual(paths);
+    expect(viewedImages(true)).toEqual(paths);
+    expect(viewedImages(true, new Set([runId]))).toEqual(paths);
   });
 
   it("keeps imported V1 turns folded once the thread's first V2 run starts", () => {

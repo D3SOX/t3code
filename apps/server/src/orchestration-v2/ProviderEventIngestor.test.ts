@@ -506,6 +506,75 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
+  it.effect("reconciles a recovered background command with its original native identity", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const sink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const allocator = yield* IdAllocator.IdAllocatorV2;
+      const created = yield* threadCreatedEvent(now);
+      const driver = ProviderDriverKind.make("opencode");
+      const providerSessionId = yield* allocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId: created.threadId,
+      });
+      const command = {
+        id: TurnItemId.make("original-shell-call"),
+        threadId: created.threadId,
+        runId: RunId.make("original-shell-run"),
+        nodeId: NodeId.make("original-shell-node"),
+        providerThreadId: ProviderThreadId.make("shell-session"),
+        providerTurnId: ProviderTurnId.make("original-shell-turn"),
+        nativeItemRef: { driver, nativeId: "sh_background", strength: "strong" as const },
+        parentItemId: null,
+        ordinal: 1,
+        status: "running" as const,
+        title: "Background shell",
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        type: "command_execution" as const,
+        input: "sleep 600",
+      } satisfies OrchestrationV2TurnItem;
+      const ingest = (event: ProviderAdapter.ProviderAdapterV2Event) =>
+        ingestor.ingestNormalized({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: created.threadId,
+          event,
+        });
+      yield* sink.write({ events: [created] });
+      yield* ingest({ type: "turn_item.updated", driver, turnItem: command });
+      for (const status of ["running", "completed"] as const) {
+        yield* ingest({
+          type: "turn_item.updated",
+          driver,
+          sessionScoped: true,
+          turnItem: {
+            ...command,
+            id: TurnItemId.make("recovered-shell-id"),
+            runId: null,
+            nodeId: null,
+            providerTurnId: null,
+            ordinal: 0,
+            status,
+            completedAt: status === "completed" ? now : null,
+            output: "retained output",
+          },
+        });
+      }
+      const { turnItems } = yield* projections.getThreadRecords(created.threadId, ["turnItems"]);
+      assert.lengthOf(turnItems, 1);
+      assert.deepEqual(turnItems[0], {
+        ...command,
+        status: "completed",
+        completedAt: now,
+        output: "retained output",
+      });
+    }),
+  );
+
   it.effect("skips a node update only when it matches the stored node", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

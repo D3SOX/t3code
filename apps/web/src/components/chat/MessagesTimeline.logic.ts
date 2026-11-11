@@ -28,7 +28,6 @@ import {
   toolGroupAction,
   toolGroupSummaryKind,
   contextCompactionTokenCounts,
-  workEntriesViewedImagePaths,
   type ToolGroupSummaryKind,
   liveThoughtLine,
   workEntryHiddenByToolCallVisibility,
@@ -560,13 +559,6 @@ type MessagesTimelineRowContent =
       hasFailure: boolean;
     }
   | {
-      /** Images the agent opened in the tool group above, kept visible while the group is collapsed. */
-      kind: "viewed-images";
-      id: string;
-      createdAt: string;
-      paths: ReadonlyArray<string>;
-    }
-  | {
       kind: "turn-fold";
       deferredWorkItemIds?: ReadonlyArray<string>;
       id: string;
@@ -677,17 +669,6 @@ function expandedWorkGroupRow(
     groupedEntries,
     isExpandedToolGroup: true,
   };
-}
-
-function viewedImagesRows(
-  groupId: string,
-  createdAt: string,
-  groupedEntries: ReadonlyArray<WorkLogEntry>,
-): Array<Extract<MessagesTimelineRow, { kind: "viewed-images" }>> {
-  const paths = workEntriesViewedImagePaths(groupedEntries);
-  return paths.length === 0
-    ? []
-    : [{ kind: "viewed-images", id: `${groupId}:viewed-images`, createdAt, paths }];
 }
 
 export function resolveAssistantMessageCopyState({
@@ -1836,13 +1817,6 @@ export function deriveMessagesTimelineRows(input: {
         ),
       );
     }
-    nextRows.push(
-      ...viewedImagesRows(
-        activeWorkRow.groupId,
-        activeWorkRow.createdAt,
-        activeWorkRow.groupedEntries,
-      ),
-    );
   };
 
   for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -2116,13 +2090,6 @@ export function deriveMessagesTimelineRows(input: {
             );
           }
         }
-        nextRows.push(
-          ...viewedImagesRows(
-            workGroupId(timelineEntry.id),
-            timelineEntry.createdAt,
-            visibleGroupedEntries,
-          ),
-        );
       }
       index = cursor - 1;
       continue;
@@ -2317,7 +2284,6 @@ export function deriveMessagesTimelineRows(input: {
       if (expanded) {
         nextRows.push(expandedWorkGroupRow(groupId, failedGroupAnchor.createdAt, groupedEntries));
       }
-      nextRows.push(...viewedImagesRows(groupId, failedGroupAnchor.createdAt, groupedEntries));
     } else {
       nextRows.push({
         kind: "thinking",
@@ -2633,15 +2599,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
-
-    case "viewed-images": {
-      const bv = b as typeof a;
-      return (
-        a.createdAt === bv.createdAt &&
-        a.paths.length === bv.paths.length &&
-        a.paths.every((path, index) => path === bv.paths[index])
-      );
-    }
 
     case "html-render": {
       // Tool updates rebuild entries; preserve frames for unchanged pages.
