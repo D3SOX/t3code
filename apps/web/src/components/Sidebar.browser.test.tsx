@@ -138,6 +138,7 @@ describe("sidebar render isolation", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
+      preferredProjectRef: null,
       defaultProjectRef: {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
