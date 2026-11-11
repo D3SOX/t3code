@@ -442,7 +442,9 @@ export function useThreadActions() {
 
     if (shouldNavigateToDraft && router.state.location.href === requestingRouteHref) {
       const navigationResult = await settlePromise(() =>
-        handleNewThread(scopeProjectRef(thread.environmentId, thread.projectId)),
+        handleNewThread(scopeProjectRef(thread.environmentId, thread.projectId), {
+          rememberProject: false,
+        }),
       );
       if (navigationResult._tag === "Failure") {
         return navigationResult;
@@ -669,6 +671,7 @@ export function useThreadActions() {
       await navigateAfterThreadDeletion(async () => {
         await handleNewThread(scopeProjectRef(threadRef.environmentId, thread.projectId), {
           replace: true,
+          rememberProject: false,
         });
       });
     }

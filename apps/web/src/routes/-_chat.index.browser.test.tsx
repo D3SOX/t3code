@@ -1,4 +1,4 @@
-import { render } from "../../test/render";
+import { act, render } from "../../test/render";
 import type { lazyRouteComponent } from "@tanstack/react-router";
 import { expect, it, vi } from "vite-plus/test";
 
@@ -7,6 +7,8 @@ const state = vi.hoisted(() => ({
     { environmentId: "environment-1", id: "recent-project" },
     { environmentId: "environment-1", id: "chosen-project" },
   ],
+  setProjects: (_projects: Array<{ environmentId: string; id: string }>) => {},
+  bootstrapped: true,
   startDraft: vi.fn(() => Promise.resolve()),
 }));
 
@@ -18,12 +20,26 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   }),
   Link: () => null,
 }));
-vi.mock("../state/entities", () => ({
-  useProjects: () => state.projects,
-  useThreadShells: () => [],
-  useAllEnvironmentShellsBootstrapped: () => true,
-  readProject: () => state.projects[0],
-}));
+vi.mock("../state/entities", async () => {
+  const { useState } = await import("react");
+  return {
+    useProjects: () => {
+      const [projects, setProjects] = useState(state.projects);
+      state.setProjects = setProjects;
+      return projects;
+    },
+    useVisibleThreadShells: () => [],
+    useAllEnvironmentShellsBootstrapped: () => state.bootstrapped,
+    readProject: (ref: { environmentId: string; projectId: string }) =>
+      state.projects.find(
+        (project) => project.environmentId === ref.environmentId && project.id === ref.projectId,
+      ) ?? null,
+  };
+});
+vi.mock("../state/projects", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return { defaultProjectFallbackReadyAtom: () => Atom.make(state.bootstrapped) };
+});
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: [], isReady: true }),
 }));
@@ -39,6 +55,15 @@ vi.mock("../env", () => ({ isElectron: false }));
 import { Route } from "./_chat.index";
 import { useUiStateStore } from "../uiStateStore";
 
+function setup() {
+  state.startDraft.mockClear();
+  state.bootstrapped = true;
+  state.projects = [
+    { environmentId: "environment-1", id: "recent-project" },
+    { environmentId: "environment-1", id: "chosen-project" },
+  ];
+}
+
 it.each([
   { remembered: "chosen-project", expected: "chosen-project" },
   { remembered: "removed-project", expected: "recent-project" },
@@ -46,7 +71,7 @@ it.each([
 ])(
   "returning home selects $expected when the remembered project is $remembered",
   async ({ remembered, expected }) => {
-    state.startDraft.mockClear();
+    setup();
     using _state = {
       [Symbol.dispose]: () => useUiStateStore.setState({ lastNewThreadProjectRef: null }),
     };
@@ -63,7 +88,43 @@ it.each([
     await using _screen = await render(<View />);
     expect(state.startDraft).toHaveBeenCalledWith(
       { environmentId: "environment-1", projectId: expected },
-      { replace: true },
+      { replace: true, rememberProject: false },
     );
   },
 );
+
+it("waits for the remembered project's environment before choosing a fallback", async () => {
+  setup();
+  state.bootstrapped = false;
+  state.projects = [{ environmentId: "environment-1", id: "recent-project" }];
+  using _state = {
+    [Symbol.dispose]: () => {
+      state.bootstrapped = true;
+      state.projects = [
+        { environmentId: "environment-1", id: "recent-project" },
+        { environmentId: "environment-1", id: "chosen-project" },
+      ];
+      useUiStateStore.setState({ lastNewThreadProjectRef: null });
+    },
+  };
+  useUiStateStore.setState({
+    lastNewThreadProjectRef: {
+      environmentId: "environment-2",
+      projectId: "chosen-project",
+    } as never,
+  });
+  const View = Route.options.component as ReturnType<typeof lazyRouteComponent>;
+  await View.preload?.();
+  await using _screen = await render(<View />);
+  expect(state.startDraft).not.toHaveBeenCalled();
+
+  state.projects = [...state.projects, { environmentId: "environment-2", id: "chosen-project" }];
+  state.bootstrapped = true;
+  await act(() => state.setProjects(state.projects));
+  await vi.waitFor(() => {
+    expect(state.startDraft).toHaveBeenCalledExactlyOnceWith(
+      { environmentId: "environment-2", projectId: "chosen-project" },
+      { replace: true, rememberProject: false },
+    );
+  });
+});

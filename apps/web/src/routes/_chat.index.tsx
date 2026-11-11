@@ -1,6 +1,7 @@
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { useAtomValue } from "@effect/atom-react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -21,6 +22,7 @@ import {
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { useUiStateStore } from "~/uiStateStore";
+import { defaultProjectFallbackReadyAtom } from "../state/projects";
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments, isReady } = useEnvironments();
@@ -36,6 +38,11 @@ function IndexDraftLanding() {
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const lastNewThreadProjectRef = useUiStateStore((store) => store.lastNewThreadProjectRef);
+  const fallbackReady = useAtomValue(
+    defaultProjectFallbackReadyAtom(
+      lastNewThreadProjectRef ? scopedProjectKey(lastNewThreadProjectRef) : null,
+    ),
+  );
   const router = useRouter();
   // Read at effect time; this page can stay mounted while the router is already navigating away.
   const isStillOnIndex = useEffectEvent(() => router.state.location.pathname === "/");
@@ -51,12 +58,13 @@ function IndexDraftLanding() {
         project.environmentId === lastNewThreadProjectRef?.environmentId &&
         project.id === lastNewThreadProjectRef.projectId,
     ) ??
-    sortScopedProjectsForSidebar(
-      projects.filter((project) => project.archivedAt == null),
-      threads,
-      "updated_at",
-    )[0] ??
-    null;
+    (fallbackReady
+      ? (sortScopedProjectsForSidebar(
+          projects.filter((project) => project.archivedAt == null),
+          threads,
+          "updated_at",
+        )[0] ?? null)
+      : null);
   const attempt = startState.retryRequest;
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts a draft thread in the most recent project and navigates to it while still on the index
@@ -72,6 +80,7 @@ function IndexDraftLanding() {
     startedAttemptRef.current = attempt;
     void handleNewThread(projectRef, {
       replace: true,
+      rememberProject: false,
     })
       .then((opened) => {
         if (opened === null) {

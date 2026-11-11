@@ -113,6 +113,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
       replace?: boolean;
+      rememberProject?: boolean;
       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
       prompt?: string;
     },
@@ -172,7 +173,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         candidate.id === projectRef.projectId &&
         candidate.environmentId === projectRef.environmentId,
     );
-    if (project) {
+    if (project && options?.rememberProject !== false) {
       useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
     }
     const abandonedSinceRequest = () =>

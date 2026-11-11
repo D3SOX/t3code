@@ -293,7 +293,7 @@ describe("thread action navigation", () => {
     await useThreadActions().deleteThread(target);
     expect(state.newThread).toHaveBeenCalledExactlyOnceWith(
       { environmentId: secondary, projectId: ProjectId.make("project") },
-      { replace: true },
+      { replace: true, rememberProject: false },
     );
   });
 
@@ -324,10 +324,10 @@ describe("thread action navigation", () => {
     state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
     state.route = target;
     await useThreadActions().archiveThread(target);
-    expect(state.newThread).toHaveBeenCalledExactlyOnceWith({
-      environmentId: secondary,
-      projectId: ProjectId.make("project"),
-    });
+    expect(state.newThread).toHaveBeenCalledExactlyOnceWith(
+      { environmentId: secondary, projectId: ProjectId.make("project") },
+      { rememberProject: false },
+    );
   });
 
   it.each(operations.filter(({ name }) => name !== "archive"))(
