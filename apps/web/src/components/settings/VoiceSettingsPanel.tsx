@@ -552,6 +552,7 @@ function CleanupModelRow() {
                   }
                 />
                 <TraitsPicker
+                  planModeEnabled={settings.planModeEnabled}
                   provider={instanceEntry.driverKind}
                   models={instanceEntry.models}
                   model={selection.model}

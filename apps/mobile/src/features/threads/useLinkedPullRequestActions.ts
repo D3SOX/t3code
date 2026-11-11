@@ -18,6 +18,8 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { AuthOrchestrationOperateScope, type ThreadPullRequestLink } from "@t3tools/contracts";
 import * as Clipboard from "expo-clipboard";
+import { useCallback } from "react";
+import { Platform } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
@@ -26,6 +28,7 @@ import type { EnvironmentRuntimeState } from "../../state/remote-runtime-types";
 import { useEnvironmentScope } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useNavigateToPullRequest } from "../../native/useOpenPullRequest";
 
 type MenuAction = MenuProps["actions"][number];
 
@@ -35,6 +38,7 @@ export function useLinkedPullRequestActions(input: {
   readonly runtime: EnvironmentRuntimeState | null;
 }) {
   const { thread, project, runtime } = input;
+  const navigateToPullRequest = useNavigateToPullRequest();
   const terminology = sourceControlClients.get(project?.repositoryIdentity?.provider).changeRequest;
   const capabilities = runtime?.serverConfig?.environment.capabilities;
   const canOperate = useEnvironmentScope(
@@ -114,62 +118,88 @@ export function useLinkedPullRequestActions(input: {
     });
   };
 
-  const menuActions = (link: ThreadPullRequestLink): MenuAction[] => {
-    const open = link.snapshot === null || link.snapshot.state === "open";
-    const watching = link.watch !== undefined;
-    return [
-      { id: "copy", title: "Copy link", image: "link" },
-      { id: "browser", title: "Open in browser", image: "safari" },
-      ...((watching ? canWatch : canStartWatch) && open
-        ? [
-            {
-              id: "watch",
-              title: watching ? "Stop watching" : "Watch for changes",
-              image: watching ? "eye.slash" : "eye",
-            },
-          ]
-        : []),
-      ...(canEdit
-        ? [
-            {
-              id: "unlink",
-              title: link.source === "stack" ? "Dismiss from thread" : "Unlink from thread",
-              image: "xmark",
-              attributes: { destructive: true },
-            },
-          ]
-        : []),
-    ];
-  };
+  const menuActions = useCallback(
+    (link: ThreadPullRequestLink): MenuAction[] => {
+      const open = link.snapshot === null || link.snapshot.state === "open";
+      const watching = link.watch !== undefined;
+      return [
+        {
+          id: "app",
+          title: "Open in T3 Code",
+          image: Platform.OS === "ios" ? "arrow.up.forward.app" : "open_in_new",
+        },
+        { id: "copy", title: "Copy link", image: "link" },
+        {
+          id: "browser",
+          title: "Open in system browser",
+          image: Platform.OS === "ios" ? "safari" : "open_in_browser",
+        },
+        ...((watching ? canWatch : canStartWatch) && open
+          ? [
+              {
+                id: "watch",
+                title: watching ? "Stop watching" : "Watch for changes",
+                image: watching ? "eye.slash" : "eye",
+              },
+            ]
+          : []),
+        ...(canEdit
+          ? [
+              {
+                id: "unlink",
+                title: link.source === "stack" ? "Dismiss from thread" : "Unlink from thread",
+                image: "xmark",
+                attributes: { destructive: true },
+              },
+            ]
+          : []),
+      ];
+    },
+    [canEdit, canStartWatch, canWatch],
+  );
 
-  const onMenuAction = (link: ThreadPullRequestLink, action: string) => {
-    if (action === "copy") void Clipboard.setStringAsync(link.url);
-    else if (action === "browser")
-      void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
-        if (!opened) {
-          const { shortLabel, singular } = (
-            sourceControlClients.findByChangeRequestUrl(link.url) ??
-            sourceControlClients.get(undefined)
-          ).changeRequest;
-          Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
-        }
-      });
-    else if (action === "watch" && thread !== null)
-      void run(
-        "Couldn't change watching",
-        watch({
-          environmentId: thread.environmentId,
-          input: {
-            threadId: thread.id,
-            host: link.host,
-            repository: link.repository,
-            number: link.number,
-            watching: link.watch === undefined,
-          },
-        }),
-      );
-    else if (action === "unlink") setLinked(link, false);
-  };
+  const onMenuAction = useCallback(
+    (link: ThreadPullRequestLink, action: string) => {
+      if (action === "app")
+        void navigateToPullRequest(
+          link.url,
+          thread
+            ? {
+                environmentId: String(thread.environmentId),
+                projectId: String(thread.projectId),
+              }
+            : null,
+          "app",
+        );
+      else if (action === "copy") void Clipboard.setStringAsync(link.url);
+      else if (action === "browser")
+        void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
+          if (!opened) {
+            const { shortLabel, singular } = (
+              sourceControlClients.findByChangeRequestUrl(link.url) ??
+              sourceControlClients.get(undefined)
+            ).changeRequest;
+            Dialog.alert(`Unable to open ${shortLabel}`, `The ${singular} could not be opened.`);
+          }
+        });
+      else if (action === "watch" && thread !== null)
+        void run(
+          "Couldn't change watching",
+          watch({
+            environmentId: thread.environmentId,
+            input: {
+              threadId: thread.id,
+              host: link.host,
+              repository: link.repository,
+              number: link.number,
+              watching: link.watch === undefined,
+            },
+          }),
+        );
+      else if (action === "unlink") setLinked(link, false);
+    },
+    [run, setLinked, thread, watch, navigateToPullRequest],
+  );
 
   return { canLink: canEdit, terminology, promptLink, menuActions, onMenuAction };
 }

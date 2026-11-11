@@ -143,7 +143,23 @@ function ConfiguredSettingsRouteScreen() {
 
 function LocalSettingsRouteScreen() {
   const { savedConnectionsById } = useSavedRemoteConnections();
-  return <SettingsList connections={[environmentsRow(Object.keys(savedConnectionsById).length)]} />;
+  return (
+    <SettingsList
+      connections={[
+        environmentsRow(Object.keys(savedConnectionsById).length),
+        ...(Platform.OS === "android"
+          ? [
+              {
+                id: "SettingsNotifications",
+                icon: "bell.badge",
+                label: "Notifications",
+                target: "SettingsNotifications",
+              } as const,
+            ]
+          : []),
+      ]}
+    />
+  );
 }
 
 function environmentsRow(count: number): SettingsListRow {

@@ -59,6 +59,7 @@ import {
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
+  ThreadListV2SectionDivider,
   ThreadListV2WorkingShelfHeader,
 } from "./thread-list-v2-items";
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
@@ -74,6 +75,8 @@ import {
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 
+/** The sidebar list: flat v2 rows with queued tasks spliced in, plus a
+    settled "Show more" pager row. */
 type SidebarListItem =
   | ThreadListV2ListItem
   | {
@@ -102,6 +105,7 @@ interface ThreadNavigationSidebarProps {
   readonly searchQuery: string;
 }
 
+/** iOS gives this sidebar an inert native stack so its column owns a real navigation bar. */
 export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
   return (
     <ThreadPrDemandProvider visible={props.visible}>
@@ -116,7 +120,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
-
   const insets = useSafeAreaInsets();
   const { fabClearance, fabSize } = useAndroidControlSizing();
   const projects = useProjects();
@@ -188,6 +191,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   const projectFilterOptions = pickableProjectGroups(projectScopes).map((scope) => ({
     key: scope.key,
     label: scope.title,
+    project: scope.representative,
   }));
   const projectTitleByProjectKey = useMemo(
     () =>
@@ -226,6 +230,10 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     return map;
   }, [projects]);
 
+  // Thread List v2 (beta) support — same model as the compact Home list
+  // (HomeScreen.tsx): flat creation-order card block + settled recency tail.
+  // The settled tail renders in pages; expansion resets when the filter
+  // context changes so environment/search flips never inherit a deep page.
   const [settledVisibleCount, setSettledVisibleCount] = useState(
     THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
   );
@@ -239,6 +247,10 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     setSettledVisibleCount((count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT);
   const {
     loaded: shelfPreferencesLoaded,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
+    togglePinnedShelf,
+    toggleActiveShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
@@ -289,6 +301,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey: props.selectedThreadKey ?? null,
+    pinnedShelfExpanded,
+    activeShelfExpanded,
   });
   const listItems: readonly SidebarListItem[] =
     settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0
@@ -357,6 +371,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     savedConnectionsById,
     listEnvironments,
     threadSearchMatchByKey,
+    // Rows read it for their reorder menu items.
     workingShelfEnabled,
   };
   useThreadJumpShortcuts(listItems, handleSelectThread);
@@ -409,6 +424,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
       case "v2-thread": {
         const thread = item.item.thread;
         const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
+        // Only Home consumes trailing dividers; sidebar rows use tonal containers.
         return (
           <ThreadListV2Row
             onNewThreadOnBranch={props.onNewThreadOnBranch}
@@ -466,7 +482,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             reorderSupported={
               item.item.pinned
                 ? pinReorderEnvironmentIds.has(thread.environmentId)
-                : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+                : activeReorderEnvironmentIds.has(thread.environmentId)
             }
             canMoveUp={item.canMoveUp}
             canMoveDown={item.canMoveDown}
@@ -483,6 +499,17 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           />
         );
       }
+      case "v2-section":
+        return (
+          <ThreadListV2SectionDivider
+            label={item.label}
+            count={item.count}
+            expanded={item.expanded}
+            disabled={item.disabled}
+            onToggle={item.label === "Pinned" ? togglePinnedShelf : toggleActiveShelf}
+            pane="sidebar"
+          />
+        );
       case "v2-working-shelf":
         return (
           <ThreadListV2WorkingShelfHeader
@@ -677,7 +704,6 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   threadList: {
     flex: 1,

@@ -40,12 +40,25 @@ export const ServerProviderResetCredits = Schema.Struct({
 });
 export type ServerProviderResetCredits = typeof ServerProviderResetCredits.Type;
 
-/** Clear bars for unavailable accounts; retain last good bars after a failed probe. */
+export const ServerProviderCredits = Schema.Struct({
+  /** Provider credit units, kept as text to preserve their decimal precision. */
+  balance: Schema.optional(TrimmedNonEmptyString),
+  hasCredits: Schema.Boolean,
+  unlimited: Schema.Boolean,
+});
+export type ServerProviderCredits = typeof ServerProviderCredits.Type;
+
+/**
+ * `unavailable` distinguishes an account that can never report windows (API
+ * key, Bedrock) from a probe that failed this time, so clients can keep the
+ * last good bars for the latter and clear them for the former.
+ */
 export const ServerProviderUsageLimits = Schema.Struct({
   checkedAt: IsoDateTime,
   windows: ForwardCompatibleArray(ServerProviderUsageWindow),
   credentialFingerprint: Schema.optional(TrimmedNonEmptyString),
   resetCredits: Schema.optional(ServerProviderResetCredits),
+  credits: Schema.optional(Schema.NullOr(ServerProviderCredits)),
   externalUsage: Schema.optional(
     Schema.Struct({
       label: TrimmedNonEmptyString,
@@ -64,6 +77,7 @@ export type ServerProviderUsageLimits = typeof ServerProviderUsageLimits.Type;
 /** Partial updates merge windows by id; omitted windows remain unchanged. */
 export const ProviderUsageLimitsUpdate = Schema.Struct({
   windows: Schema.Array(ServerProviderUsageWindow),
+  credits: Schema.optional(Schema.NullOr(ServerProviderCredits)),
 });
 export type ProviderUsageLimitsUpdate = typeof ProviderUsageLimitsUpdate.Type;
 

@@ -644,6 +644,7 @@ export const layer: Layer.Layer<
         readonly terminal: ProviderTerminalEvent;
         readonly completedAt?: DateTime.Utc;
         readonly failureItemPersisted: boolean;
+        readonly completionSilent?: boolean;
         readonly refreshAfterTurn: Effect.Effect<void>;
         readonly writeIfRunCurrent?: {
           readonly activeAttemptId: RunAttemptId;
@@ -729,6 +730,8 @@ export const layer: Layer.Layer<
         const finalizedRun: OrchestrationV2Run = {
           ...runWithoutDelegatedCompletion,
           status: persistedStatus,
+          completionSilent:
+            input.terminal.status === "completed" && input.completionSilent === true,
           completedAt: input.terminal.status === "completed" ? null : completedAt,
         };
         const finalizedRootNode: OrchestrationV2ExecutionNode = {
@@ -1014,6 +1017,8 @@ export const layer: Layer.Layer<
         const terminalEvent = yield* Ref.make<ProviderTerminalEvent | null>(null);
         const latestTurnItemOrdinal = yield* Ref.make(input.providerTurnOrdinal * 100);
         const latestProviderThread = yield* Ref.make(input.providerThread);
+        const latestRootResponseEmpty = yield* Ref.make(false);
+        const rootAssistantNodeIds = new Set([input.rootNode.id]);
         const latestRootProviderTurn = yield* Ref.make<OrchestrationV2ProviderTurn | null>(null);
         // Later root turns in one attempt are provider continuations, such as Codex goal turns.
         let firstRootProviderTurnId: ProviderTurnId | undefined;
@@ -1124,6 +1129,7 @@ export const layer: Layer.Layer<
               : { loadRunInterruptReason: input.loadRunInterruptReason }),
             openRunOwnedSubagents: openSubagents,
             terminal,
+            completionSilent: yield* Ref.get(latestRootResponseEmpty),
             failureItemPersisted: terminal.status === "failed",
             refreshAfterTurn,
           }).pipe(
@@ -1549,6 +1555,30 @@ export const layer: Layer.Layer<
             yield* Ref.set(latestRootProviderTurn, event.providerTurn);
           }
           let storedEventCount = 0;
+          if (
+            event.type === "node.updated" &&
+            event.node.threadId === input.run.threadId &&
+            event.node.runId === input.run.id &&
+            event.node.kind === "assistant_message" &&
+            event.node.parentNodeId === input.rootNode.id
+          ) {
+            // Providers can give each root reply its own node; subagent replies
+            // live below their subagent node and must not affect completion.
+            rootAssistantNodeIds.add(event.node.id);
+          }
+          if (
+            event.type === "message.updated" &&
+            event.message.threadId === input.run.threadId &&
+            event.message.runId === input.run.id &&
+            (event.message.nodeId === null || rootAssistantNodeIds.has(event.message.nodeId)) &&
+            event.message.role === "assistant"
+          ) {
+            // Earlier commentary and tool output do not make an empty final answer Done.
+            yield* Ref.set(
+              latestRootResponseEmpty,
+              event.message.text.trim().length === 0 && event.message.attachments.length === 0,
+            );
+          }
           const deliveredEvent = assistantStreaming.filter(
             event,
             DateTime.toEpochMillis(yield* DateTime.now),

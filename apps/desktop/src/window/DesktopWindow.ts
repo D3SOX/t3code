@@ -84,10 +84,21 @@ const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
 const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
 const MAIN_WINDOW_BOUNDS_PERSIST_DEBOUNCE_MS = 500;
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
+// Renderer crash (usually V8 OOM on long sessions) recovery: reload after a
+// short delay, at most MAX_ATTEMPTS times per rolling WINDOW so a renderer
+// that dies on boot cannot reload-loop forever.
 const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
-const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([-2, -7, -9, -102, -105, -106, -118]);
+const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([
+  -2, // ERR_FAILED
+  -7, // ERR_TIMED_OUT
+  -9, // ERR_UNEXPECTED (custom protocol handler rejected)
+  -102, // ERR_CONNECTION_REFUSED
+  -105, // ERR_NAME_NOT_RESOLVED
+  -106, // ERR_INTERNET_DISCONNECTED
+  -118, // ERR_CONNECTION_TIMED_OUT
+]);
 
 type WindowTitleBarOptions = Pick<
   Electron.BrowserWindowConstructorOptions,
@@ -123,8 +134,16 @@ export class DesktopWindow extends Context.Service<
     readonly revealOrCreateMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
     readonly activate: Effect.Effect<void, DesktopWindowError>;
     readonly createMainIfBackendReady: Effect.Effect<void, DesktopWindowError>;
+    // Show a lightweight "Connecting to WSL" splash window immediately (wsl-only
+    // mode), before the WSL backend that acts as the primary is ready. It is
+    // dismissed automatically once the real main window reveals.
     readonly showConnectingSplash: Effect.Effect<void>;
+    // Readiness gates main-window creation; the renderer uses its local client URL rather than this backend URL.
     readonly handleBackendReady: (httpBaseUrl: URL) => Effect.Effect<void, DesktopWindowError>;
+    // Called when the backend transitions back to "not ready" (clean stop,
+    // restart, crash). Clears the latch that lets `activate` auto-create a
+    // window so a "macOS dock click" while the backend is down doesn't
+    // produce a stranded window pointing at nothing.
     readonly handleBackendNotReady: Effect.Effect<void>;
     readonly flushMainWindowBounds: Effect.Effect<void>;
     readonly prepareCaptureReveal: Effect.Effect<void>;
@@ -132,11 +151,18 @@ export class DesktopWindow extends Context.Service<
       action: string,
       options?: { readonly reveal?: boolean },
     ) => Effect.Effect<void, DesktopWindowError>;
+    /**
+     * Push a capture lifecycle event to the renderer. Only `started` reveals the
+     * window; the rest must not interrupt the app the user has switched to.
+     */
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
     ) => Effect.Effect<void, DesktopWindowError>;
     // Electron zoom roles target focused guests; zoomMain must always target the app.
     readonly zoomMain: (direction: MainWindowZoomDirection) => Effect.Effect<void>;
+    // Reload and DevTools for the main window's own webContents, for the same
+    // reason as zoomMain: the Electron roles act on the focused webContents,
+    // which is a preview guest whenever a browser page has focus.
     readonly runMainContentsCommand: (command: MainWindowContentsCommand) => Effect.Effect<void>;
     readonly syncAppearance: Effect.Effect<void>;
   }
@@ -149,7 +175,7 @@ function getIconOption(
   iconPaths: DesktopAssets.DesktopIconPaths,
   platform: NodeJS.Platform,
 ): { icon: string } | Record<string, never> {
-  if (platform === "darwin") return {};
+  if (platform === "darwin") return {}; // macOS uses .icns from app bundle
   const ext = platform === "win32" ? "ico" : "png";
   return Option.match(iconPaths[ext], {
     onNone: () => ({}),
@@ -204,6 +230,9 @@ export function resolveInitialMainWindowBounds(
   return DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE;
 }
 
+// A self-contained "Connecting to WSL" splash, shown immediately in wsl-only
+// mode while the WSL backend (which serves the renderer) cold-boots. Inlined as
+// a data URL so it needs no bundled asset and no backend — pure CSS, no JS.
 function buildConnectingSplashDataUrl(shouldUseDarkColors: boolean): string {
   const background = getInitialWindowBackgroundColor(shouldUseDarkColors);
   const label = shouldUseDarkColors ? "#9ca3af" : "#6b7280";
@@ -335,6 +364,7 @@ export const make = Effect.gen(function* () {
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
+  // Readiness is cleared on backend shutdown and gates main-window creation, including macOS activation.
   const backendReadyRef = yield* Ref.make(false);
   let backendHasStarted = false;
   let mainClosedDuringStartup = false;
@@ -954,6 +984,8 @@ export const make = Effect.gen(function* () {
     return window;
   }).pipe(Effect.withSpan("desktop.window.revealOrCreateMain"));
 
+  // With the local environment disabled there is no backend to wait for: the
+  // renderer is served from bundled assets and only talks to remote environments.
   const waitingForBackend = Effect.gen(function* () {
     if (yield* Ref.get(backendReadyRef)) return false;
     return (yield* desktopSettings.get).localEnvironmentEnabled;
@@ -1010,6 +1042,7 @@ export const make = Effect.gen(function* () {
     void splash.loadURL(buildConnectingSplashDataUrl(shouldUseDarkColors));
     yield* logWindowInfo("connecting splash shown");
   }).pipe(
+    // The splash is best-effort UX — never let it fail startup.
     Effect.catch((error) =>
       logWindowWarning("failed to show connecting splash", { message: error.message }),
     ),
@@ -1062,6 +1095,7 @@ export const make = Effect.gen(function* () {
         yield* ensureMain;
         return;
       }
+      // Reveal the splash during cold boot; once ready, retry creating the main window if an earlier open failed.
       const backendReady = yield* Ref.get(backendReadyRef);
       if (!backendReady) {
         const splash = yield* Ref.get(splashWindowRef);

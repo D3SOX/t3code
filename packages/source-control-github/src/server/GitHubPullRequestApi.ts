@@ -1469,6 +1469,10 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((allowReserve) =>
         readRequestedReviewers(input, 100, read).pipe(
           graphql({ ...input, operation, allowReserve }),
+          Effect.filterOrFail(
+            (result) => !result.repository?.pullRequest?.baseRef?.rules?.pageInfo.hasNextPage,
+            () => readError(input.cwd, operation, new Error("Required checks read is incomplete.")),
+          ),
           Effect.flatMap((result) =>
             found({ ...input, operation })(toPullRequestCore(result)).pipe(
               Effect.filterOrElse(
@@ -1481,7 +1485,7 @@ export const make = Effect.gen(function* () {
                   ).pipe(
                     Effect.map((all) => ({
                       ...core,
-                      ...pullRequestChecksFromContexts(all.contexts),
+                      ...pullRequestChecksFromContexts(all.contexts, core.requiredCheckContexts),
                       checksTruncated: all.truncated,
                     })),
                   ),

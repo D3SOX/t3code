@@ -20,6 +20,7 @@ import {
 import { makeChildStdio, makeStderrTail, makeTerminationError } from "./_internal/stdio.ts";
 
 export interface CodexAppServerClientOptions {
+  readonly onTermination?: (error: CodexError.CodexAppServerError) => Effect.Effect<void, never>;
   readonly logIncoming?: boolean;
   readonly logOutgoing?: boolean;
   readonly logger?: (
@@ -229,7 +230,11 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     ...(options.logger ? { logger: options.logger } : {}),
     onNotification: dispatchNotification,
     onRequest: dispatchRequest,
-    onTermination: (error) => Deferred.fail(termination, error).pipe(Effect.asVoid),
+    onTermination: (error) =>
+      Deferred.fail(termination, error).pipe(
+        Effect.andThen(() => options.onTermination?.(error) ?? Effect.void),
+        Effect.asVoid,
+      ),
   });
 
   const request = <M extends CodexRpc.ClientRequestMethod>(

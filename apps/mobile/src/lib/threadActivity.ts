@@ -25,6 +25,7 @@ import {
   liveActivityToolStatus,
   toolGroupAction,
   resolveWorkEntryToolPresentation,
+  workEntryViewedImagePath,
   summarizeToolGroup,
   toolGroupSummaryKind,
   workEntriesViewedImagePaths,
@@ -208,6 +209,14 @@ type ThreadFeedEntryContent =
       readonly activities: ReadonlyArray<ThreadFeedActivity>;
     }
   | {
+      readonly type: "viewed-image";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly imagePath: string;
+      readonly activity: ThreadFeedActivity;
+    }
+  | {
       readonly type: "work-toggle";
       readonly id: string;
       readonly createdAt: string;
@@ -321,6 +330,10 @@ const localMessageEntriesCache = new WeakMap<
   Extract<RawThreadFeedEntry, { readonly type: "message" }>
 >();
 const activityGroupsCache = new WeakMap<ThreadFeedActivity, ThreadFeedActivityGroup>();
+const viewedImageRowsCache = new WeakMap<
+  ThreadFeedActivity,
+  Extract<ThreadFeedEntry, { type: "viewed-image" }>
+>();
 const failedActivityGroupsCache = new WeakMap<
   ThreadFeedActivityGroup,
   ReadonlyArray<ThreadFeedActivityGroup>
@@ -950,6 +963,25 @@ function groupAdjacentActivities(
       continue;
     }
 
+    const imagePath = workEntryViewedImagePath(entry.activity.workEntry);
+    if (imagePath !== null) {
+      flushGroup();
+      let row = viewedImageRowsCache.get(entry.activity);
+      if (!row) {
+        row = {
+          type: "viewed-image",
+          id: entry.id,
+          createdAt: entry.createdAt,
+          runId: entry.runId,
+          imagePath,
+          activity: entry.activity,
+        };
+        viewedImageRowsCache.set(entry.activity, row);
+      }
+      grouped.push(row);
+      continue;
+    }
+
     const isStandaloneActivity =
       entry.activity.workEntry.questionAnswer !== undefined ||
       entry.activity.projectedItem.item.type === "compaction" ||
@@ -1114,6 +1146,7 @@ function deriveThreadFeedRunFolds(
         ? (entry.message.runId ?? runlessKey)
         : entry.type === "activity-group" ||
             entry.type === "html-render" ||
+            entry.type === "viewed-image" ||
             entry.type === "mcp-app"
           ? (entry.runId ?? runlessKey)
           : null;
@@ -1166,6 +1199,7 @@ function deriveThreadFeedRunFolds(
         .filter(
           (entry) =>
             entry.id !== terminalAssistantId &&
+            entry.type !== "viewed-image" &&
             entry.type !== "html-render" &&
             entry.type !== "mcp-app" &&
             !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&

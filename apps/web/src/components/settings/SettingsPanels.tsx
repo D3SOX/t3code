@@ -22,7 +22,6 @@ import {
   type ResponseStreamingMode,
   type QuitConfirmationMode,
   SidebarProjectSortOrder,
-  ToolCallVisibility,
 } from "@t3tools/contracts/settings";
 import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -533,11 +532,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Rich text composer"]
       : []),
     ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
+    ...(settings.defaultScratchEnvironmentId !==
+    DEFAULT_UNIFIED_SETTINGS.defaultScratchEnvironmentId
+      ? ["Machine for threads without a project"]
+      : []),
     ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
       ? ["Follow-up behavior"]
       : []),
-    ...(settings.toolCallVisibility !== DEFAULT_UNIFIED_SETTINGS.toolCallVisibility
-      ? ["Tool calls in chat"]
+    ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
+      ? ["Context window indicator"]
       : []),
     ...(settings.responseStreamingMode !== DEFAULT_UNIFIED_SETTINGS.responseStreamingMode
       ? ["Response streaming"]
@@ -652,8 +655,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
+      startThreadsInBackground: DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground,
+      defaultScratchEnvironmentId: DEFAULT_UNIFIED_SETTINGS.defaultScratchEnvironmentId,
+      sidebarShowThreadBranches: DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches,
+      confirmTerminalClose: DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
-      toolCallVisibility: DEFAULT_UNIFIED_SETTINGS.toolCallVisibility,
+      contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
@@ -701,7 +708,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       browserSearchEngine: DEFAULT_UNIFIED_SETTINGS.browserSearchEngine,
       browserCustomSearchUrl: DEFAULT_UNIFIED_SETTINGS.browserCustomSearchUrl,
       browserAutoShowFloatingPreview: DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview,
-      pullRequestLinksOpenInApp: DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp,
+      pullRequestLinkTarget: DEFAULT_UNIFIED_SETTINGS.pullRequestLinkTarget,
       enableAgentBrowserAccess: DEFAULT_UNIFIED_SETTINGS.enableAgentBrowserAccess,
     });
     onRestored?.();
@@ -754,15 +761,106 @@ function AutoSettleDaysInput({
   );
 }
 
+export function LegacyFeaturesSection() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+
+  return (
+    <SettingsSection id="legacy-features" title="Legacy">
+      <SettingsRow
+        {...searchableSetting("legacy-plan-mode")}
+        description="Restore Build/Plan, /plan, /default, and Shift+Tab. Off uses build mode."
+        control={
+          <Switch
+            checked={settings.planModeEnabled}
+            onCheckedChange={(checked) => {
+              updateSettings({ planModeEnabled: Boolean(checked) });
+            }}
+            aria-label="Plan mode (legacy)"
+          />
+        }
+      />
+      <SettingsRow
+        {...searchableSetting("legacy-context-window-indicator")}
+        description="Shows context window usage as a circular indicator in the composer."
+        control={
+          <Switch
+            checked={settings.contextWindowMeterEnabled}
+            onCheckedChange={(checked) =>
+              updateSettings({ contextWindowMeterEnabled: Boolean(checked) })
+            }
+            aria-label="Context window indicator (legacy)"
+          />
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const { environments } = useEnvironments();
+  const preferredScratchEnvironment = environments.find(
+    (environment) => environment.environmentId === settings.defaultScratchEnvironmentId,
+  );
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
   );
 
   return (
     <SettingsPageContainer>
+      <SettingsSection id="new-threads" title="New threads">
+        <SettingsRow
+          {...searchableSetting("no-project-machine")}
+          description="Choose where threads without a project start on this device. The selected machine must be connected."
+          resetAction={
+            settings.defaultScratchEnvironmentId !== null ? (
+              <SettingResetButton
+                label="machine for threads without a project"
+                onClick={() => updateSettings({ defaultScratchEnvironmentId: null })}
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.defaultScratchEnvironmentId ?? "automatic"}
+              onValueChange={(value) => {
+                const environment = environments.find((entry) => entry.environmentId === value);
+                if (value === "automatic" || environment) {
+                  updateSettings({
+                    defaultScratchEnvironmentId: environment?.environmentId ?? null,
+                  });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Machine for threads without a project">
+                <SelectValue>
+                  {preferredScratchEnvironment?.label ??
+                    (settings.defaultScratchEnvironmentId === null
+                      ? "Automatic"
+                      : "Unavailable machine")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="automatic">Automatic</SelectItem>
+                {environments.map((environment) => (
+                  <SelectItem key={environment.environmentId} value={environment.environmentId}>
+                    {environment.label}
+                    {environment.connection.phase === "connected" ? "" : " (not connected)"}
+                  </SelectItem>
+                ))}
+                {settings.defaultScratchEnvironmentId !== null && !preferredScratchEnvironment ? (
+                  <SelectItem value={settings.defaultScratchEnvironmentId} disabled>
+                    Unavailable machine
+                  </SelectItem>
+                ) : null}
+              </SelectPopup>
+            </Select>
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection id="notifications" title="Notifications">
         <NotificationSettings />
         <SettingsRow
@@ -883,6 +981,33 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="confirmations" title="Confirmations">
+        <SettingsRow
+          {...searchableSetting("terminal-close-confirmation")}
+          description="Ask before closing terminals, stopping their processes and deleting their history."
+          resetAction={
+            settings.confirmTerminalClose !== DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose ? (
+              <SettingResetButton
+                label="terminal close confirmation"
+                onClick={() =>
+                  updateSettings({
+                    confirmTerminalClose: DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.confirmTerminalClose}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  confirmTerminalClose: Boolean(checked),
+                })
+              }
+              aria-label="Confirm terminal closing"
+            />
+          }
+        />
         <SettingsRow
           {...searchableSetting("unpin-confirmation")}
           description="Ask before unpinning a thread from the pinned section."
@@ -1164,6 +1289,34 @@ export function ChatSettingsPanel() {
 
       <SettingsSection id="follow-ups" title="Follow-ups">
         <SettingsRow
+          {...searchableSetting("start-threads-in-background")}
+          description="Start new threads in the background with Enter or the send button. Ctrl/⌘+Enter does the opposite; turning this off reverses those actions."
+          resetAction={
+            settings.startThreadsInBackground !==
+            DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground ? (
+              <SettingResetButton
+                label="start threads in background"
+                onClick={() =>
+                  updateSettings({
+                    startThreadsInBackground: DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.startThreadsInBackground}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  startThreadsInBackground: Boolean(checked),
+                })
+              }
+              aria-label="Start threads in background"
+            />
+          }
+        />
+        <SettingsRow
           {...searchableSetting("follow-up-behavior")}
           description={
             "Queue follow-ups while the agent runs or steer the current run. " +
@@ -1187,14 +1340,18 @@ export function ChatSettingsPanel() {
             <Select
               value={settings.followUpBehavior}
               onValueChange={(value) => {
-                if (value === "queue" || value === "steer") {
+                if (value === "queue" || value === "next-tool" || value === "steer") {
                   updateSettings({ followUpBehavior: value });
                 }
               }}
             >
               <SelectTrigger size="sm" className="w-auto min-w-0" aria-label="Follow-up behavior">
                 <SelectValue>
-                  {settings.followUpBehavior === "queue" ? "Queue" : "Steer"}
+                  {settings.followUpBehavior === "queue"
+                    ? "Queue after turn"
+                    : settings.followUpBehavior === "next-tool"
+                      ? "Queue after next tool"
+                      : "Steer"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -1205,60 +1362,7 @@ export function ChatSettingsPanel() {
           }
         />
       </SettingsSection>
-
-      <SettingsSection id="activity" title="Activity">
-        <ToolCallVisibilityRow />
-      </SettingsSection>
     </SettingsPageContainer>
-  );
-}
-
-const TOOL_CALL_VISIBILITY_LABELS: Record<ToolCallVisibility, string> = {
-  showAll: "Show all",
-  hideSuccessful: "Hide successful",
-  hideAll: "Hide all",
-  zen: "Zen",
-};
-
-const isToolCallVisibility = Schema.is(ToolCallVisibility);
-
-function ToolCallVisibilityRow() {
-  const settings = useScopedSettings();
-  const updateSettings = useUpdateScopedSettings();
-  return (
-    <SettingsRow
-      {...searchableSetting("tool-call-visibility")}
-      description="Hide the commands, edits, and searches agents run. Hide successful keeps failures. Zen shows only final answers. Approvals, questions, and errors always show."
-      resetAction={
-        settings.toolCallVisibility !== DEFAULT_UNIFIED_SETTINGS.toolCallVisibility ? (
-          <SettingResetButton
-            label="tool calls in chat"
-            onClick={() =>
-              updateSettings({ toolCallVisibility: DEFAULT_UNIFIED_SETTINGS.toolCallVisibility })
-            }
-          />
-        ) : null
-      }
-      control={
-        <Select
-          value={settings.toolCallVisibility}
-          onValueChange={(value) => {
-            if (isToolCallVisibility(value)) updateSettings({ toolCallVisibility: value });
-          }}
-        >
-          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Tool calls in chat">
-            <SelectValue>{TOOL_CALL_VISIBILITY_LABELS[settings.toolCallVisibility]}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {ToolCallVisibility.literals.map((value) => (
-              <SelectItem key={value} value={value}>
-                {TOOL_CALL_VISIBILITY_LABELS[value]}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      }
-    />
   );
 }
 
@@ -1861,7 +1965,9 @@ export function ThreadsSettingsPanel() {
                     model={textGenModel}
                     modelOptions={textGenModelOptions}
                     allowPromptInjectedEffort={false}
-                    includePlanAgent={selectsPlanAgent(textGenModelOptions)}
+                    planModeEnabled={
+                      settings.planModeEnabled || selectsPlanAgent(textGenModelOptions)
+                    }
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(nextOptions) => {
                       updateSettings({

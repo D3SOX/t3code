@@ -120,6 +120,7 @@ import {
   visibleDeltaRunOrdinals,
 } from "./ContextHandoffService.ts";
 import { notificationTurnItem } from "@t3tools/provider-core/server/notification";
+import { refreshQueuedPullRequestMessage } from "./pullRequestWatch.ts";
 import {
   cancelledBeforeStart,
   continuationFailedBeforePrompt,
@@ -1894,11 +1895,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       },
     ) {
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
-      const projection = yield* readCommandProjection(threadId);
+      let projection = yield* readCommandProjection(threadId);
       if (
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
-        projection.runs.some(isActiveRun)
+        projection.runs.some(isActiveRun) ||
+        projection.runs.some((run) => run.status === "queued" && run.queueEditing === true)
       ) {
         return;
       }
@@ -1912,12 +1914,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (storedQueuedRun === undefined) {
         return;
       }
+      const refreshed = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
+      if (
+        yield* refreshQueuedPullRequestRuns(
+          threadId,
+          threadPullRequestsOf(projection.thread),
+          CommandId.make(`command:system:refresh-pr-wakes:${threadId}`),
+          refreshed,
+        )
+      ) {
+        yield* writeSystemEvents(yield* Ref.get(refreshed));
+        projection = yield* readCommandProjection(threadId);
+      }
+      const refreshedQueuedRun =
+        options?.queuedRunId === undefined
+          ? nextQueuedRun(projection)
+          : projection.runs.find(
+              (run) => run.id === options.queuedRunId && run.status === "queued",
+            );
+      if (refreshedQueuedRun === undefined) return;
       const queuedMessage = projection.messages.find(
-        (candidate) => candidate.id === storedQueuedRun.userMessageId,
+        (candidate) => candidate.id === refreshedQueuedRun.userMessageId,
       );
-      const modelSelection = queuedRunModelSelection(projection, storedQueuedRun);
+      const modelSelection = queuedRunModelSelection(projection, refreshedQueuedRun);
       const queuedRun = {
-        ...storedQueuedRun,
+        ...refreshedQueuedRun,
         modelSelection,
         providerInstanceId: modelSelection.instanceId,
       };
@@ -3297,7 +3318,67 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
-  // Recheck under the lock after reading the host. Record the watch first so wake events carry it.
+  const refreshQueuedPullRequestRuns = Effect.fn("orchestrationV2.refreshQueuedPullRequestRuns")(
+    function* (
+      threadId: ThreadId,
+      links: ReadonlyArray<ThreadPullRequestLink>,
+      commandId: CommandId,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const watched = links.filter((link) => link.watch?.headSha != null);
+      if (watched.length === 0) return false;
+      const { runs } = yield* projectionStore
+        .getThreadRecords(threadId, ["runs"])
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId })));
+      const queued = runs.filter((run) => run.status === "queued");
+      if (queued.length === 0) return false;
+      const { messages } = yield* projectionStore
+        .getThreadRecords(threadId, ["messages"], {
+          messageIds: queued.map((run) => run.userMessageId),
+        })
+        .pipe(Effect.mapError(() => new OrchestratorProjectionError({ threadId })));
+      let changed = false;
+      for (const run of queued) {
+        const message = messages.find((candidate) => candidate.id === run.userMessageId);
+        if (message === undefined) continue;
+        for (const link of watched) {
+          const refreshed = refreshQueuedPullRequestMessage(
+            message,
+            link,
+            link.watch?.headSha ?? null,
+          );
+          if (refreshed === message) continue;
+          changed = true;
+          const command = {
+            type: "queued-run.cancel" as const,
+            commandId,
+            threadId,
+            runId: run.id,
+          };
+          if (refreshed === null) {
+            yield* dispatchQueuedRunCancel(command, events);
+          } else {
+            const now = yield* DateTime.now;
+            yield* emit(
+              events,
+              command,
+            )({
+              type: "message.updated",
+              threadId,
+              runId: run.id,
+              occurredAt: now,
+              payload: { ...refreshed, updatedAt: now },
+            });
+          }
+          break;
+        }
+      }
+      return changed;
+    },
+  );
+
+  // Checked under the thread lock: the watch or the thread can change while the host is read.
+  // The watch is recorded first so the wake's own thread events carry it.
   const dispatchPullRequestWatchSync = Effect.fn("orchestrationV2.dispatch.pullRequestWatchSync")(
     function* (
       command: Extract<
@@ -3330,6 +3411,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandType: command.type,
           cause: "The pull request watch ended or its thread settled while it was read.",
         });
+      }
+      if (link !== undefined && command.watch !== null) {
+        yield* refreshQueuedPullRequestRuns(
+          command.threadId,
+          [{ ...link, watch: command.watch }],
+          command.commandId,
+          events,
+        );
       }
       yield* dispatchThreadMutation(command, events, effects);
       if (command.wake === undefined) return;
@@ -4273,6 +4362,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                       failedChecks: existing.endedWatch.failedChecks,
                       passed: existing.endedWatch.passed,
                       passedChecks: existing.endedWatch.passedChecks,
+                      allPassedChecks: existing.endedWatch.allPassedChecks,
+                      completedChecks: existing.endedWatch.completedChecks,
                       conflicting: existing.endedWatch.conflicting,
                     }),
                     ...(existing.endedWatch?.owedChecks !== undefined && {
@@ -6554,6 +6645,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         rootNodeId,
         activeAttemptId: attemptId,
         status: "queued",
+        ...(!freshContext &&
+        dispatchMode.type === "queue_after_active" &&
+        dispatchMode.afterNextTool === true
+          ? { queueAfterNextTool: true }
+          : {}),
         ...(worktreeMissingRun !== undefined ||
         (heldRunsToRelease.length === 0 &&
           queueIsHeld &&
@@ -10064,6 +10160,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const queuedRun = projection.runs.find((candidate) => candidate.id === command.queuedRunId);
+    if (projection.runs.some((run) => run.status === "queued" && run.queueEditing === true)) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Save or cancel the queued message edit before steering the queue.",
+      });
+    }
     if (queuedRun === undefined || queuedRun.status !== "queued") {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
@@ -10102,6 +10205,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: "Automatic completion deliveries cannot be promoted to Steer.",
       });
+    }
+
+    if (command.afterNextTool !== undefined) {
+      const now = yield* DateTime.now;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "run.updated",
+        threadId: command.threadId,
+        runId: queuedRun.id,
+        providerInstanceId: queuedRun.providerInstanceId,
+        occurredAt: now,
+        payload: { ...queuedRun, queueAfterNextTool: command.afterNextTool },
+      });
+      return;
     }
 
     const now = yield* DateTime.now;
@@ -10397,7 +10516,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     command: Extract<OrchestrationV2Command, { readonly type: "queued-run.edit" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
   ) {
-    if (command.text.trim().length === 0) {
+    if (command.editing === undefined && command.text.trim().length === 0) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
@@ -10455,6 +10574,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
+    if (command.editing !== undefined || queuedRun.queueEditing === true) {
+      yield* emitEvent({
+        type: "run.updated",
+        threadId: command.threadId,
+        runId: queuedRun.id,
+        providerInstanceId: queuedRun.providerInstanceId,
+        occurredAt: now,
+        payload: { ...queuedRun, queueEditing: command.editing === true },
+      });
+    }
+    if (command.editing !== undefined) return;
     const editedAttachments =
       command.attachments === undefined ? {} : { attachments: command.attachments };
     yield* emitEvent({
@@ -13528,15 +13658,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "thread.auto-settle": {
         // Recheck live state; changes and explicit overrides take precedence over the sweep snapshot.
-        const thread = yield* projectionStore
-          .getThread(command.threadId)
+        const candidates = yield* projectionStore
+          .getSettlementCandidates(command.threadId)
           .pipe(
             Effect.mapError(
               (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
             ),
           );
+        const thread = candidates[0];
         if (
+          thread === undefined ||
           thread.settledOverride !== null ||
+          backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
+          visibleThreadPullRequests(thread.pullRequests ?? []).some(
+            (link) => link.watch !== undefined,
+          ) ||
           DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt)
         ) {
           return yield* new OrchestratorDispatchError({
@@ -13816,7 +13952,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             runId: run.id,
             providerInstanceId: run.providerInstanceId,
             occurredAt: now,
-            payload: { ...run, queueHeld: false },
+            payload: {
+              ...run,
+              queueHeld: false,
+              ...(run.queueEditing ? { queueEditing: false } : {}),
+            },
           });
         }
         if (queued.length === 0) {
@@ -14159,6 +14299,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     if (
       command.type === "queue.resume" ||
       command.type === "queued-run.start" ||
+      (command.type === "queued-run.edit" && command.editing !== true) ||
       (command.type === "thread.runtime-mode.set" && runtimeModeCeiling !== undefined)
     ) {
       yield* mapDispatchError(command)(
@@ -14313,7 +14454,99 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
   // Projections already contain historical terminals; replaying them delays startup queue promotion with database size.
   const terminalEventsAfterSequence = yield* eventSink.latestSequence().pipe(Effect.orDie);
-  // Filter run updates before buffering so blocked queue promotion does not retain unrelated tool bodies.
+  // Keep only tool identity while waiting for the thread lock, not its output body.
+  yield* eventSink
+    .stream({ afterSequence: terminalEventsAfterSequence, eventType: "turn-item.updated" })
+    .pipe(
+      Stream.filter((stored) => {
+        if (stored.event.type !== "turn-item.updated") return false;
+        const item = stored.event.payload;
+        return (
+          item.runId !== null &&
+          item.parentItemId === null &&
+          [
+            "command_execution",
+            "dynamic_tool",
+            "file_change",
+            "file_search",
+            "web_search",
+          ].includes(item.type) &&
+          ["completed", "failed", "interrupted"].includes(item.status)
+        );
+      }),
+      Stream.map((stored) => ({
+        threadId: stored.event.threadId,
+        sequence: stored.sequence,
+        occurredAt:
+          stored.event.type === "turn-item.updated"
+            ? (stored.event.payload.completedAt ?? stored.event.occurredAt)
+            : stored.event.occurredAt,
+        item:
+          stored.event.type === "turn-item.updated"
+            ? {
+                id: stored.event.payload.id,
+                runId: stored.event.payload.runId,
+                nodeId: stored.event.payload.nodeId,
+              }
+            : null,
+      })),
+      Stream.runForEach((tool) =>
+        threadDispatch
+          .withLock(
+            tool.threadId,
+            Effect.gen(function* () {
+              const records = yield* projectionStore.getThreadRecords(tool.threadId, ["runs"]);
+              if (
+                records.runs.some((run) => run.status === "queued" && run.queueEditing === true) ||
+                !records.runs.some(
+                  (run) => run.status === "queued" && run.queueAfterNextTool && !run.queueHeld,
+                )
+              )
+                return;
+              const projection = yield* projectionStore.getThreadRecords(
+                tool.threadId,
+                ["runs", "messages", "nodes"],
+                { messageRoles: ["user"] },
+              );
+              const activeRun = projection.runs.find(isActiveRun);
+              const queuedRun = nextQueuedRun(projection);
+              const toolNode = projection.nodes.find((node) => node.id === tool.item?.nodeId);
+              if (
+                activeRun?.status !== "running" ||
+                queuedRun?.queueAfterNextTool !== true ||
+                queuedRun.queueHeld ||
+                tool.item?.runId !== activeRun.id ||
+                (tool.item.nodeId !== activeRun.rootNodeId &&
+                  toolNode?.parentNodeId !== activeRun.rootNodeId) ||
+                DateTime.toEpochMillis(tool.occurredAt) <
+                  DateTime.toEpochMillis(queuedRun.requestedAt)
+              )
+                return;
+              const commandId = CommandId.make(`command:next-tool:${activeRun.id}:${tool.item.id}`);
+              if (Option.isSome(yield* commandReceipts.getByCommandId(commandId))) return;
+              yield* dispatchWithReceiptEffect({
+                type: "queued-message.promote-to-steer",
+                commandId,
+                threadId: tool.threadId,
+                queuedRunId: queuedRun.id,
+                targetRunId: activeRun.id,
+              });
+            }),
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to steer queued message after tool", {
+                threadId: tool.threadId,
+                cause,
+              }),
+            ),
+          ),
+      ),
+      Effect.forkDetach,
+    );
+
+  // Queue promotion can wait on a provider or a thread lock. Subscribe to run
+  // updates before buffering so that wait never retains unrelated tool bodies.
   yield* eventSink
     .stream({ afterSequence: terminalEventsAfterSequence, eventType: "run.updated" })
     .pipe(

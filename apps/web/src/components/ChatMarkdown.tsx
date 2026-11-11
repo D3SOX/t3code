@@ -252,7 +252,6 @@ interface ChatMarkdownProps {
   sourceControlMediaRepository?: string | undefined;
   headingLevelOffset?: number | undefined;
 }
-
 export interface ChatMarkdownContextReference {
   kind: string;
   contextId: string;
@@ -261,7 +260,6 @@ export interface ChatMarkdownContextReference {
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
-
 const ARTIFACT_TEMPLATE_ICON_BY_KIND = {
   document: FileTextIcon,
   presentation: PresentationIcon,
@@ -274,14 +272,12 @@ const ARTIFACT_TEMPLATE_ICON_BY_KIND = {
   email: MailIcon,
   slack: MessageSquareIcon,
 } satisfies Record<CodexArtifactTemplateKind, LucideIcon>;
-
 function CodexArtifactTemplateCard(props: {
   readonly template: CodexArtifactTemplate;
   readonly onUse?: ((template: CodexArtifactTemplate) => void) | undefined;
 }) {
   const Icon = ARTIFACT_TEMPLATE_ICON_BY_KIND[props.template.artifactKind];
   const presentationLabel = codexArtifactTemplatePresentationLabel(props.template.artifactKind);
-
   return (
     <div
       role="group"
@@ -296,6 +292,7 @@ function CodexArtifactTemplateCard(props: {
         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-xs">
           <Icon aria-hidden className="size-5" />
         </span>
+        {/* Block elements keep the name and label separate thread-find segments. */}
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
             {props.template.displayName}
@@ -324,7 +321,11 @@ const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 function orderedListGutterStyle(
   itemValues: ReadonlyArray<unknown>,
   start: unknown,
-): { "--list-gutter": string } | undefined {
+):
+  | {
+      "--list-gutter": string;
+    }
+  | undefined {
   const parsedStart = Number.parseInt(String(start ?? 1), 10);
   let number = Number.isNaN(parsedStart) ? 1 : parsedStart;
   let markerWidth = String(number).length;
@@ -335,12 +336,18 @@ function orderedListGutterStyle(
     number += 1;
   }
   if (markerWidth <= 1) return undefined;
-  return { "--list-gutter": `${markerWidth + 2}ch` };
+  return {
+    "--list-gutter": `${markerWidth + 2}ch`,
+  };
 }
-
 const GITHUB_ALERT_PRESENTATIONS: Record<
   string,
-  { label: string; Icon: typeof InfoIcon; borderClassName: string; titleClassName: string }
+  {
+    label: string;
+    Icon: typeof InfoIcon;
+    borderClassName: string;
+    titleClassName: string;
+  }
 > = {
   note: {
     label: "Note",
@@ -406,7 +413,6 @@ function markdownUrlTransform(href: string) {
 }
 
 const NO_MARKDOWN_EDITORS: ReadonlyArray<EditorId> = [];
-
 type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 
 function markdownServerConfigFields(config: ServerConfig | null) {
@@ -422,7 +428,6 @@ function markdownServerConfigFields(config: ServerConfig | null) {
         : undefined,
   };
 }
-
 function markdownServerConfigFieldsEqual(
   previous: MarkdownServerConfigFields,
   next: MarkdownServerConfigFields,
@@ -522,7 +527,11 @@ function useChatMarkdownState({
   const closeLocalMediaPreview = () => setLocalMedia(null);
   const expandMedia =
     onImageExpand ??
-    ((preview: ExpandedImagePreview) => setLocalMedia({ scope: mediaScopeKey, preview }));
+    ((preview: ExpandedImagePreview) =>
+      setLocalMedia({
+        scope: mediaScopeKey,
+        preview,
+      }));
   const [mediaScope, setMediaScope] = useState(mediaScopeKey);
   if (mediaScope !== mediaScopeKey) {
     setMediaScope(mediaScopeKey);
@@ -639,7 +648,11 @@ function useChatMarkdownState({
     if (environmentId === null) {
       return Promise.resolve(
         AsyncResult.failure<void, PreferredEditorEnvironmentRequiredError>(
-          Cause.fail(new PreferredEditorEnvironmentRequiredError({ targetPath: filePath })),
+          Cause.fail(
+            new PreferredEditorEnvironmentRequiredError({
+              targetPath: filePath,
+            }),
+          ),
         ),
       );
     }
@@ -652,7 +665,11 @@ function useChatMarkdownState({
     }
     return openInEditor({
       environmentId,
-      input: { cwd: filePath, editor: "file-manager", reveal: true },
+      input: {
+        cwd: filePath,
+        editor: "file-manager",
+        reveal: true,
+      },
     });
   };
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
@@ -675,6 +692,9 @@ function useChatMarkdownState({
   const openDeferredMarkdownLink = useOpenLink(threadRef);
   // Subscribe so hydrated settings apply before the anchor synchronously decides whether to intercept _blank.
   const linkTargetPreference = useClientSettings((settings) => settings.browserLinkTarget);
+  const pullRequestLinkTargetPreference = useClientSettings(
+    (settings) => settings.pullRequestLinkTarget,
+  );
   const mathEnabled = useClientSettings((settings) => settings.mathRenderingEnabled);
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
@@ -684,7 +704,11 @@ function useChatMarkdownState({
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
   const resolveThreadPullRequest = (
     href: string,
-  ): (ThreadPullRequestKey & { readonly url: string }) | null => {
+  ):
+    | (ThreadPullRequestKey & {
+        readonly url: string;
+      })
+    | null => {
     if (
       threadRef === undefined ||
       readThreadShell(threadRef) === null ||
@@ -717,7 +741,11 @@ function useChatMarkdownState({
         ),
       );
     }
-    return openUrlInPreview({ threadRef, url, openPreview }).then((result) => {
+    return openUrlInPreview({
+      threadRef,
+      url,
+      openPreview,
+    }).then((result) => {
       if (result._tag === "Success") recordVisitForThread(threadRef, url);
       else if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -831,7 +859,6 @@ function useChatMarkdownState({
     const panelPath =
       fileLinkMeta.workspaceRelativePath ??
       (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
-
     return (
       <MarkdownFileLink
         environmentId={environmentId}
@@ -899,7 +926,6 @@ function useChatMarkdownState({
       />
     );
   };
-
   const componentState = {
     canOperateHost,
     canOperatePreview,
@@ -919,6 +945,7 @@ function useChatMarkdownState({
     mathEnabled,
     isStreaming,
     linkTargetPreference,
+    pullRequestLinkTargetPreference,
     markdownFileLinkMetaByHref,
     onTaskListChange,
     onUseArtifactTemplate,
@@ -944,14 +971,12 @@ function useChatMarkdownState({
     closeLocalMediaPreview,
   };
 }
-
 const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
 >(null!);
 
 // Isolate streamed source text from the renderer context; only offset-based renderers need it.
 const ChatMarkdownTextContext = React.createContext("");
-
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
@@ -1028,7 +1053,18 @@ const CHAT_MARKDOWN_COMPONENTS = {
       ) ?? [];
     const gutterStyle = orderedListGutterStyle(itemValues, start);
     return (
-      <ol {...props} start={start} style={gutterStyle ? { ...style, ...gutterStyle } : style} />
+      <ol
+        {...props}
+        start={start}
+        style={
+          gutterStyle
+            ? {
+                ...style,
+                ...gutterStyle,
+              }
+            : style
+        }
+      />
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
@@ -1067,7 +1103,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
           if (!Number.isSafeInteger(listItemStart)) return;
           const markerOffset = taskListMarkerOffset(text, listItemStart);
           if (markerOffset === null) return;
-          onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
+          onTaskListChange({
+            markerOffset,
+            checked: event.currentTarget.checked,
+          });
         }}
       />
     );
@@ -1085,6 +1124,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openChangeRequestLink,
       openDeferredMarkdownLink,
       linkTargetPreference,
+      pullRequestLinkTargetPreference,
       openExternalLinkInPreview,
       projects,
       linkedThreadPullRequestFor,
@@ -1112,7 +1152,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (contextReference) {
       const label = hastPlainTextDeep(node) || contextReference.contextId;
       return renderContextReference ? (
-        renderContextReference({ ...contextReference, label })
+        renderContextReference({
+          ...contextReference,
+          label,
+        })
       ) : (
         <span>{label}</span>
       );
@@ -1190,12 +1233,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
               );
               return;
             }
-            if (
-              !href ||
-              openChangeRequestLink(event, href, undefined, environmentId ?? undefined)
-            ) {
+            if (!href) {
               return;
             }
+            if (
+              pullRequestLinkTargetPreference === "app" &&
+              openChangeRequestLink(event, href, undefined, environmentId ?? undefined)
+            )
+              return;
             if (event.defaultPrevented) return;
             if (
               resolveLinkTarget({
@@ -1213,7 +1258,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
                   ?.shell.openExternal(href)
                   .catch((cause) =>
                     reportMarkdownActionFailure(
-                      { operation: "open-link-external", target: href },
+                      {
+                        operation: "open-link-external",
+                        target: href,
+                      },
                       cause,
                     ),
                   );
@@ -1225,7 +1273,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
             void openExternalLinkInPreview(href).then((result) => {
               if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
               reportMarkdownActionFailure(
-                { operation: "open-link-in-preview", target: href },
+                {
+                  operation: "open-link-in-preview",
+                  target: href,
+                },
                 result.cause,
               );
               if (isBrowserSettingsReadError(squashAtomCommandFailure(result))) return;
@@ -1245,17 +1296,41 @@ const CHAT_MARKDOWN_COMPONENTS = {
                 : resolveThreadPullRequest(href) === null
                   ? undefined
                   : "link-to-thread";
+            const isPullRequestLink = sourceControlClients.parseChangeRequestUrl(href) !== null;
             void showExternalLinkContextMenu({
               href,
-              canOpenInPreview,
+              canOpenInPreview: canOpenInPreview || isPullRequestLink,
+              inAppLabel: isPullRequestLink ? "Open in T3 Code" : undefined,
               threadLinkAction,
-              position: { x: event.clientX, y: event.clientY },
+              position: {
+                x: event.clientX,
+                y: event.clientY,
+              },
               showContextMenu: (items, position) => api.contextMenu.show(items, position),
               openInPreview: async (target) => {
+                if (
+                  isPullRequestLink &&
+                  openChangeRequestLink(
+                    {
+                      metaKey: false,
+                      ctrlKey: false,
+                      preventDefault: () => undefined,
+                      stopPropagation: () => undefined,
+                    },
+                    target,
+                    undefined,
+                    environmentId ?? undefined,
+                  )
+                ) {
+                  return;
+                }
                 const result = await openExternalLinkInPreview(target);
                 if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
                   reportMarkdownActionFailure(
-                    { operation: "open-link-in-preview", target },
+                    {
+                      operation: "open-link-in-preview",
+                      target,
+                    },
                     result.cause,
                   );
                 }
@@ -1264,7 +1339,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
               copyLink: (target) => writeTextToClipboard(target, "link"),
               updateThreadLink: updateThreadPullRequestLink,
               reportFailure: (operation, cause) => {
-                reportMarkdownActionFailure({ operation, target: href }, cause);
+                reportMarkdownActionFailure(
+                  {
+                    operation,
+                    target: href,
+                  },
+                  cause,
+                );
                 if (
                   operation === "link-pull-request-to-thread" ||
                   operation === "unlink-pull-request-from-thread"
@@ -1327,7 +1408,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
         </Tooltip>
       );
     }
-
     const label = nodeToPlainText(children);
     const start = node?.position?.start.offset;
     const end = node?.position?.end.offset;
@@ -1402,7 +1482,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (contextReference) {
       const label = alt || contextReference.contextId;
       return renderContextReference ? (
-        renderContextReference({ ...contextReference, label })
+        renderContextReference({
+          ...contextReference,
+          label,
+        })
       ) : (
         <span>{label}</span>
       );
@@ -1506,7 +1589,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
         kind,
         name: altText || kind,
         src: mediaSrc,
-        ...(reference ? { reference } : {}),
+        ...(reference
+          ? {
+              reference,
+            }
+          : {}),
       };
       if (kind === "video") {
         return (
@@ -1598,7 +1685,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (!codeBlock) {
       return <pre {...props}>{children}</pre>;
     }
-
     const language = extractFenceLanguage(codeBlock.className);
     if (
       mathEnabled &&
@@ -1615,6 +1701,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
         resetKeys={[codeBlock.code, language, diffThemeName, isStreaming]}
         fallback={<pre {...props}>{children}</pre>}
       >
+        {/* Reserve the block's height but stay hidden until Shiki has colored
+           it, so plain text never flashes before the highlighted version. */}
         <Suspense
           fallback={
             <pre {...props} className="invisible" aria-hidden>
@@ -1820,5 +1908,4 @@ function ChatMarkdown({
     </Root>
   );
 }
-
 export default memo(ChatMarkdown);

@@ -162,6 +162,9 @@ const make = Effect.gen(function* () {
         yield* serverSettings.getSettings,
         projection.thread.projectId,
       ).settings;
+      if (input.kind.type === "initial" && !settings.autoGenerateThreadTitles) {
+        return { type: "complete" as const };
+      }
       // Storage cleanup removes worktrees but keeps the path; CLIs cannot spawn in a missing cwd.
       const worktreePath = projection.thread.worktreePath;
       const worktreeExists =

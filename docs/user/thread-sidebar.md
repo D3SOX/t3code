@@ -27,9 +27,12 @@ A thread does not need a project. To start one without a project, click **or
 start without a project** under a new thread's heading, pick **No project** from
 the project menu in that heading or from **New thread in...** in the command
 palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
-list. It starts on your current machine; before sending, pick another machine
-from the machine menu to move it there. To move a draft into a project, pick the
-project in the heading.
+list. On web and desktop, **Settings → General → New threads → Machine for
+threads without a project** sets the default for this client. **Automatic**
+keeps the usual preference for this app's primary machine. A selected machine
+must be connected; T3 Code does not substitute another machine when it is
+unavailable. Before sending, pick another machine from the machine menu to move
+the draft there. To move a draft into a project, pick the project in the heading.
 
 Each thread without a project works in its own folder under `~/.t3/scratch` (the
 `scratch` folder of your T3 data directory), named after its date, the first words
@@ -47,8 +50,11 @@ get branch and diff controls.
 
 ### Start in the background
 
-In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`
-on Windows and Linux to start a new thread and immediately open another draft. The
+In a desktop browser or the desktop app, submitting a new thread starts it in the
+background and immediately opens another draft by default. Disable **Settings →
+General → Start threads in background** to open the submitted thread instead;
+`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux does the opposite of
+Enter, so the setting swaps their foreground and background actions. The
 next draft keeps the workspace mode and base branch you selected. With **New
 worktree**, each background submission creates its own worktree.
 
@@ -57,9 +63,20 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Find archived threads
+
+Open **Settings → Archived threads** to find and unarchive older conversations.
+Search by thread title, branch, project name or path, or environment name. On web
+and desktop, results stay within your selected settings scope.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
+
+Click or tap the **Pinned** or **Active** heading to collapse or expand its section.
+Both start expanded and remember your choice on each client. Threads showing
+**Done** or **Input**, and the thread you are viewing, stay visible even when
+their section is collapsed.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
@@ -84,7 +101,7 @@ list to unpin it. Dragging a thread onto the **Settled** header settles it, and 
 thread into the active list un-settles it. A snoozed thread can be dragged out of the snoozed
 shelf, which wakes it, but threads cannot be dragged into the shelf because snoozing needs a wake
 time. Dragging a pinned thread out of the pinned section does not ask for unpin confirmation.
-Pinned and active boundary labels appear only while dragging, without moving the rows. The
+Pinned and active headings also act as drop targets. The
 other rows slide aside to show where the thread will land. When you cross into another section,
 the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
 **Settle**, **Un-settle**, or **Wake**. Its status and hover actions hide during the drag. A pinned

@@ -1,6 +1,13 @@
 import type { OrchestrationV2ThreadDetailSnapshot, ThreadId } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import type * as ManagedRelay from "../relay/managedRelay.ts";
+import type * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
+import {
+  executeAuthenticatedEnvironmentHttpRequest,
+  withOrchestrationProtocolHeader,
+} from "./environmentHttpAuth.ts";
 import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect";
 
 import type { PreparedConnection } from "../connection/model.ts";
 
@@ -28,3 +35,28 @@ export class ThreadSnapshotLoader extends Context.Service<
     ) => Effect.Effect<ThreadSnapshotLoadResult>;
   }
 >()("@t3tools/client-runtime/state/threadSnapshotHttp/ThreadSnapshotLoader") {}
+
+export const fetchEnvironmentThreadSnapshot = Effect.fn(
+  "clientRuntime.state.fetchEnvironmentThreadSnapshot",
+)(function* (input: {
+  readonly prepared: PreparedConnection;
+  readonly threadId: ThreadId;
+  readonly signer: Option.Option<ManagedRelay.ManagedRelayDpopSigner["Service"]>;
+  readonly remoteAuthorization?: Option.Option<
+    RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]
+  >;
+  readonly timeoutMs?: number;
+}) {
+  return yield* executeAuthenticatedEnvironmentHttpRequest({
+    ...input,
+    group: "orchestration",
+    method: "GET",
+    url: (urls) => urls.threadSnapshot({ params: { threadId: input.threadId } }),
+    timeoutMs: input.timeoutMs ?? 20_000,
+    request: ({ client, headers }) =>
+      client.threadSnapshot({
+        params: { threadId: input.threadId },
+        headers: withOrchestrationProtocolHeader(headers),
+      }),
+  });
+});

@@ -37,9 +37,14 @@ import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import { v2Now, v2Projection, v2ThreadId } from "../state/orchestrationV2TestFixtures.ts";
 import {
   archiveThread,
+  cancelQueuedRun,
+  editQueuedRun,
+  forkThreadFromRun,
   interruptThreadTurn,
+  mergeThreadBack,
+  promoteQueuedRun,
+  reorderQueuedRun,
   revertThreadCheckpoint,
-  resumeThreadQueue,
   startThreadTurn,
 } from "./commands.ts";
 
@@ -61,6 +66,8 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly launches?: OrchestrationV2ThreadLaunchInput[];
   readonly projection?: OrchestrationV2ThreadProjection;
   readonly projectionRequests?: ThreadId[];
+  readonly advertiseServerResolvedCommandContext?: boolean;
+  readonly advertiseNextToolQueue?: boolean;
   readonly advertiseThreadStop?: boolean;
 }) {
   const client = {
@@ -109,6 +116,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
       environment: {
         capabilities: {
           repositoryIdentity: true,
+          ...(input.advertiseNextToolQueue === false ? {} : { nextToolQueue: true }),
           ...(input.advertiseThreadStop === true ? { threadStop: true } : {}),
         },
       },
@@ -131,28 +139,6 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
 });
 
 describe("V2 environment commands", () => {
-  it.effect("distinguishes sending a selected queued message from resuming queue order", () =>
-    Effect.gen(function* () {
-      const commands: OrchestrationV2Command[] = [];
-      const supervisor = yield* makeSupervisor({ commands, projects: [] });
-      const threadId = ThreadId.make("thread-1");
-      yield* resumeThreadQueue({
-        commandId: CommandId.make("send-selected"),
-        threadId,
-        runId: RunId.make("selected"),
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-      yield* resumeThreadQueue({
-        commandId: CommandId.make("resume-queue"),
-        threadId,
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-
-      expect(commands).toEqual([
-        { type: "queued-run.start", commandId: "send-selected", threadId, runId: "selected" },
-        { type: "queue.resume", commandId: "resume-queue", threadId },
-      ]);
-    }).pipe(Effect.provide(layerTestRandom)),
-  );
-
   it.effect("preserves caller command ids for idempotent V2 commands", () =>
     Effect.gen(function* () {
       const commands: OrchestrationV2Command[] = [];
@@ -265,6 +251,7 @@ describe("V2 environment commands", () => {
 
       for (const [mode, expectedType] of [
         ["queue", "queue_after_active"],
+        ["next-tool", "queue_after_active"],
         ["auto", "start_immediately"],
         ["steer", "start_immediately"],
         ["restart", "start_immediately"],
@@ -285,8 +272,11 @@ describe("V2 environment commands", () => {
 
         expect(commands.at(-1)).toMatchObject({
           type: "message.dispatch",
-          dispatchMode: { type: expectedType },
-          ...(mode === "queue" ? {} : { deliveryIntent: mode }),
+          dispatchMode: {
+            type: expectedType,
+            ...(mode === "next-tool" ? { afterNextTool: true } : {}),
+          },
+          ...(mode === "queue" || mode === "next-tool" ? {} : { deliveryIntent: mode }),
         });
       }
       expect(projectionRequests).toEqual([]);
@@ -347,74 +337,218 @@ describe("V2 environment commands", () => {
     }).pipe(Effect.provide(layerTestRandom)),
   );
 
-  it.effect.each(["waiting", "completed", "rolled_back"] as const)(
-    "dispatches Stop for %s runs with background commands except rollback",
-    (status) =>
-      Effect.gen(function* () {
-        const waitingRunId = RunId.make("run-waiting");
-        const projection: OrchestrationV2ThreadProjection = {
-          ...v2Projection,
-          runs: [
-            {
-              id: waitingRunId,
-              threadId: v2ThreadId,
-              ordinal: 1,
-              providerInstanceId: v2Projection.thread.providerInstanceId,
-              modelSelection: v2Projection.thread.modelSelection,
-              providerThreadId: null,
-              userMessageId: MessageId.make("message-waiting"),
-              rootNodeId: null,
-              activeAttemptId: null,
-              status,
-              requestedAt: v2Now,
-              startedAt: v2Now,
-              completedAt: null,
-              checkpointId: null,
-              contextHandoffId: null,
-            },
-          ],
-          turnItems: [
-            {
-              id: TurnItemId.make("background-command"),
-              threadId: v2ThreadId,
-              runId: waitingRunId,
-              nodeId: null,
-              providerThreadId: null,
-              providerTurnId: null,
-              nativeItemRef: null,
-              parentItemId: null,
-              ordinal: 1,
-              status: "running",
-              title: null,
-              startedAt: v2Now,
-              completedAt: null,
-              updatedAt: v2Now,
-              type: "command_execution",
-              input: "vp run dev",
-            },
-          ],
-        };
+  it.effect.each([
+    "waiting",
+    "completed",
+    "failed",
+    "interrupted",
+    "cancelled",
+    "rolled_back",
+  ] as const)("dispatches Stop for %s runs with background commands except rollback", (status) =>
+    Effect.gen(function* () {
+      const waitingRunId = RunId.make("run-waiting");
+      const projection: OrchestrationV2ThreadProjection = {
+        ...v2Projection,
+        runs: [
+          {
+            id: waitingRunId,
+            threadId: v2ThreadId,
+            ordinal: 1,
+            providerInstanceId: v2Projection.thread.providerInstanceId,
+            modelSelection: v2Projection.thread.modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make("message-waiting"),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status,
+            requestedAt: v2Now,
+            startedAt: v2Now,
+            completedAt: null,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        ],
+        turnItems: [
+          {
+            id: TurnItemId.make("background-command"),
+            threadId: v2ThreadId,
+            runId: waitingRunId,
+            nodeId: null,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 1,
+            status: "running",
+            title: null,
+            startedAt: v2Now,
+            completedAt: null,
+            updatedAt: v2Now,
+            type: "command_execution",
+            input: "vp run dev",
+          },
+        ],
+      };
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({ commands, projects: [], projection });
+
+      const result = yield* interruptThreadTurn({ threadId: v2ThreadId }).pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+      );
+
+      expect(result).toEqual({ sequence: status === "rolled_back" ? 0 : 1 });
+      expect(commands).toEqual(
+        status === "rolled_back"
+          ? []
+          : [
+              {
+                type: "run.interrupt",
+                commandId: expect.any(String),
+                threadId: v2ThreadId,
+                runId: waitingRunId,
+                holdQueue: true,
+              },
+            ],
+      );
+    }).pipe(Effect.provide(layerTestRandom)),
+  );
+
+  it.effect("changes saved queue timing only on servers advertising support", () =>
+    Effect.gen(function* () {
+      for (const supported of [false, true]) {
         const commands: OrchestrationV2Command[] = [];
-        const supervisor = yield* makeSupervisor({ commands, projects: [], projection });
-
-        const result = yield* interruptThreadTurn({ threadId: v2ThreadId }).pipe(
+        const supervisor = yield* makeSupervisor({
+          commands,
+          projects: [],
+          advertiseNextToolQueue: supported,
+        });
+        const result = yield* promoteQueuedRun({
+          commandId: CommandId.make("change-timing"),
+          threadId: v2ThreadId,
+          queuedRunId: RunId.make("queued"),
+          targetRunId: RunId.make("active"),
+          afterNextTool: true,
+        }).pipe(
           Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.result,
+        );
+        if (supported) {
+          expect(commands).toEqual([
+            {
+              type: "queued-message.promote-to-steer",
+              commandId: CommandId.make("change-timing"),
+              threadId: v2ThreadId,
+              queuedRunId: RunId.make("queued"),
+              targetRunId: RunId.make("active"),
+              afterNextTool: true,
+            },
+          ]);
+          expect(result._tag).toBe("Success");
+        } else {
+          expect(result._tag).toBe("Failure");
+          expect(commands).toEqual([]);
+        }
+      }
+    }).pipe(Effect.provide(layerTestRandom)),
+  );
+
+  it.effect(
+    "dispatches V2-native relationship and queue commands without compatibility shaping",
+    () =>
+      Effect.gen(function* () {
+        const commands: OrchestrationV2Command[] = [];
+        const supervisor = yield* makeSupervisor({ commands, projects: [] });
+        const provide = Effect.provideService(
+          EnvironmentSupervisor.EnvironmentSupervisor,
+          supervisor,
         );
 
-        expect(result).toEqual({ sequence: status === "rolled_back" ? 0 : 1 });
-        expect(commands).toEqual(
-          status === "rolled_back"
-            ? []
-            : [
-                {
-                  type: "run.interrupt",
-                  commandId: expect.any(String),
-                  threadId: v2ThreadId,
-                  runId: waitingRunId,
-                  holdQueue: true,
-                },
-              ],
-        );
+        yield* forkThreadFromRun({
+          commandId: CommandId.make("fork"),
+          sourceThreadId: v2ThreadId,
+          targetThreadId: ThreadId.make("thread-fork"),
+          runId: RunId.make("run-1"),
+        }).pipe(provide);
+        yield* mergeThreadBack({
+          commandId: CommandId.make("merge"),
+          sourceThreadId: ThreadId.make("thread-fork"),
+          targetThreadId: v2ThreadId,
+          runId: RunId.make("run-2"),
+        }).pipe(provide);
+        yield* reorderQueuedRun({
+          commandId: CommandId.make("reorder"),
+          threadId: v2ThreadId,
+          runId: RunId.make("run-3"),
+          beforeRunId: RunId.make("run-4"),
+        }).pipe(provide);
+        yield* promoteQueuedRun({
+          commandId: CommandId.make("promote"),
+          threadId: v2ThreadId,
+          queuedRunId: RunId.make("run-3"),
+          targetRunId: RunId.make("run-active"),
+        }).pipe(provide);
+        yield* cancelQueuedRun({
+          commandId: CommandId.make("cancel"),
+          threadId: v2ThreadId,
+          runId: RunId.make("run-3"),
+        }).pipe(provide);
+        yield* editQueuedRun({
+          commandId: CommandId.make("edit"),
+          threadId: v2ThreadId,
+          runId: RunId.make("run-3"),
+          text: "updated queued text",
+        }).pipe(provide);
+        yield* editQueuedRun({
+          commandId: CommandId.make("edit-attachments"),
+          threadId: v2ThreadId,
+          runId: RunId.make("run-3"),
+          text: "updated queued text with attachments",
+          edit: {
+            messageId: MessageId.make("message-3"),
+            attachments: [
+              {
+                type: "image",
+                id: "attachment-kept",
+                name: "kept.png",
+                mimeType: "image/png",
+                sizeBytes: 64,
+              },
+            ],
+          },
+        }).pipe(provide);
+
+        expect(commands).toMatchObject([
+          { type: "thread.fork", sourcePoint: { type: "run", runId: "run-1" } },
+          { type: "thread.merge_back", sourcePoint: { type: "run", runId: "run-2" } },
+          { type: "queued-run.reorder", runId: "run-3", beforeRunId: "run-4" },
+          {
+            type: "queued-message.promote-to-steer",
+            queuedRunId: "run-3",
+            targetRunId: "run-active",
+          },
+          { type: "queued-run.cancel", runId: "run-3" },
+          { type: "queued-run.edit", runId: "run-3", text: "updated queued text" },
+          {
+            type: "queued-run.edit",
+            runId: "run-3",
+            text: "updated queued text with attachments",
+            attachments: [{ id: "attachment-kept" }],
+          },
+        ]);
+        expect(commands[5]).not.toHaveProperty("attachments");
+        for (const editing of [true, false]) {
+          yield* editQueuedRun({
+            commandId: CommandId.make(`edit-state-${editing}`),
+            threadId: v2ThreadId,
+            runId: RunId.make("run-3"),
+            text: "saved text",
+            editing,
+          }).pipe(provide);
+        }
+        expect(commands.slice(-2)).toMatchObject([
+          { type: "queued-run.edit", runId: "run-3", editing: true },
+          { type: "queued-run.edit", runId: "run-3", editing: false },
+        ]);
       }).pipe(Effect.provide(layerTestRandom)),
   );
 
@@ -468,65 +602,6 @@ describe("V2 environment commands", () => {
             runId,
             subagentId,
           },
-        ]);
-      }).pipe(Effect.provide(layerTestRandom)),
-  );
-
-  it.effect(
-    "an app-owned subagent stop asks the parent to clear an orphan, then stops the child",
-    () =>
-      Effect.gen(function* () {
-        const subagentId = NodeId.make("app-owned-subagent");
-        const runId = RunId.make("parent-run");
-        const childThreadId = ThreadId.make("app-owned-child-thread");
-        const commands: OrchestrationV2Command[] = [];
-        const supervisor = yield* makeSupervisor({
-          commands,
-          projects: [],
-          advertiseThreadStop: true,
-          projection: {
-            ...v2Projection,
-            subagents: [
-              {
-                id: subagentId,
-                threadId: v2ThreadId,
-                runId,
-                parentNodeId: NodeId.make("owner-node"),
-                origin: "app_owned",
-                createdBy: "agent",
-                driver: ProviderDriverKind.make("codex"),
-                providerInstanceId: ProviderInstanceId.make("codex"),
-                providerThreadId: null,
-                childThreadId,
-                nativeTaskRef: null,
-                prompt: "Work",
-                title: null,
-                model: null,
-                result: null,
-                status: "running",
-                startedAt: v2Now,
-                completedAt: null,
-                updatedAt: v2Now,
-              },
-            ],
-          },
-        });
-        yield* interruptThreadTurn({
-          commandId: CommandId.make("lineage-stop"),
-          threadId: v2ThreadId,
-          subagentId,
-          // A parent run must not be interrupted on the child thread.
-          runId,
-        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-        expect(commands).toEqual([
-          {
-            type: "subagent.stop",
-            commandId: expect.any(String),
-            threadId: v2ThreadId,
-            runId,
-            subagentId,
-          },
-          { type: "thread.stop", commandId: "lineage-stop", threadId: childThreadId },
         ]);
       }).pipe(Effect.provide(layerTestRandom)),
   );

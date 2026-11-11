@@ -482,6 +482,8 @@ const make = Effect.gen(function* () {
 
       if (
         reused === undefined &&
+        resolveProjectSettings(yield* serverSettings.getSettings, input.projectId).settings
+          .autoGenerateBranchNames &&
         worktreePath !== null &&
         branch !== null &&
         initialMessage !== undefined &&

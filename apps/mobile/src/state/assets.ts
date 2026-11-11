@@ -1,4 +1,4 @@
-import { useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomMount, useAtomSubscribe, useAtomValue } from "@effect/atom-react";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
 import {
   assetUrlStateFromResult,
@@ -6,10 +6,12 @@ import {
   createAssetEnvironmentAtoms,
   createProjectFaviconUrlAtomFamily,
   EMPTY_ASSET_URL_ATOM,
+  isMutableAssetResource,
   makeRevisionedAssetUrlFamily,
 } from "@t3tools/client-runtime/state/assets";
 import { executeAtomQuery, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
+import { useContext, useEffect } from "react";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -48,6 +50,7 @@ export function useAssetUrlState(
   resource: AssetResource | null,
   revision?: string | null,
 ): AssetUrlState {
+  const registry = useContext(RegistryContext);
   const fileAccessSession = useEnvironmentQuery(
     environmentId === null ? null : environmentSession.sessionStateAtom(environmentId),
   );
@@ -58,16 +61,23 @@ export function useAssetUrlState(
     session: fileAccessSession.data,
     sessionError: fileAccessSession.error,
   });
+  const mutableResource = isMutableAssetResource(resource);
   const blocked = blockedAssetUrlState(resource, fileAccess);
   const preparedConnection = usePreparedConnection(environmentId);
   const connectionPhase = fileEnvironment.presentation?.connection.phase ?? "available";
-  const result = useAtomValue(
+  const query =
     blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
       : revision === undefined
         ? assetEnvironment.createUrl({ environmentId, input: { resource } })
-        : revisionedAssetUrl({ environmentId, input: { resource }, revision }),
-  );
+        : revisionedAssetUrl({ environmentId, input: { resource }, revision });
+  const result = useAtomValue(query);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A new mounted image occurrence must invalidate the external URL cache once.
+  useEffect(() => {
+    if (blocked !== null || !mutableResource || revision !== undefined) return;
+    const cached = registry.get(query);
+    if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
+  }, [blocked, mutableResource, query, registry, revision]);
   const shared =
     blocked ??
     assetUrlStateFromResult(
