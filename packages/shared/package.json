@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./pullRequestAnchor": {
+      "types": "./src/pullRequestAnchor.ts",
+      "import": "./src/pullRequestAnchor.ts"
+    },
     "./modelCapacityRetry": {
       "types": "./src/modelCapacityRetry.ts",
       "import": "./src/modelCapacityRetry.ts"

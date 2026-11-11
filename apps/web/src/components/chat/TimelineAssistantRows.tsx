@@ -45,7 +45,8 @@ export function AssistantTimelineRow({
     row.projectedItem?.item.id,
   );
   const text = liveText ?? row.message.text;
-  const messageText = text || (row.message.streaming ? "" : "(empty response)");
+  const messageText =
+    text || (row.message.streaming || row.suppressEmptyResponse ? "" : "(empty response)");
 
   const threadRef = ctx.threadRef;
   const citedMedia = row.message.streaming ? [] : citedMediaPaths(messageText);
