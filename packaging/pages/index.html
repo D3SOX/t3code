@@ -7,7 +7,7 @@
     <link rel="icon" type="image/x-icon" href="./favicon.ico" />
     <meta
       name="description"
-      content="Features and nightly Android and Arch Linux builds of D3SOX's T3 Code fork."
+      content="What D3SOX's T3 Code fork changes, and how to install its Android and Arch Linux nightlies."
     />
     <title>T3 Code D3SOX</title>
     <style>
@@ -104,269 +104,269 @@
     <main>
       <h1>T3 Code D3SOX</h1>
       <p>
-        A fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a> with changes to agent
-        workflows, remote use, and privacy. Signed nightly builds are available for Android and Arch
-        Linux.
+        D3SOX's fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a>. It stays in sync
+        with upstream, and the list below covers what's different. Signed nightly builds are
+        available for Android and Arch Linux.
       </p>
       <nav class="links" aria-label="Project links">
         <a href="https://github.com/D3SOX/t3code">Source</a>
         <a href="https://github.com/D3SOX/t3code/releases">Latest builds</a>
       </nav>
 
-      <h2>What this fork changes</h2>
+      <h2>What's different</h2>
       <h3>Messaging</h3>
       <ul>
         <li>
-          Follow-up messages wait until the next tool call finishes by default. You can also queue
-          them after the current turn or steer the agent immediately. All clients offer these
-          choices. The server saves queued messages, which you can edit, reorder, or send
-          immediately. On web and desktop, Up Arrow in an empty composer edits the last queued
-          message. Completion notifications wait until all queued turns finish.
+          Messages you send while the agent is working go into a queue. By default, each one is
+          delivered after the current tool call. On every client you can also hold a message until
+          the turn ends, or steer the agent with it right away. The server keeps the queue, so you
+          can edit, reorder, or send any message early. On web and desktop, press Up in an empty
+          composer to edit the last queued message. You get one completion notification once the
+          whole queue is done.
         </li>
         <li>
-          Editing a queued message pauses the queue until you save or cancel. Saving updates the
-          message in place and keeps its delivery timing. Removing a queued message returns its text
-          and attachments to the composer alongside any existing draft.
+          Editing a queued message pauses the queue until you save or cancel. A saved message keeps
+          its place and delivery timing. Removing one puts its text and attachments back in the
+          composer, next to whatever you had already typed.
         </li>
         <li>
-          You can keep composing and sending while earlier messages or their attachments wait.
-          Messages queue locally and send in order. Keep web and desktop open until the messages
-          send. Mobile saves its local queue across restarts.
+          You don't have to wait for earlier messages or uploads before sending more. New messages
+          queue on your device and go out in order. Web and desktop have to stay open until they're
+          sent. Mobile keeps the queue across restarts.
         </li>
         <li>
-          On web and desktop, Enter or the send button starts a new thread in the background and
-          opens a fresh draft. Ctrl+Enter or Command+Enter opens the submitted thread. Turn off
-          Start threads in background under General in Settings to reverse these actions. You can
-          customize the shortcuts.
+          On web and desktop, sending from a new-thread draft starts the thread in the background
+          and gives you a fresh draft, so you can start several threads in a row. Ctrl+Enter
+          (Cmd+Enter on macOS) sends and opens the thread. Turn off Start threads in background in
+          Settings → General to swap the two. Both shortcuts can be rebound.
         </li>
-        <li>The interrupt button shows a loading indicator until the request finishes.</li>
+        <li>The interrupt button shows a spinner until the interrupt goes through.</li>
         <li>
-          Images the agent opens have their own timeline rows, even when the turn is collapsed. Open
-          a row to see its preview, then click the preview to see the full image.
-        </li>
-        <li>
-          Images and videos the agent cites have previews below its message on all clients. Videos
-          have playback controls and do not autoplay.
+          Images the agent opens get their own row in the timeline, even inside a collapsed turn.
+          Expand the row to see a preview, and click the preview for the full image.
         </li>
         <li>
-          Local image previews refresh when an agent updates the file and shows it again, or when
-          you reopen its preview. Thread previews keep saved copies so older images remain available
-          after their source files are removed.
+          Images and videos the agent references show up as previews under its message on every
+          client. Videos have playback controls and don't autoplay.
+        </li>
+        <li>
+          If the agent changes a local image and shows it again, or you reopen its preview, you see
+          the new version. Threads keep their own copies, so older images still load after the
+          original files are gone.
         </li>
       </ul>
 
       <h3>PRs and notifications</h3>
       <ul>
         <li>
-          Empty or whitespace-only final replies do not mark the thread Done or trigger completion
-          notifications or sounds. Image-only replies and errors still alert normally.
+          A final reply that is empty or only whitespace doesn't mark the thread Done, send a
+          notification, or play a sound. Image-only replies and errors still notify you.
         </li>
         <li>
-          Short PR-monitoring updates and intermediate background-job completions do not send
-          completion alerts, play sounds, or mark the thread Done while work continues.
+          Short PR-monitoring updates and background jobs that finish mid-task don't count as
+          completion either. The thread stays unmarked and quiet while work continues.
         </li>
         <li>
-          Awaited background tasks resume the agent even if another notification arrives first.
-          Automatic settlement waits until pending background work finishes, and task completion can
-          wake a settled thread.
+          When the agent is waiting on a background task, that task's result wakes it even if
+          another notification arrives first. Threads don't settle while background work is pending,
+          and a finished task can wake a thread that has already settled.
         </li>
         <li>
-          Missing required checks stay pending, including checks that appear later. When the
-          remaining CI checks finish, PR monitoring wakes the agent even if it already reported that
-          the required checks passed. Overlapping CI runs remain pending until they finish, and CI
-          notifications for outdated commits are ignored.
+          PR monitoring treats missing required checks as pending, including checks that only show
+          up later. When the remaining checks finish, it wakes the agent again, even if the agent
+          already reported that the required ones passed. Overlapping CI runs stay pending until
+          they finish, and notifications for outdated commits are ignored.
         </li>
         <li>
-          PR monitoring ignores edits to existing comments and bot status messages,
-          acknowledgements, and rate-limit notices. New human comments, review findings, check
-          results, and conflicts still wake the agent.
+          PR monitoring ignores comment edits, bot status messages, acknowledgements, and rate-limit
+          notices. New comments from people, review findings, check results, and merge conflicts
+          still wake the agent.
         </li>
         <li>
-          On web and desktop, the same provider usage limit alerts once per environment instead of
-          once per affected thread.
+          On web and desktop, hitting a provider usage limit alerts you once per environment, not
+          once for every thread it affects.
         </li>
         <li>
-          Agent instructions limit PR links to the task's pull requests. Incidental release-note
-          edits, labels, and coordination updates do not qualify.
+          Agents are told to link only the PRs that belong to their task, not PRs they touched for
+          release notes, labels, or coordination.
         </li>
         <li>
-          PR links open in your system browser by default. On desktop, right-click a link to open it
-          in T3 Code instead. If a repository has both <code>origin</code> and
-          <code>upstream</code>, T3 Code uses <code>origin</code> for the fork's pull requests.
+          PR links open in your system browser. On desktop, right-click a link to open it inside T3
+          Code instead. In a repository with both <code>origin</code> and <code>upstream</code>, T3
+          Code uses <code>origin</code> for your fork's pull requests.
         </li>
         <li>
-          Returning to the desktop app clears the viewed thread's system notification and resets the
-          app's unread badge. Other threads' notifications stay in your system history until you
-          open those threads.
+          Switching back to the desktop app clears the system notification for the thread you're
+          looking at and resets the unread badge. Notifications for other threads stay in your
+          notification history until you open those threads.
         </li>
         <li>
-          Clicking a desktop notification brings T3 Code to the foreground and opens its thread,
-          even if the window is minimized or hidden.
+          Clicking a desktop notification brings T3 Code to the front and opens its thread, even if
+          the window is minimized or hidden.
         </li>
         <li>
           In-app notifications disappear when you open their thread, including through the Open
-          action on a background-thread notification. They stay hidden while you view it.
+          button on a background-thread notification, and stay hidden while you're there.
         </li>
       </ul>
 
       <h3>Navigation and terminals</h3>
       <ul>
         <li>
-          On web and desktop, drafts have their own collapsible section at the top of the sidebar.
-          Your device remembers whether it is expanded.
+          On web and desktop, drafts get their own collapsible section at the top of the sidebar.
+          Each device remembers whether it's open.
         </li>
         <li>
-          You can collapse the Pinned and Active sections of the thread list. Each client remembers
-          your choice. Both sections start expanded. Done threads, Input threads, and the thread you
-          are viewing stay visible in collapsed sections.
+          You can collapse the Pinned and Active sections too. They start expanded, and each client
+          remembers your choice. Threads that are Done, need input, or are open right now stay
+          visible in a collapsed section.
         </li>
         <li>
-          You can rearrange Active threads with the Working section enabled, and your order stays
-          saved.
+          With the Working section enabled, you can drag Active threads into your own order, and the
+          order is saved.
         </li>
         <li>
-          The sidebar distinguishes background work from active agent turns and shows pending input
-          while the agent is still running. Working threads stay in their section during
-          synchronization.
+          The sidebar shows background work differently from a running turn, and shows when the
+          agent needs input even while it's still running. Working threads stay in their section
+          while the client syncs.
         </li>
         <li>
-          The new-thread button remembers the project last selected for a new thread. Opening
-          another chat does not change that choice. On web and desktop, right-click or Shift-click
-          the sidebar button to choose another project. All clients show the selected project's icon
-          beside its name in the composer.
+          The new-thread button remembers the project you last picked for a new thread. Opening some
+          other chat doesn't change it. On web and desktop, right-click or Shift-click the button to
+          pick a different project. Every client shows the project's icon next to its name in the
+          composer.
         </li>
         <li>
-          On web and desktop, choose a machine for threads without a project under General, New
-          threads in Settings. The choice is saved on this device, and the selected machine must be
+          On web and desktop, you can pick the machine for threads without a project in Settings →
+          General → New threads. The choice is saved per device, and that machine has to be
           connected.
         </li>
         <li>
-          Opening or closing Settings and Usage on web and desktop does not add entries to
-          navigation history. Back and Forward keep following your thread navigation.
+          On web and desktop, opening and closing Settings or Usage doesn't add history entries, so
+          Back and Forward keep moving through your threads.
         </li>
         <li>
-          On web and desktop, when a sidebar action takes you out of the current thread, you return
-          to a new-thread draft in the same project instead of opening another thread.
+          On web and desktop, when a sidebar action takes you out of the current thread, you land on
+          a new-thread draft in the same project instead of in some other thread.
         </li>
         <li>
-          On web and desktop, right-click the Settled section to archive all settled threads,
-          including older threads that are not currently loaded. Several threads archive at once,
-          with one undo action for the batch. This always asks for confirmation, even when
-          individual archive confirmations are turned off.
+          On web and desktop, right-click the Settled section to archive every settled thread,
+          including older ones that aren't loaded yet. They're archived together with a single undo.
+          This always asks first, even if you turned off archive confirmations.
         </li>
         <li>
-          Search archived threads under Settings by thread title, branch, project name or path, or
+          In Settings, you can search archived threads by title, branch, project name or path, or
           environment name.
         </li>
         <li>
-          In Source Control settings, you can turn off automatic thread titles and worktree branch
-          names for an environment or a project. New worktree branches have no prefix by default.
-          You can set a prefix in the same settings.
+          In Settings → Source Control, you can turn off generated thread titles and worktree branch
+          names for an environment or a single project. New worktree branches have no prefix by
+          default. You can set one in the same place.
         </li>
         <li>
-          Click a terminal path to open a file in T3 Code or a workspace folder in its file
-          explorer. This also works on remote machines. Hold Ctrl or Shift to select path text
-          without opening it. Right-click a URL or path for Copy link or Copy path.
+          Click a path in the terminal to open the file in T3 Code, or to show a workspace folder in
+          T3 Code's file explorer. This works on remote machines too. Hold Ctrl or Shift to select
+          the text instead of opening it. Right-click a URL or path to copy it.
         </li>
         <li>
-          Ctrl+Shift+W closes the focused terminal. Terminal close confirmation is off by default.
-          You can enable it under General, Confirmations in Settings. Ctrl+W and Ctrl+D still go to
-          the terminal.
+          Ctrl+Shift+W closes the focused terminal without asking. To get a confirmation prompt,
+          turn it on in Settings → General → Confirmations. Ctrl+W and Ctrl+D still go to the
+          program running in the terminal.
         </li>
       </ul>
 
       <h3>Appearance</h3>
       <ul>
         <li>
-          Choose T3 Code Dim under Appearance in Settings for the previous gray dark-theme colors on
+          The T3 Code Dim theme in Settings → Appearance brings back the old gray dark colors on
           every client.
         </li>
         <li>
-          Turn off Show thread branches under Appearance in Settings for more compact thread rows
-          and more room for thread titles.
+          Turn off Show thread branches in Settings → Appearance for slimmer thread rows and more
+          room for titles.
         </li>
         <li>
-          Web and desktop retain the Build/Plan toggle, plan commands, and circular context-window
-          indicator as optional settings under Labs, Legacy.
+          On web and desktop, the Build/Plan toggle, plan commands, and the round context-window
+          indicator are still there as opt-in settings in Labs → Legacy.
         </li>
         <li>
-          Mobile shows Nightly sky or Dev blueprint artwork across the app header by default. Under
-          Appearance, Environment identification in Settings, choose Artwork, Pill, or None. Your
-          device saves the choice.
+          On mobile, the app header shows Nightly sky or Dev blueprint artwork by default. You can
+          switch to a pill or turn it off in Settings → Appearance → Environment identification.
+          Each device keeps its own choice.
         </li>
       </ul>
 
       <h3>Mobile and accounts</h3>
       <ul>
         <li>
-          Android offers local notifications without Google services. Enable Background connection
-          under Notifications in Settings to keep alerts and live agent updates working after
-          switching apps. It shows an ongoing notification and stops when you remove T3 from
-          recents.
+          Android notifications work without Google services. Turn on Background connection in
+          Settings → Notifications to keep getting alerts and live agent updates after you switch
+          apps. While it's on, Android shows an ongoing notification. It stops when you swipe T3
+          away from recents.
         </li>
         <li>
-          Optional UnifiedPush delivers encrypted notifications through a compatible distributor
-          without Google services or a T3 Connect account. Paired hosts must support UnifiedPush.
+          You can also get encrypted push notifications through UnifiedPush with any compatible
+          distributor. This needs neither Google services nor a T3 Connect account, but your paired
+          hosts have to support UnifiedPush.
         </li>
         <li>
-          Usage shows remaining Codex credits as whole numbers with thousands separators on every
-          client when the provider reports a balance.
+          When the provider reports a balance, Usage shows your remaining Codex credits as whole
+          numbers with thousands separators on every client.
         </li>
         <li>
-          The Android usage widget shows each Codex or Claude subscription separately. It does not
-          average accounts into one bar or show account emails on the home screen. Tap its refresh
-          prompt to open Usage in the app.
+          The Android usage widget gives each Codex and Claude subscription its own bar instead of
+          averaging them, and keeps account emails off your home screen. Tap its refresh prompt to
+          open Usage in the app.
         </li>
-        <li>Mobile project filters and the Settings scope picker show project icons.</li>
-        <li>The Android composer keeps the cursor visible as long messages wrap onto new lines.</li>
+        <li>On mobile, project filters and the Settings scope picker show project icons.</li>
+        <li>The Android composer keeps the cursor in view as long messages wrap.</li>
         <li>
-          Mobile marks threads with unsent drafts with a yellow pen and a subtle highlight, as
-          upstream does on web and desktop. Send or remove the draft to clear the indicator.
+          On mobile, threads with unsent drafts get a yellow pen and a light highlight, like
+          upstream already does on web and desktop. Sending or deleting the draft clears it.
         </li>
         <li>
-          Codex capacity retries start after 10 seconds and double the delay on each attempt, with
-          no attempt limit. All clients show a countdown and a Cancel retry button. Retries keep
-          your context and count as one T3 turn for checkpoint restore. Update the client and host
-          server to use this feature.
+          When Codex is out of capacity, T3 Code keeps retrying. The first retry comes after 10
+          seconds, and the wait doubles each time. Every client shows a countdown and a Cancel retry
+          button. Retries keep your context and count as one turn for checkpoint restore. This needs
+          an up-to-date client and host.
         </li>
       </ul>
 
       <h3>Connections and recovery</h3>
       <ul>
         <li>
-          Background services installed through the desktop CLI use the installed fork runtime and
-          follow desktop updates.
+          Background services installed with the desktop CLI run the installed fork and update along
+          with the desktop app.
         </li>
         <li>
-          After host updates or service restarts, clients retry temporary tunnel errors instead of
-          staying offline until refreshed.
+          After a host update or service restart, clients retry temporary tunnel errors instead of
+          staying offline until you refresh.
         </li>
         <li>
-          After a Codex process exits unexpectedly, you can send another turn without restarting the
-          host.
+          If a Codex process crashes, you can send your next turn without restarting the host.
         </li>
         <li>
-          Storage cleanup can remove clean, merged worktrees after branch renames or a detached
-          checkout, including worktrees with submodules. It checks submodules for local changes and
-          unpublished commits before removal. Repeated submodule-removal failures do not produce a
-          warning on every sweep.
+          Storage cleanup also removes clean, merged worktrees whose branch was renamed or whose
+          checkout is detached, including worktrees with submodules. It first checks the submodules
+          for uncommitted changes and unpushed commits. If a submodule can't be removed, you get the
+          warning once instead of on every cleanup run.
         </li>
       </ul>
 
       <h3>Privacy</h3>
       <ul>
         <li>
-          Product usage collection is off unless you set
-          <code>T3CODE_TELEMETRY_ENABLED=true</code> on the server.
+          Product analytics are off unless you set <code>T3CODE_TELEMETRY_ENABLED=true</code> on the
+          server.
         </li>
-        <li>The app no longer asks you to star its GitHub repository.</li>
+        <li>The app doesn't ask you to star its GitHub repository.</li>
       </ul>
 
       <h2>Android nightly</h2>
       <p>
         Download the latest <code>T3-Code-D3SOX-Android</code> APK from
-        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>, or add it to
-        Obtainium for updates:
+        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>, or add the app to
+        Obtainium to get updates automatically:
       </p>
       <p>
         <a
@@ -380,8 +380,8 @@
         /></a>
       </p>
       <p>
-        It installs alongside upstream T3 Code as a separate preview app. This build does not use
-        upstream Expo over-the-air updates or export app telemetry.
+        It installs as a separate preview app next to the regular T3 Code app. It doesn't use
+        upstream's Expo over-the-air updates and doesn't send app telemetry.
         <span class="note"
           >Badge artwork:
           <a href="https://github.com/D3SOX/t3code/blob/main/assets/fork/LICENSE.obtainium.txt"
@@ -402,24 +402,27 @@
       </p>
       <pre><code>curl -fsSL -o t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
 gpg --show-keys --fingerprint t3code-d3sox.asc</code></pre>
-      <p>Only after the fingerprint matches, trust the key for packages from this repository:</p>
+      <p>
+        Once the fingerprint matches, add the key to pacman and trust it for this repository's
+        packages:
+      </p>
       <pre><code>sudo pacman-key --add t3code-d3sox.asc
 sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D</code></pre>
-      <p>Configure the repository and install the package:</p>
+      <p>Then add the repository and install the package:</p>
       <pre><code>sudo pacman-conf --repo-list | grep -qxF 't3code-d3sox' ||
   printf '%s\n' '' '[t3code-d3sox]' 'SigLevel = Required' \
     'Server = https://t3code.d3sox.me/arch/$arch' |
   sudo tee -a /etc/pacman.conf &gt;/dev/null
 sudo pacman -Syu t3code-d3sox-git</code></pre>
       <p>
-        The command adds the repository only if it is missing. Keep the single quotes so
-        <code>$arch</code> reaches pacman literally. It works in bash, zsh, and fish. Future nightly
-        updates arrive with your normal pacman updates.
+        This adds the repository only if it isn't configured yet, and works in bash, zsh, and fish.
+        Keep the single quotes so pacman gets <code>$arch</code> as written. From then on, nightlies
+        arrive with your regular pacman updates.
       </p>
       <p class="note">
-        The repository keeps the newest x86_64 package; older builds remain in
+        The repository only has the latest x86_64 build. Older builds stay on
         <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>. The package
-        conflicts with <code>t3code-bin</code>, so pacman will ask to replace it. To build from
+        conflicts with <code>t3code-bin</code>, so pacman will offer to replace it. To build from
         source instead, see the
         <a href="https://github.com/D3SOX/t3code#arch-linux-nightly">README</a>.
       </p>
