@@ -42,6 +42,7 @@ vi.mock("../state/projects", async () => {
 });
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: [], isReady: true }),
+  usePrimaryEnvironment: () => null,
 }));
 vi.mock("../hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => state.startDraft }));
 vi.mock("../components/Sidebar.logic", () => ({

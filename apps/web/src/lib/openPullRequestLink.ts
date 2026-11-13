@@ -17,7 +17,7 @@ import { readLocalApi } from "../localApi";
 import { showPullRequestLinkContextMenu } from "../components/pullRequest/pullRequestLinkContextMenu";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
+import { useRightPanelStore } from "../rightPanelStore";
 import {
   selectThreadBranchBaseRef,
   selectThreadDiffPanelSelection,
@@ -201,12 +201,7 @@ export function useOpenChangeRequestLink(
               (source) => source.kind === "commit" && source.headRef === commit.sha,
             )
           ) {
-            const diffOpen =
-              selectActiveRightPanel(
-                useRightPanelStore.getState().byThreadKey,
-                resolvedThreadRef,
-              ) === "diff";
-            useDiffPanelStore.getState().selectCommit(resolvedThreadRef, commit.sha, !diffOpen);
+            useDiffPanelStore.getState().selectCommit(resolvedThreadRef, commit.sha);
             useRightPanelStore.getState().open(resolvedThreadRef, "diff");
             return;
           }

@@ -31,6 +31,7 @@ import * as AssetSigner from "./AssetSigner.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as DeviceService from "../device/DeviceService.ts";
 import * as ResourceCleanup from "../orchestration-v2/ResourceCleanupService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -237,6 +238,9 @@ describe("AssetAccess", () => {
         ResourceCleanup.layer.pipe(
           Layer.provide(
             Layer.mergeAll(
+              Layer.mock(DeviceService.DeviceService)({
+                sessionsForThread: () => Effect.succeed([]),
+              }),
               Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
               Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
               Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
@@ -1802,10 +1806,7 @@ describe("AssetAccess", () => {
       // A pull request's own repository wins over the checkout it is shown in.
       yield* sourceControlMediaResponse({ ...asset, repository: "enterprise/private" }, {});
       expect(fetched.at(-1)?.repository).toBe("enterprise/private");
-    }).pipe(
-      Effect.provide(Layer.mergeAll(layerTest, layerDrivers, layerIdentities)),
-      Effect.scoped,
-    );
+    }).pipe(Effect.provide(Layer.mergeAll(layerTest, layerDrivers, layerIdentities)));
   });
 
   it.effect("refuses media no host keeps behind a credential, without echoing the URL", () =>

@@ -41,7 +41,7 @@ export function composerCommandKeyHandler(input: {
   readonly onEditLatestQueuedMessage: ChatComposerProps["onEditLatestQueuedMessage"];
   readonly routeKind: ChatComposerProps["routeKind"];
   readonly phase: ChatComposerProps["phase"];
-  readonly isCompacting: boolean;
+  readonly canSteer: boolean;
   readonly followUpBehavior: ChatComposerProps["settings"]["followUpBehavior"];
   readonly isSoftwareKeyboardOpen: boolean;
   readonly planModeUiEnabled: boolean;
@@ -98,7 +98,7 @@ export function composerCommandKeyHandler(input: {
     onEditLatestQueuedMessage,
     routeKind,
     phase,
-    isCompacting,
+    canSteer,
     followUpBehavior,
     isSoftwareKeyboardOpen,
     planModeUiEnabled,
@@ -220,7 +220,7 @@ export function composerCommandKeyHandler(input: {
       keybindings,
       isSoftwareKeyboardOpen,
       isDraftThread: routeKind === "draft",
-      isRunning: phase === "running",
+      isRunning: phase === "running" || phase === "connecting",
       sendShortcut,
       startThreadsInBackground,
       prompt: promptRef.current,
@@ -283,10 +283,10 @@ export function composerCommandKeyHandler(input: {
       submitComposer(
         undefined,
         resolveComposerDispatchMode({
-          running: phase === "running",
+          running: phase === "running" || phase === "connecting",
           alternateModifier: submissionIntent === "alternate",
           activeTurnDefault: followUpBehavior,
-          canSteer: !isCompacting,
+          canSteer,
         }),
         submissionIntent,
       );

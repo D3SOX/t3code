@@ -28,9 +28,9 @@ type PullRequestContext = { readonly environmentId: string; readonly projectId: 
 // Avoid useRoute so layouts without route context can open any thread's pull requests.
 export function useNavigateToPullRequest(options?: { readonly replace?: boolean }) {
   const navigation = useNavigation();
-  const selectDetail = useSelectWorkspaceDetail();
   const projects = useProjects();
   const replace = options?.replace;
+  const selectDetail = useSelectWorkspaceDetail();
   const preferences = useAtomValue(mobilePreferencesAtom);
   const linkTarget = AsyncResult.isSuccess(preferences)
     ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)

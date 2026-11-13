@@ -30,6 +30,7 @@ import {
   type EnvironmentId,
   type ModelSelection,
   type PreviewAnnotationPayload,
+  type ScopedThreadRef,
   type ThreadId,
   ProviderInteractionMode,
   RuntimeMode,
@@ -67,6 +68,7 @@ import {
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -76,6 +78,7 @@ import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
   restoreFailedDraftThread,
+  checkoutPullRequestUrlToLink,
   composerDraftHasUserContent,
   type ComposerFileAttachment,
   type ComposerImageAttachment,
@@ -87,15 +90,22 @@ import {
   filterTerminalContextsWithText,
   type TerminalContextDraft,
 } from "../../lib/terminalContext";
-import { ensureInlineContextReferences } from "../../lib/composerContextReferences";
+import {
+  collectInlineContextIds,
+  ensureInlineContextReferences,
+  formatInlineContextReference,
+} from "../../lib/composerContextReferences";
 import {
   buildMessageContext,
   previewAnnotationContextReference,
+  responseContextReference,
 } from "../../lib/composerContextRecords";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { threadEnvironment } from "../../state/threads";
 import { runMobileComposerTransition } from "./draftHeroTransition";
-import { useClientSettingsHydrated, useEnvironmentSettings } from "../../hooks/useSettings";
+import { useClientSettingsHydrated } from "../../hooks/useSettings";
+import { useStableCallback } from "../../hooks/useStableCallback";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
 import {
   approvalRedirectNotice,
@@ -222,6 +232,7 @@ interface ComposerSendInput {
   readonly clearUsageLimitsFor: UsageLimitsPanel["clearFor"];
   readonly needsLoadBalancing: boolean;
   readonly loadBalancing: DraftEnvironmentRouting["loadBalancing"];
+  readonly refreshBeforeSend: DraftEnvironmentRouting["refreshBeforeSend"];
   readonly readPendingEnvironmentChange: DraftEnvironmentRouting["readPendingEnvironmentChange"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
@@ -260,6 +271,8 @@ interface ComposerSendInput {
     runtimeMode: RuntimeMode;
     interactionMode: ProviderInteractionMode;
   }) => Promise<AtomCommandResult<void, unknown>>;
+  /** Links a checked-out pull request to its thread; best effort, failures only logged. */
+  readonly linkCheckoutPullRequest: (threadRef: ScopedThreadRef, url: string) => void;
 }
 
 /**
@@ -316,6 +329,7 @@ export function useComposerSend(input: ComposerSendInput) {
     clearUsageLimitsFor,
     needsLoadBalancing,
     loadBalancing,
+    refreshBeforeSend,
     readPendingEnvironmentChange,
     pendingApprovals,
     respondingRequestIds,
@@ -340,6 +354,7 @@ export function useComposerSend(input: ComposerSendInput) {
     sideChatDisabledReason,
     handleNewThreadInActiveProject,
     persistThreadSettingsForNextTurn,
+    linkCheckoutPullRequest,
   } = input;
   const linkedEnvironments = useLinkedEnvironments(environmentId);
   const handleNewThread = useNewThreadHandler();
@@ -427,6 +442,26 @@ export function useComposerSend(input: ComposerSendInput) {
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
+
+    const sendCtx = composerRef.current?.getSendContext();
+    // `/side` beats an open question and a plan follow-up, which would send the text to main.
+    const sideChatCommand =
+      sendCtx && !directAnnotation && !queuedRunEdit.isEditing
+        ? parseSideChatCommand(promptAtSend)
+        : null;
+    const answeringQuestion =
+      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
+    const startsSideChat =
+      onSideChat !== undefined && sideChatCommand !== null && sideChatDisabledReason === null;
+    // An answer responds to the open request rather than starting a turn, so the new-message
+    // guards below (loading, busy, provider) must not swallow it.
+    if (answeringQuestion && !startsSideChat && !directAnnotation) {
+      if (readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) && activeThread) {
+        onAdvanceActivePendingUserInput();
+      }
+      return;
+    }
+
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
@@ -464,6 +499,23 @@ export function useComposerSend(input: ComposerSendInput) {
       notifyDirectAnnotationAttached();
       return;
     }
+    if (
+      localSubmissions.pending === 0 &&
+      ((isSendBusy && !sendQueuesBehindSetup) || sendInFlightRef.current)
+    ) {
+      if (directAnnotation) {
+        notifyDirectAnnotationAttached();
+      } else {
+        toastManager.add(
+          stackedThreadToast({
+            type: "info",
+            title: "Still sending your previous message.",
+            description: "Send again once it goes through or fails.",
+          }),
+        );
+      }
+      return;
+    }
     if (needsLoadBalancing) {
       const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
       toastManager.add({
@@ -492,14 +544,6 @@ export function useComposerSend(input: ComposerSendInput) {
       });
       return;
     }
-    const sendCtx = composerRef.current?.getSendContext();
-    // `/side` beats an open question and a plan follow-up, which would send the text to main.
-    const sideChatCommand =
-      sendCtx && !directAnnotation && !queuedRunEdit.isEditing
-        ? parseSideChatCommand(promptAtSend)
-        : null;
-    const answeringQuestion =
-      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
     // Where side chats are unavailable, `/side` text can still be a literal answer.
     if (sideChatDisabledReason !== null && sideChatCommand && !answeringQuestion) {
       toastManager.add(
@@ -519,7 +563,8 @@ export function useComposerSend(input: ComposerSendInput) {
         sendCtx.previewAnnotations.length > 0 ||
         sendCtx.reviewComments.length > 0 ||
         sendCtx.threadContexts.length > 0 ||
-        sendCtx.environmentContexts.length > 0
+        sendCtx.environmentContexts.length > 0 ||
+        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.replyTo
       ) {
         toastManager.add(
           stackedThreadToast({
@@ -613,11 +658,19 @@ export function useComposerSend(input: ComposerSendInput) {
       });
     // A direct "send annotation" writes the draft and sends in the same tick; the reference
     // must be in the text now, not after the next render.
-    const promptForSend = directAnnotation
+    const draftPrompt = directAnnotation
       ? ensureInlineContextReferences(promptRef.current, [
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
+    const replyTo =
+      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.replyTo ?? null;
+    // The reply leads the message, so its card sits above the text it is about. Text that
+    // already points at that response, from a pasted card, keeps its one reference.
+    const promptForSend =
+      replyTo && !collectInlineContextIds(draftPrompt).includes(replyTo.contextId)
+        ? `${formatInlineContextReference(responseContextReference(replyTo))} ${draftPrompt}`
+        : draftPrompt;
     const strandedThread = threadContextsOutsideEnvironment({
       text: promptForSend,
       records: composerThreadContexts,
@@ -650,6 +703,7 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotations: composerPreviewAnnotations,
           threadContexts: composerThreadContexts,
           environmentContexts: composerEnvironmentContexts,
+          replyTo,
         },
         setThreadError,
       );
@@ -736,7 +790,8 @@ export function useComposerSend(input: ComposerSendInput) {
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
-      composerEnvironmentContexts.length === 0;
+      composerEnvironmentContexts.length === 0 &&
+      replyTo === null;
     if (freshSessionAvailable && composerHoldsOnlyText && isClearComposerCommand(trimmed)) {
       armFreshSession(routeThreadKey);
       promptRef.current = "";
@@ -878,6 +933,7 @@ export function useComposerSend(input: ComposerSendInput) {
       reviewComments: composerReviewComments,
       threadContexts: composerThreadContexts,
       environmentContexts: composerEnvironmentContexts,
+      replyTo,
     });
     const {
       images: composerImagesSnapshot,
@@ -926,6 +982,7 @@ export function useComposerSend(input: ComposerSendInput) {
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadContexts: composerThreadContextsSnapshot,
         environmentContexts: composerEnvironmentContextsSnapshot,
+        replyTo,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -1392,6 +1449,11 @@ export function useComposerSend(input: ComposerSendInput) {
             submissionIntent === "background" && createsThread
               ? scopeThreadRef(environmentId, threadIdForSend)
               : null;
+          const checkoutPullRequestUrl = isLocalDraftThread
+            ? checkoutPullRequestUrlToLink(
+                draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId),
+              )
+            : null;
           if (backgroundThreadRef) beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
           const startPromise = startThreadTurn({
             environmentId,
@@ -1450,6 +1512,11 @@ export function useComposerSend(input: ComposerSendInput) {
             failure = startResult;
           } else {
             turnStartSucceeded = true;
+            if (checkoutPullRequestUrl)
+              linkCheckoutPullRequest(
+                scopeThreadRef(environmentId, threadIdForSend),
+                checkoutPullRequestUrl,
+              );
             setKeepFullHistory(routeThreadKey, false);
             if (claimedFreshArm !== undefined) disarmFreshSession(routeThreadKey, claimedFreshArm);
             clearUsageLimitsFor(routeThreadKey);
@@ -1548,6 +1615,14 @@ export function useComposerSend(input: ComposerSendInput) {
         }
       })
       .catch((error: unknown) => {
+        setOptimisticUserMessages((current) => {
+          for (const message of current) {
+            if (message.id === messageIdForSend) optimisticBlobPreviews.release(message);
+          }
+          return current.filter((message) => message.id !== messageIdForSend);
+        });
+        sendInFlightRef.current = false;
+        if (!sendQueuesBehindSetup) resetLocalDispatch();
         if (!draftAccepted) {
           setThreadError(
             threadIdForSend,
@@ -1556,6 +1631,30 @@ export function useComposerSend(input: ComposerSendInput) {
           return;
         }
         const currentDraft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+        if (composerDraftHasUserContent(currentDraft)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Message not sent",
+              description: "Your new draft was kept. Copy the failed message to send it again.",
+              timeout: 0,
+              data: { hideCopyButton: true },
+              actionProps: {
+                children: "Copy message",
+                onClick: () => {
+                  void writeTextToClipboard(messageTextForSend, "failed message").catch(
+                    () => undefined,
+                  );
+                },
+              },
+            }),
+          );
+          setThreadError(
+            threadIdForSend,
+            error instanceof Error ? error.message : "Failed to send message.",
+          );
+          return;
+        }
         const restoredPrompt = [messageTextForSend, currentDraft?.prompt ?? ""]
           .filter((text) => text.length > 0)
           .join("\n\n");
@@ -1590,18 +1689,11 @@ export function useComposerSend(input: ComposerSendInput) {
           ...(currentDraft?.threadContexts ?? []),
         ]);
         if (currentRouteThreadKeyRef.current === routeThreadKey) promptRef.current = restoredPrompt;
-        setOptimisticUserMessages((current) => {
-          for (const message of current) {
-            if (message.id === messageIdForSend) optimisticBlobPreviews.release(message);
-          }
-          return current.filter((message) => message.id !== messageIdForSend);
-        });
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
         );
         setDockedDraftHeroThreadKey((current) => (current === activeThreadKey ? null : current));
-        if (!sendQueuesBehindSetup) resetLocalDispatch();
       })
       .finally(() => {
         if (claimedFreshArm !== undefined) restoreFreshSessionArm(routeThreadKey, claimedFreshArm);
@@ -1618,5 +1710,19 @@ export function useComposerSend(input: ComposerSendInput) {
         setPendingSendThreadKey((key) => (key === routeThreadKey ? null : key));
     });
   };
-  return { onSend, pendingSendThreadKey };
+  const onSendLatest = useStableCallback(onSend);
+  const onSendWithRouting = async (...args: Parameters<typeof onSend>) => {
+    args[0]?.preventDefault();
+    const refresh =
+      args[3] || sendInFlightRef.current || readPendingEnvironmentChange() !== null
+        ? null
+        : refreshBeforeSend();
+    if (refresh === null) return onSend(...args);
+    sendInFlightRef.current = true;
+    const ready = await refresh.finally(() => {
+      sendInFlightRef.current = false;
+    });
+    if (ready) return onSendLatest(...args);
+  };
+  return { onSend: onSendWithRouting, pendingSendThreadKey };
 }

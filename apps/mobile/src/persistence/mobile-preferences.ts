@@ -13,7 +13,7 @@ import {
   PullRequestListState,
   ScopedProjectRef,
   type ProviderInstanceId,
-  type PullRequestMergeMethod,
+  PullRequestMergeMethod,
   type SidebarProjectGroupingMode,
   type EnvironmentIdentificationMode,
 } from "@t3tools/contracts";
@@ -125,6 +125,8 @@ export interface Preferences {
    * message sent during a running turn queues behind it or steers it.
    */
   readonly followUpBehavior?: FollowUpBehavior;
+  /** The client `language` setting: a locale code or "system". Unset means English. */
+  readonly language?: string;
   /** Microphone kinds and remembered devices, most preferred first. iOS only. */
   readonly microphones?: ReadonlyArray<MicrophoneEntry>;
   /** @deprecated Kept temporarily so older OTA bundles retain the selected mode. */
@@ -195,6 +197,7 @@ export class MobilePreferencesStore extends Context.Service<
 >()("@t3tools/mobile/persistence/mobile-preferences/MobilePreferencesStore") {}
 
 const isToolCallVisibility = Schema.is(ToolCallVisibility);
+const isPullRequestMergeMethod = Schema.is(PullRequestMergeMethod);
 
 export function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
@@ -222,6 +225,7 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
     dismissedDatabaseStorageNotices?: readonly string[];
     composerEnterBehavior?: ComposerEnterBehavior;
     followUpBehavior?: FollowUpBehavior;
+    language?: string;
     microphones?: ReadonlyArray<MicrophoneEntry>;
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
@@ -262,11 +266,7 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.pullRequestHideTestFiles = parsed.pullRequestHideTestFiles;
   }
 
-  if (
-    parsed.pullRequestMergeMethod === "squash" ||
-    parsed.pullRequestMergeMethod === "merge" ||
-    parsed.pullRequestMergeMethod === "rebase"
-  ) {
+  if (isPullRequestMergeMethod(parsed.pullRequestMergeMethod)) {
     preferences.pullRequestMergeMethod = parsed.pullRequestMergeMethod;
   }
 
@@ -349,6 +349,7 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
   ) {
     preferences.followUpBehavior = parsed.followUpBehavior;
   }
+  if (typeof parsed.language === "string") preferences.language = parsed.language;
   if (Array.isArray(parsed.microphones)) {
     preferences.microphones = parsed.microphones.flatMap((entry): MicrophoneEntry[] => {
       if (typeof entry !== "object" || entry === null || !isMicrophoneKind(entry.kind)) return [];

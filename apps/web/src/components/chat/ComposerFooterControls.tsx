@@ -262,6 +262,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   } | null;
   isRunning: boolean;
   canInterrupt: boolean;
+  runId: string | null;
   followUpBehavior: "queue" | "next-tool" | "steer";
   submissionHints: string;
   canSteer: boolean;
@@ -286,6 +287,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   compactDisabled: boolean;
   compactDisabledReason: string | null;
   compactBeforeSendTokens: number | null;
+  hideCompactToggle: boolean;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
 }) {
@@ -308,6 +310,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         pendingAction={props.pendingAction}
         isRunning={props.isRunning}
         canInterrupt={props.canInterrupt}
+        runId={props.runId}
         followUpBehavior={props.followUpBehavior}
         submissionHints={props.submissionHints}
         canSteer={props.canSteer}
@@ -330,6 +333,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
         compactBeforeSendTokens={props.compactBeforeSendTokens}
+        hideCompactToggle={props.hideCompactToggle}
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}
       >

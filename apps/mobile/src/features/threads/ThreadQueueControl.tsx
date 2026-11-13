@@ -1,12 +1,12 @@
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { queuedRunEditBlockedReason } from "@t3tools/client-runtime/queued-run-edit";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useQuietThreadShell } from "../../state/entities";
 import { makeQueuedRunsAtom } from "@t3tools/client-runtime/queued-run-edit";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
@@ -914,8 +914,10 @@ function QueuedRunSender(props: {
 }) {
   const { attribution, scheduledTaskId } = resolveUserMessagePresentation(props.message);
   const senderThreadId = attribution === "agent" ? props.message.senderThreadId : undefined;
+  // A linked environment's agent sent it from a thread there.
+  const linkedSender = attribution === "agent" ? props.message.linkedSender : undefined;
   const senderShell = useQuietThreadShell(
-    senderThreadId ? scopeThreadRef(props.environmentId, senderThreadId) : null,
+    linkedSender ?? (senderThreadId ? scopeThreadRef(props.environmentId, senderThreadId) : null),
   );
   const tasks = useEnvironmentQuery(
     scheduledTaskId
@@ -932,7 +934,7 @@ function QueuedRunSender(props: {
       : attribution === "agent"
         ? {
             icon: "bubble.left.and.bubble.right" as const,
-            label: senderShell?.title.trim() || "Agent",
+            label: senderShell?.title.trim() || linkedSender?.title.trim() || "Agent",
           }
         : attribution === "t3code"
           ? { icon: null, label: "Sent by T3 Code" }

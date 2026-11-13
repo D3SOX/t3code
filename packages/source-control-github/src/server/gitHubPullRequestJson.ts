@@ -18,6 +18,7 @@ import type {
   PullRequestLabel,
   PullRequestMergeCapabilities,
   PullRequestMergeMethod,
+  PullRequestMergeQueueRemoval,
   PullRequestOmittedFileStat,
   PullRequestMergeability,
   PullRequestReaction,
@@ -217,6 +218,7 @@ const RawWorkflowRunsSchema = Schema.Struct({
       id: Schema.Int,
       name: Schema.optional(Schema.NullOr(Schema.String)),
       html_url: Schema.optional(Schema.NullOr(Schema.String)),
+      status: Schema.optional(Schema.NullOr(Schema.String)),
     }),
   ),
 });
@@ -1046,6 +1048,7 @@ export function toPullRequestWatchFingerprint(
       pr.headRefOid,
       stateCounts(contexts?.checkRunCountsByState ?? null),
       stateCounts(contexts?.statusContextCountsByState ?? null),
+      pr.mergeQueueRemovals?.filteredCount ?? 0,
     ].join(" "),
     remarks: [
       pr.comments.totalCount,
@@ -1058,6 +1061,7 @@ export function toPullRequestWatchFingerprint(
 }
 
 export interface GitHubPullRequestCore extends GitHubPullRequestDetail {
+  readonly mergeQueueRemoval?: PullRequestMergeQueueRemoval;
   /** Teams asked for a review. `reviewRequestLogins` holds the people. */
   readonly maintainerCanModify: boolean;
   readonly canEditMaintainerEdits: boolean;
@@ -1106,6 +1110,7 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
   const pr = repository?.pullRequest;
   if (repository == null || pr == null) return null;
   const contexts = nodesOf(pr.commits)[0]?.commit.statusCheckRollup?.contexts;
+  const removal = nodesOf(pr.mergeQueueRemovals).at(-1);
   const requiredCheckContexts = [
     ...new Set([
       ...(pr.baseRef?.branchProtectionRule?.requiredStatusCheckContexts ?? []),
@@ -1117,6 +1122,15 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
     ]),
   ].filter((name) => name !== null);
   return {
+    ...(removal === undefined || !("id" in removal)
+      ? {}
+      : {
+          mergeQueueRemoval: {
+            id: removal.id,
+            removedAt: removal.createdAt,
+            reason: trimmed(removal.reason),
+          },
+        }),
     reviewRequestTeams: nodesOf(pr.reviewRequests).flatMap(
       ({ requestedReviewer }) => toRequestedTeam(requestedReviewer) ?? [],
     ),
@@ -1199,6 +1213,32 @@ export function decodeWorkflowRunsJson(
     })),
     rawCount: decoded.success.workflow_runs.length,
   });
+}
+
+// Approval-gated runs (action_required) are read separately as action-required checks.
+const UNFINISHED_WORKFLOW_RUN_STATUSES = new Set([
+  "requested",
+  "queued",
+  "pending",
+  "waiting",
+  "in_progress",
+]);
+
+/** Workflow runs GitHub has not finished, which may have no check runs on the head yet. */
+export function decodeUnfinishedWorkflowRunsJson(
+  raw: string,
+): Result.Result<ReadonlyArray<GitHubWorkflowRunApproval>, DecodeFailure> {
+  const decoded = decodeWorkflowRuns(raw);
+  if (!Result.isSuccess(decoded)) return Result.fail(decoded.failure);
+  return Result.succeed(
+    decoded.success.workflow_runs
+      .filter((run) => UNFINISHED_WORKFLOW_RUN_STATUSES.has(run.status ?? ""))
+      .map((run) => ({
+        id: run.id,
+        name: trimmed(run.name) ?? `Workflow run ${run.id}`,
+        url: trimmed(run.html_url),
+      })),
+  );
 }
 
 export function toPullRequestHeads(result: PullRequestHeads.Result): {

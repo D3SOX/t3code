@@ -78,6 +78,9 @@ function mockThreadShell() {
     latestRunId: "run-1",
     latestRunUserMessageId: state.prWatch ? "message:pr-watch:wake-1" : "message:user-1",
     latestRunCompletionSilent: state.completionSilent,
+    latestRunBackgroundWake:
+      state.prWatch ||
+      state.background.some((task) => task.kind === "monitor" && task.awaited === true),
     activeRunId: null,
     status: state.queued
       ? "queued"

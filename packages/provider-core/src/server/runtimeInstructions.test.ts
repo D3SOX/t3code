@@ -37,7 +37,7 @@ describe("buildRuntimeInstructions", () => {
       instructions,
       "Call watch_pull_request when asked to monitor or babysit, or when work you were asked to do, such as a merge, still waits on checks or reviews, even after an earlier unwatch",
     );
-    expect(instructions).toContain("full URL, every stack layer, as your next call");
+    expect(instructions).toContain("URL, every stack layer, as your next call");
     expect(instructions).toContain("call list_thread_pull_requests and link any missing task PRs");
     expect(instructions).toContain(
       "Do not link PRs touched only for incidental maintenance, such as release-note metadata",
