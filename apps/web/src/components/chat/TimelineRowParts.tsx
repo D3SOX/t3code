@@ -1,6 +1,11 @@
-import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presentation";
+import {
+  resolveViewedImageAsset,
+  workEntriesViewedImagePaths,
+} from "@t3tools/client-runtime/work-log/presentation";
 import { use, useState } from "react";
-import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
+import { useAssetUrls } from "~/assets/assetUrls";
+import { workGroupImageGallery } from "./markdownImageGallery";
+import { assetMediaActionsSource, ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { TimelineRowCtx, type TimelineRow } from "./timelineRowContext";
 import { ToolActivityIconView } from "./TimelineToolActivityIcon";
 import { ChevronRightIcon } from "lucide-react";
@@ -36,7 +41,7 @@ export function ViewedImageTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "viewed-image" }>;
 }) {
-  const { threadRef, workspaceRoot, onImageExpand, timestampFormat } = use(TimelineRowCtx);
+  const { threadRef, workspaceRoot, timestampFormat } = use(TimelineRowCtx);
   const [expanded, setExpanded] = useState(false);
   const image = threadRef
     ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
@@ -82,17 +87,70 @@ export function ViewedImageTimelineRow({
       </button>
       {expanded && image && threadRef ? (
         <div className="mt-1 ms-7">
-          <ChatMarkdownAssetImage
-            environmentId={threadRef.environmentId}
-            resource={image.resource}
-            alt={image.alt}
-            srcFragment={image.srcFragment}
-            workspaceRoot={workspaceRoot}
-            maxHeightRem={16}
-            onImageExpand={onImageExpand}
-          />
+          <ViewedImagePreview row={row} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ViewedImagePreview({ row }: { row: Extract<TimelineRow, { kind: "viewed-image" }> }) {
+  const { timelineEntries, threadRef, workspaceRoot, activeThreadEnvironmentId, onImageExpand } =
+    use(TimelineRowCtx);
+  const paths = workEntriesViewedImagePaths(
+    timelineEntries.flatMap((entry) =>
+      entry.kind === "work" && entry.entry.runId === row.entry.runId ? [entry.entry] : [],
+    ),
+  );
+  const viewed = threadRef
+    ? paths.flatMap((path) => {
+        const asset = resolveViewedImageAsset(path, {
+          threadId: threadRef.threadId,
+          workspaceRoot,
+        });
+        return asset ? [{ path, asset }] : [];
+      })
+    : [];
+  const environmentId = threadRef?.environmentId ?? activeThreadEnvironmentId;
+  const urls = useAssetUrls(
+    environmentId,
+    viewed.map(({ asset }) => asset.resource),
+  );
+  const images = viewed.map(({ path, asset }, index) => {
+    const url = urls[index];
+    if (!url) return { path, item: null };
+    const src = url + asset.srcFragment;
+    return {
+      path,
+      item: {
+        src,
+        name: asset.alt.trim() || "image",
+        actionsSource: assetMediaActionsSource({
+          environmentId,
+          resource: asset.resource,
+          kind: "image",
+          name: asset.alt || "image",
+          src,
+          workspaceRoot,
+        }),
+      },
+    };
+  });
+  const image = threadRef
+    ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
+    : null;
+  if (!image || !threadRef) return null;
+  return (
+    <ChatMarkdownAssetImage
+      environmentId={threadRef.environmentId}
+      resource={image.resource}
+      alt={image.alt}
+      srcFragment={image.srcFragment}
+      workspaceRoot={workspaceRoot}
+      maxHeightRem={16}
+      onImageExpand={(preview) =>
+        onImageExpand(workGroupImageGallery(images, row.imagePath, preview))
+      }
+    />
   );
 }
