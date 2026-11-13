@@ -53,8 +53,8 @@ import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
   WorkGroupViewCtx,
-  type TimelineRow,
   type TimelineWorkEntry,
+  type TimelineRow,
 } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
 import {

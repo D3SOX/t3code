@@ -6,6 +6,7 @@ import {
   extractTerminalLinks,
   isTerminalUrl,
   resolveTerminalLinkTarget,
+  terminalAppPathTarget,
   type TerminalBufferLineLike,
 } from "./terminal-links";
 
@@ -331,5 +332,49 @@ describe("resolvePathLinkTarget", () => {
     expect(resolvePathLinkTarget("file:notes.md", "/workspace/project")).toBe(
       "/workspace/project/file:notes.md",
     );
+  });
+});
+
+describe("terminalAppPathTarget", () => {
+  const workspaceRoot = "/home/dev/.t3/worktrees/sample/project-123";
+
+  it("opens a clicked home-relative workspace root as the file explorer", () => {
+    const [link] = extractTerminalLinks("~/.t3/worktrees/sample/project-123");
+    const target = resolvePathLinkTarget(link?.text ?? "", workspaceRoot);
+    expect(terminalAppPathTarget(target, workspaceRoot)).toEqual({ kind: "files" });
+  });
+
+  it("accepts a trailing slash on the clicked workspace root", () => {
+    expect(terminalAppPathTarget(`${workspaceRoot}/`, workspaceRoot)).toEqual({ kind: "files" });
+  });
+
+  it("reveals a workspace directory through a relative file-panel path", () => {
+    expect(terminalAppPathTarget(`${workspaceRoot}/src`, workspaceRoot)).toEqual({
+      kind: "file",
+      path: "src",
+    });
+  });
+
+  it("keeps file line positions separate from the workspace-relative path", () => {
+    expect(terminalAppPathTarget(`${workspaceRoot}/src/main.ts:42`, workspaceRoot)).toEqual({
+      kind: "file",
+      path: "src/main.ts",
+      line: 42,
+    });
+  });
+
+  it("keeps host paths outside the workspace absolute", () => {
+    expect(terminalAppPathTarget("/tmp/report.txt", workspaceRoot)).toEqual({
+      kind: "file",
+      path: "/tmp/report.txt",
+    });
+  });
+
+  it("does not confuse a sibling workspace with the active root", () => {
+    const sibling = `${workspaceRoot}-other/src`;
+    expect(terminalAppPathTarget(sibling, workspaceRoot)).toEqual({
+      kind: "file",
+      path: sibling,
+    });
   });
 });

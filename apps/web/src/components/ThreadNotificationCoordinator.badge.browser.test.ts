@@ -11,7 +11,7 @@ import { RELEASED_COMPLETION_GRACE_MS } from "./ThreadNotificationCoordinator.lo
 const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
-  toast: vi.fn(),
+  toast: vi.fn(() => "toast-1"),
   closeToast: vi.fn(),
   shells: null as unknown as { set: (id: string, value: unknown) => void },
   navigate: vi.fn(),

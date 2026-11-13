@@ -51,6 +51,7 @@ const adapter = {
 
 function makeHarness(
   options: {
+    readonly autoGenerateThreadTitles?: boolean;
     readonly generateTitle?: TextGeneration.TextGeneration["Service"]["generateThreadTitle"];
   } = {},
 ) {
@@ -61,7 +62,9 @@ function makeHarness(
     layerRegistry,
     { databaseLayer: layerDatabase, runEffectWorker: false },
   );
-  const layerServerSettings = ServerSettings.layerTest({});
+  const layerServerSettings = ServerSettings.layerTest({
+    autoGenerateThreadTitles: options.autoGenerateThreadTitles ?? true,
+  });
   const layerThreadManagement = ThreadManagement.layer.pipe(
     Layer.provide(layerOrchestrator),
     Layer.provide(layerServerSettings),
@@ -595,3 +598,31 @@ describe("ThreadTitleRegenerationService", () => {
     }),
   );
 });
+
+it.effect("disables automatic titles without disabling explicit regeneration", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ autoGenerateThreadTitles: false });
+    yield* Effect.gen(function* () {
+      const service = yield* ThreadTitleRegeneration.ThreadTitleRegenerationService;
+      const threadId = yield* createThread({
+        command: "create:disabled",
+        thread: "thread:disabled",
+      });
+      yield* dispatchUserMessage({ command: "message:disabled", threadId, text: "Fix the title" });
+      const requestId = yield* armRegeneration({ command: "title:disabled", threadId });
+      yield* service.execute({
+        threadId,
+        requestId,
+        kind: { type: "initial", messageId: MessageId.make("message:disabled:message") },
+      });
+      assert.equal(harness.generateThreadTitle.mock.calls.length, 0);
+      const manualRequestId = yield* armRegeneration({ command: "title:manual", threadId });
+      yield* service.execute({
+        threadId,
+        requestId: manualRequestId,
+        kind: { type: "regenerate" },
+      });
+      assert.equal(harness.generateThreadTitle.mock.calls.length, 1);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);

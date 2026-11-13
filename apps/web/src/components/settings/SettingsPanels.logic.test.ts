@@ -94,6 +94,33 @@ describe("getChangedBrowserSettingLabels", () => {
       }),
     ).toEqual(["Search engine"]);
   });
+
+  it("labels each browser default that differs", () => {
+    expect(
+      getChangedBrowserSettingLabels({
+        ...DEFAULT_UNIFIED_SETTINGS,
+        browserDefaultViewport: { _tag: "freeform", width: 900, height: 600 },
+        browserDefaultZoomFactor: 1.5,
+        browserDefaultAppearance: "dark",
+        browserRecordingFrameRate: 60,
+        browserRecordingShowKeyPresses: true,
+        browserRecordingShowMousePresses: true,
+        browserLinkTarget: "app",
+        pullRequestLinkTarget: "app",
+        browserAutoShowFloatingPreview: !DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview,
+      }),
+    ).toEqual([
+      "Browser viewport",
+      "Browser zoom",
+      "Browser appearance",
+      "Recording frame rate",
+      "Recording key presses",
+      "Recording mouse presses",
+      "Open links in",
+      "Open pull requests in",
+      "Floating preview",
+    ]);
+  });
 });
 
 describe("auto-settle days field", () => {

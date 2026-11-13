@@ -107,6 +107,10 @@
       "types": "./src/markdownImages.ts",
       "default": "./src/markdownImages.ts"
     },
+    "./cited-media": {
+      "types": "./src/citedMedia.ts",
+      "default": "./src/citedMedia.ts"
+    },
     "./media-reference": {
       "types": "./src/mediaReference.ts",
       "default": "./src/mediaReference.ts"
@@ -590,8 +594,10 @@
     "@t3tools/source-control-definitions": "workspace:*",
     "effect": "catalog:",
     "jszip": "3.10.1",
+    "remark-parse": "catalog:",
     "three": "0.180.0",
-    "unbash": "^5.0.0"
+    "unbash": "^5.0.0",
+    "unified": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

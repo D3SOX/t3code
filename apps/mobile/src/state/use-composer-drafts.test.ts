@@ -195,6 +195,7 @@ import {
   findNewTaskDraftKeys,
   flushComposerDrafts,
   getComposerDraftSnapshot,
+  composerDraftHasUserContent,
   mergeComposerDraftContentState,
   migrateLegacyNewTaskDraft,
   modelOptionMemoryAtom,
@@ -223,6 +224,27 @@ const DRAFT: ComposerDraft = {
   text: "hello",
   attachments: [],
 };
+
+describe("composer draft indicators", () => {
+  it("ignores whitespace and saved composer settings", () => {
+    expect(composerDraftHasUserContent(undefined)).toBe(false);
+    expect(
+      composerDraftHasUserContent({
+        text: " \n ",
+        attachments: [],
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      }),
+    ).toBe(false);
+  });
+
+  it("marks unsent text and context, then clears when content is removed", () => {
+    expect(composerDraftHasUserContent(DRAFT)).toBe(true);
+    expect(composerDraftHasUserContent(contextDraft(0, 1))).toBe(true);
+    expect(composerDraftHasUserContent({ text: "", attachments: [] })).toBe(false);
+  });
+});
 
 afterEach(() => {
   vi.useRealTimers();

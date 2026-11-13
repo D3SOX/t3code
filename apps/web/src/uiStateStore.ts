@@ -1,6 +1,8 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import { PullRequestMergeMethod } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { EnvironmentId, ProjectId, type ScopedProjectRef } from "@t3tools/contracts";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "@t3tools/client-runtime/state/projects";
 
@@ -28,6 +30,7 @@ export interface PersistedUiState {
   projectOrderCwds?: string[];
   defaultAdvertisedEndpointKey?: string | null;
   sidebarProjectScopeKey?: string | null;
+  lastNewThreadProjectRef?: { environmentId: string; projectId: string } | null;
   sidebarProjectScopeKeys?: string[];
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
@@ -38,6 +41,7 @@ export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
   sidebarProjectScopeKeys: string[];
+  lastNewThreadProjectRef: ScopedProjectRef | null;
 }
 
 export interface UiThreadState {
@@ -60,6 +64,7 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   sidebarProjectScopeKeys: [],
+  lastNewThreadProjectRef: null,
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
@@ -101,6 +106,13 @@ function sanitizeOptionalKey(value: unknown): string | null {
 }
 
 const isPullRequestMergeMethod = Schema.is(PullRequestMergeMethod);
+function sanitizeProjectRef(value: unknown): ScopedProjectRef | null {
+  if (!value || typeof value !== "object") return null;
+  const ref = value as Record<string, unknown>;
+  if (typeof ref.environmentId !== "string" || !ref.environmentId) return null;
+  if (typeof ref.projectId !== "string" || !ref.projectId) return null;
+  return scopeProjectRef(EnvironmentId.make(ref.environmentId), ProjectId.make(ref.projectId));
+}
 
 function sanitizeTimestampRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object") {
@@ -153,6 +165,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     sidebarProjectScopeKeys: sanitizeStringArray(
       parsed.sidebarProjectScopeKeys ?? [parsed.sidebarProjectScopeKey],
     ),
+    lastNewThreadProjectRef: sanitizeProjectRef(parsed.lastNewThreadProjectRef),
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
       : initialState.pullRequestMergeMethod,
@@ -227,6 +240,7 @@ export function persistState(state: UiState): void {
           state.sidebarProjectScopeKeys.length === 1
             ? (state.sidebarProjectScopeKeys[0] ?? null)
             : null,
+        lastNewThreadProjectRef: state.lastNewThreadProjectRef,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -428,6 +442,7 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setSidebarProjectScopeKeys: (projectKeys: readonly string[]) => void;
+  setLastNewThreadProjectRef: (projectRef: ScopedProjectRef) => void;
   setPullRequestMergeMethod: (method: PullRequestMergeMethod) => void;
   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
   reorderProjects: (
@@ -449,6 +464,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
   setSidebarProjectScopeKeys: (projectKeys) =>
     set((state) => setSidebarProjectScopeKeys(state, projectKeys)),
+  setLastNewThreadProjectRef: (projectRef) => set({ lastNewThreadProjectRef: projectRef }),
   setPullRequestMergeMethod: (method) => set((state) => setPullRequestMergeMethod(state, method)),
   setProjectExpanded: (projectIds, expanded) =>
     set((state) => setProjectExpanded(state, projectIds, expanded)),

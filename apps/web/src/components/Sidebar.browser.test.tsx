@@ -75,9 +75,9 @@ function project(id: string): Project {
 
 describe("sidebar header new thread", () => {
   it.each([
-    { mode: "normal", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: true, picker: false },
+    { mode: "normal", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: true, picker: true },
     { mode: "boring", count: 1, shift: false, picker: false },
   ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
     using stack = new DisposableStack();
@@ -98,6 +98,7 @@ describe("sidebar header new thread", () => {
       activeDraftThread: null,
       activeThread: null,
       defaultProjectRef: currentProjectRef,
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: startThread,
       routeDraftId: null,
@@ -154,6 +155,7 @@ describe("sidebar render isolation", () => {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
       },
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
       routeDraftId: null,
@@ -232,6 +234,7 @@ describe("sidebar thread rename", () => {
           environmentId: activeProject.environmentId,
           projectId: activeProject.id,
         },
+        preferredProjectRef: null,
         defaultProjectFallbackReady: true,
         handleNewThread: vi.fn().mockResolvedValue(null),
         routeDraftId: null,
@@ -300,6 +303,7 @@ describe("sidebar settled pagination", () => {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
       },
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
       routeDraftId: null,

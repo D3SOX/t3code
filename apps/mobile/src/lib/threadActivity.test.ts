@@ -1539,6 +1539,20 @@ describe("buildThreadFeed", () => {
       "thinking:",
     ]);
   });
+
+  it("retains Claude Read image previews without tool output", () => {
+    const item = {
+      ...base("image-read", "2026-06-20T00:00:04.000Z", 3),
+      type: "dynamic_tool" as const,
+      toolName: "Read",
+      input: { file_path: "/workspace/reference.png" },
+      viewedImagePath: "/workspace/reference.png",
+    } satisfies OrchestrationV2TurnItem;
+    const feed = buildThreadFeed([projected(item, 0)]);
+    expect(feed[0]).toMatchObject({ type: "viewed-image", imagePath: "/workspace/reference.png" });
+    const activity = feed[0]?.type === "viewed-image" ? feed[0].activity : null;
+    expect(activity?.workEntry.viewedImagePath).toBe("/workspace/reference.png");
+  });
 });
 
 describe("retained v2 feed presentation", () => {

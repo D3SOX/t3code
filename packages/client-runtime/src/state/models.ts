@@ -1,4 +1,5 @@
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
 import { threadPullRequestsOf } from "../threadPullRequests.ts";
 import type {
   ThreadLinkedPullRequest,
@@ -83,6 +84,8 @@ export interface ThreadRunSummary {
   readonly requestedAt: string | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
+  /** Background PR-watch updates and empty responses do not mark the thread Done. */
+  readonly completionSilent?: boolean;
   readonly assistantMessageId: MessageId | null;
   /**
    * The run is still open, but its provider turn already ended, so nothing is
@@ -282,6 +285,7 @@ export function presentThreadShell(
                 : null
               : nullableIso(thread.latestRunCompletedAt),
           assistantMessageId: null,
+          ...(isThreadCompletionSilent(thread) ? { completionSilent: true } : {}),
         } satisfies ThreadRunSummary);
   const runtime = shellRuntime(thread);
   return {

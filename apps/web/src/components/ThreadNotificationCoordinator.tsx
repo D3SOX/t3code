@@ -9,6 +9,7 @@ import { threadKey } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import { monitorHoldsWakeCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { isThreadCompletionSilent } from "@t3tools/shared/agentAwareness";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 import {
@@ -69,6 +70,39 @@ export function startThreadNotifications(
     { environmentId: EnvironmentId; threadId: ThreadId; notification: Notification }
   >();
   const watched = new Map<EnvironmentId, WatchedEnvironment>();
+  const unread = new Set<string>();
+  const notifiedUsageLimits = new Map<
+    string,
+    {
+      environmentId: EnvironmentId;
+      providerInstanceId: string;
+      resetAt: string | null;
+      notifiedAt: number;
+    }
+  >();
+  const activeTag = () => {
+    const params = router.state.matches.at(-1)?.params as
+      | { environmentId?: EnvironmentId; threadId?: ThreadId }
+      | undefined;
+    return params?.environmentId && params.threadId
+      ? threadNotificationTag(params.environmentId, params.threadId)
+      : null;
+  };
+  const dismissViewed = () => {
+    if (!document.hasFocus() || document.visibilityState !== "visible") return;
+    const tag = activeTag();
+    if (tag === null) return;
+    pending.get(tag)?.notification.close();
+    pending.delete(tag);
+    unread.delete(tag);
+    setNotificationBadge(unread.size);
+    closeOpenedThreadToasts();
+  };
+  const clearBadge = () => {
+    unread.clear();
+    setNotificationBadge(0);
+    dismissViewed();
+  };
 
   const trackNotification = (
     environmentId: EnvironmentId,
@@ -77,7 +111,8 @@ export function startThreadNotifications(
   ) => {
     pending.get(notification.tag)?.notification.close();
     pending.set(notification.tag, { environmentId, threadId, notification });
-    setNotificationBadge(pending.size);
+    unread.add(notification.tag);
+    setNotificationBadge(unread.size);
   };
   // Toast ids by thread key, so hiding or opening a thread can close its open toasts.
   const openToasts = new Map<string, Array<ToastId>>();
@@ -118,12 +153,14 @@ export function startThreadNotifications(
       if (!shouldClose(threadKey(entry))) continue;
       entry.notification.close();
       pending.delete(tag);
+      unread.delete(tag);
     }
-    if (count !== pending.size) setNotificationBadge(pending.size);
+    if (count !== pending.size) setNotificationBadge(unread.size);
   };
   const clearPending = () => {
     for (const { notification } of pending.values()) notification.close();
     pending.clear();
+    unread.clear();
     setNotificationBadge(0);
   };
 
@@ -132,7 +169,7 @@ export function startThreadNotifications(
     state: NotificationState,
     kind: ThreadNotificationKind,
   ) => {
-    const { thread, status } = state;
+    const { thread, status, raw: rawThread } = state;
     if (
       registry
         .get(environmentThreadShells.hiddenThreadKeysAtom)
@@ -141,6 +178,35 @@ export function startThreadNotifications(
       return;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
     const active = activeThread();
+    const foreground = document.visibilityState === "visible" && document.hasFocus();
+    const showToast =
+      inAppNotificationsEnabled &&
+      foreground &&
+      (active.environmentId !== environmentId || active.threadId !== thread.id);
+    const showNotification =
+      hasDesktopNotifications(mode) &&
+      !foreground &&
+      typeof Notification !== "undefined" &&
+      Notification.permission === "granted";
+    if (!hasNotificationSound(mode) && !showToast && !showNotification) return;
+    if (status === "limited") {
+      const resetAt = rawThread.usageLimitResetAt ?? null;
+      const key = JSON.stringify([
+        environmentId,
+        rawThread.providerInstanceId,
+        resetAt === null ? (rawThread.lastError?.trim() ?? null) : Date.parse(resetAt),
+      ]);
+      if (notifiedUsageLimits.has(key)) return;
+      notifiedUsageLimits.set(key, {
+        environmentId,
+        providerInstanceId: rawThread.providerInstanceId,
+        resetAt,
+        notifiedAt: rawThread.updatedAt.epochMilliseconds,
+      });
+      if (notifiedUsageLimits.size > 128) {
+        notifiedUsageLimits.delete(notifiedUsageLimits.keys().next().value!);
+      }
+    }
     const title =
       kind === "completion"
         ? "Thread completed"
@@ -158,15 +224,14 @@ export function startThreadNotifications(
         hasNotificationSound(getClientSettings().notificationMode),
       );
     }
-    if (
-      inAppNotificationsEnabled &&
-      document.visibilityState === "visible" &&
-      document.hasFocus() &&
-      (active.environmentId !== environmentId || active.threadId !== thread.id)
-    ) {
+    if (showToast) {
       const toastKey = threadKey({ environmentId, threadId: thread.id });
+      closeToasts((key) => key === toastKey);
       const toastId: ToastId = toastManager.add({
-        onRemove: (): void => forgetToast(toastKey, toastId),
+        timeout: 0,
+        onRemove: (): void => {
+          forgetToast(toastKey, toastId);
+        },
         type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
         title,
         description: thread.title,
@@ -191,7 +256,10 @@ export function startThreadNotifications(
             toastManager.close(toastId);
             void router.navigate({
               to: "/$environmentId/$threadId",
-              params: { environmentId, threadId: thread.id },
+              params: {
+                environmentId,
+                threadId: thread.id,
+              },
             });
           },
         },
@@ -199,13 +267,7 @@ export function startThreadNotifications(
       openToasts.set(toastKey, [...(openToasts.get(toastKey) ?? []), toastId]);
       return;
     }
-    if (
-      !hasDesktopNotifications(mode) ||
-      (document.visibilityState === "visible" && document.hasFocus()) ||
-      typeof Notification === "undefined" ||
-      Notification.permission !== "granted"
-    )
-      return;
+    if (!showNotification) return;
     try {
       const notification = new Notification(title, {
         body: thread.title,
@@ -217,11 +279,18 @@ export function startThreadNotifications(
       trackNotification(environmentId, thread.id, notification);
       notification.addEventListener("click", () => {
         notification.close();
-        window.focus();
-        void window.desktopBridge?.revealWindow().catch(() => undefined);
+        if (window.desktopBridge?.focusWindow) {
+          void window.desktopBridge.focusWindow().catch(() => window.focus());
+        } else {
+          window.focus();
+          void window.desktopBridge?.revealWindow?.().catch(() => undefined);
+        }
         void router.navigate({
           to: "/$environmentId/$threadId",
-          params: { environmentId, threadId: thread.id },
+          params: {
+            environmentId,
+            threadId: thread.id,
+          },
         });
       });
     } catch {
@@ -262,6 +331,20 @@ export function startThreadNotifications(
         next.set(rawThread.id, prior);
         continue;
       }
+      // Without a reset time, a successful turn started after the alert is
+      // evidence that this provider can work again.
+      if (rawThread.status === "completed" && rawThread.latestRunStartedAt) {
+        for (const [key, limit] of notifiedUsageLimits) {
+          if (
+            limit.environmentId === environmentId &&
+            limit.resetAt === null &&
+            limit.providerInstanceId === rawThread.providerInstanceId &&
+            rawThread.latestRunStartedAt.epochMilliseconds > limit.notifiedAt
+          ) {
+            notifiedUsageLimits.delete(key);
+          }
+        }
+      }
       const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
@@ -279,8 +362,8 @@ export function startThreadNotifications(
         : requestId !== null
           ? `${status}:${requestId}`
           : `${thread.latestRun?.runId ?? ""}:${status}`;
-      const completed = status === "ready" && thread.latestRun?.status === "completed";
-      const settled = completed && !monitorHoldsWakeCompletion(rawThread);
+      const completed = thread.latestRun?.status === "completed";
+      const settled = status === "ready" && completed && !monitorHoldsWakeCompletion(rawThread);
       const parsedCompletedAt = Date.parse(thread.latestRun?.completedAt ?? "");
       const completedAt = Number.isFinite(parsedCompletedAt) ? parsedCompletedAt : null;
       const state = {
@@ -291,7 +374,7 @@ export function startThreadNotifications(
         attention,
         requestId,
         settled,
-        completedAt: settled ? completedAt : null,
+        completedAt: completed ? completedAt : null,
         backgroundWake: rawThread.latestRunBackgroundWake === true,
       };
       next.set(thread.id, state);
@@ -303,7 +386,7 @@ export function startThreadNotifications(
     for (const [prior, state] of changed) {
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
-        quiet: state.raw.latestRunStopRequested === true,
+        quiet: isThreadCompletionSilent(state.raw) || state.raw.latestRunStopRequested === true,
       });
     }
   };
@@ -378,8 +461,9 @@ export function startThreadNotifications(
       if (activeIds.has(entry.environmentId)) continue;
       entry.notification.close();
       pending.delete(tag);
+      unread.delete(tag);
     }
-    if (count !== pending.size) setNotificationBadge(pending.size);
+    if (count !== pending.size) setNotificationBadge(unread.size);
   };
 
   // Listeners that only exist for some notification modes, rebuilt when the mode changes.
@@ -393,11 +477,11 @@ export function startThreadNotifications(
     clearPending();
     const stops: Array<() => void> = [];
     if (hasDesktopNotifications(nextMode)) {
-      const unsubscribeBadgeClear = window.desktopBridge?.onNotificationBadgeClear(clearPending);
-      window.addEventListener("focus", clearPending);
+      const unsubscribeBadgeClear = window.desktopBridge?.onNotificationBadgeClear?.(clearBadge);
+      window.addEventListener("focus", clearBadge);
       stops.push(() => {
         unsubscribeBadgeClear?.();
-        window.removeEventListener("focus", clearPending);
+        window.removeEventListener("focus", clearBadge);
         clearPending();
       });
     }
@@ -414,7 +498,11 @@ export function startThreadNotifications(
     };
   };
 
+  const clearToasts = () => {
+    closeToasts(() => true);
+  };
   const onSettings = () => {
+    if (!getClientSettings().inAppNotificationsEnabled) clearToasts();
     applyMode();
     syncEnvironments();
   };
@@ -426,19 +514,24 @@ export function startThreadNotifications(
       syncEnvironments();
     },
   );
+  window.addEventListener("focus", dismissViewed);
+  document.addEventListener("visibilitychange", dismissViewed);
+  const unsubscribeViewedRoute = router.subscribe?.("onResolved", dismissViewed);
   const unsubscribeHidden = [
     registry.subscribe(environmentThreadShells.hiddenThreadKeysAtom, closeHiddenPending),
     registry.subscribe(environmentThreadShells.anyEnvironmentHidingAtom, closeHiddenPending),
     registry.subscribe(environmentThreadShells.threadRefsAtom, closeHiddenPending),
   ];
-  const unsubscribeRoute = router.subscribe("onResolved", closeOpenedThreadToasts);
   onSettings();
 
   return () => {
+    unsubscribeViewedRoute?.();
+    window.removeEventListener("focus", dismissViewed);
+    document.removeEventListener("visibilitychange", dismissViewed);
+    clearToasts();
     unsubscribeSettings();
     unsubscribeEnvironmentIds();
     for (const unsubscribe of unsubscribeHidden) unsubscribe();
-    unsubscribeRoute();
     for (const entry of watched.values()) entry.unsubscribe();
     watched.clear();
     stopModeListeners();

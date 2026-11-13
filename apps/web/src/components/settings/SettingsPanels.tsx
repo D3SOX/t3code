@@ -538,11 +538,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Rich text composer"]
       : []),
     ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
+    ...(settings.defaultScratchEnvironmentId !==
+    DEFAULT_UNIFIED_SETTINGS.defaultScratchEnvironmentId
+      ? ["Machine for threads without a project"]
+      : []),
     ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
       ? ["Follow-up behavior"]
       : []),
-    ...(settings.toolCallVisibility !== DEFAULT_UNIFIED_SETTINGS.toolCallVisibility
-      ? ["Tool calls in chat"]
+    ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
+      ? ["Context window indicator"]
       : []),
     ...(settings.screenReaderAnnouncements !== DEFAULT_UNIFIED_SETTINGS.screenReaderAnnouncements
       ? ["Screen reader announcements"]
@@ -577,7 +581,8 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.ghqCloneLayout !== DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout
       ? ["Clone into host folders"]
       : []),
-    ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
+    ...(settings.skipThreadUnpinConfirmation !==
+    DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation
       ? ["Unpin confirmation"]
       : []),
     ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
@@ -667,10 +672,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
+      startThreadsInBackground: DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground,
+      defaultScratchEnvironmentId: DEFAULT_UNIFIED_SETTINGS.defaultScratchEnvironmentId,
+      sidebarShowThreadBranches: DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches,
+      confirmTerminalClose: DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       toolCallVisibility: DEFAULT_UNIFIED_SETTINGS.toolCallVisibility,
       screenReaderAnnouncements: DEFAULT_UNIFIED_SETTINGS.screenReaderAnnouncements,
       screenReaderWindowTitle: DEFAULT_UNIFIED_SETTINGS.screenReaderWindowTitle,
+      contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
@@ -697,7 +707,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ghqCloneLayout: DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
-      confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
+      skipThreadUnpinConfirmation: DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation,
       confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
       threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
@@ -719,7 +729,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       browserSearchEngine: DEFAULT_UNIFIED_SETTINGS.browserSearchEngine,
       browserCustomSearchUrl: DEFAULT_UNIFIED_SETTINGS.browserCustomSearchUrl,
       browserAutoShowFloatingPreview: DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview,
-      pullRequestLinksOpenInApp: DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp,
+      pullRequestLinkTarget: DEFAULT_UNIFIED_SETTINGS.pullRequestLinkTarget,
       enableAgentBrowserAccess: DEFAULT_UNIFIED_SETTINGS.enableAgentBrowserAccess,
     });
     onRestored?.();
@@ -788,12 +798,52 @@ function useTranslatedSearchableSetting() {
   };
 }
 
+export function LegacyFeaturesSection() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+
+  return (
+    <SettingsSection id="legacy-features" title="Legacy">
+      <SettingsRow
+        {...searchableSetting("legacy-plan-mode")}
+        description="Restore Build/Plan, /plan, /default, and Shift+Tab. Off uses build mode."
+        control={
+          <Switch
+            checked={settings.planModeEnabled}
+            onCheckedChange={(checked) => {
+              updateSettings({ planModeEnabled: Boolean(checked) });
+            }}
+            aria-label="Plan mode (legacy)"
+          />
+        }
+      />
+      <SettingsRow
+        {...searchableSetting("legacy-context-window-indicator")}
+        description="Shows context window usage as a circular indicator in the composer."
+        control={
+          <Switch
+            checked={settings.contextWindowMeterEnabled}
+            onCheckedChange={(checked) =>
+              updateSettings({ contextWindowMeterEnabled: Boolean(checked) })
+            }
+            aria-label="Context window indicator (legacy)"
+          />
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const gt = useGT();
   const m = useMessages();
   const setting = useTranslatedSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const { environments } = useEnvironments();
+  const preferredScratchEnvironment = environments.find(
+    (environment) => environment.environmentId === settings.defaultScratchEnvironmentId,
+  );
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
   );
@@ -803,6 +853,57 @@ export function GeneralSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SettingsSection id="new-threads" title="New threads">
+        <SettingsRow
+          {...searchableSetting("no-project-machine")}
+          description="Choose where threads without a project start on this device. The selected machine must be connected."
+          resetAction={
+            settings.defaultScratchEnvironmentId !== null ? (
+              <SettingResetButton
+                label="machine for threads without a project"
+                onClick={() => updateSettings({ defaultScratchEnvironmentId: null })}
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.defaultScratchEnvironmentId ?? "automatic"}
+              onValueChange={(value) => {
+                const environment = environments.find((entry) => entry.environmentId === value);
+                if (value === "automatic" || environment) {
+                  updateSettings({
+                    defaultScratchEnvironmentId: environment?.environmentId ?? null,
+                  });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Machine for threads without a project">
+                <SelectValue>
+                  {preferredScratchEnvironment?.label ??
+                    (settings.defaultScratchEnvironmentId === null
+                      ? "Automatic"
+                      : "Unavailable machine")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="automatic">Automatic</SelectItem>
+                {environments.map((environment) => (
+                  <SelectItem key={environment.environmentId} value={environment.environmentId}>
+                    {environment.label}
+                    {environment.connection.phase === "connected" ? "" : " (not connected)"}
+                  </SelectItem>
+                ))}
+                {settings.defaultScratchEnvironmentId !== null && !preferredScratchEnvironment ? (
+                  <SelectItem value={settings.defaultScratchEnvironmentId} disabled>
+                    Unavailable machine
+                  </SelectItem>
+                ) : null}
+              </SelectPopup>
+            </Select>
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection id="notifications" title={gt("Notifications")}>
         <NotificationSettings />
         <SettingsRow
@@ -934,15 +1035,15 @@ export function GeneralSettingsPanel() {
 
       <SettingsSection id="confirmations" title={gt("Confirmations")}>
         <SettingsRow
-          {...setting("unpin-confirmation")}
-          description={<T>Ask before unpinning a thread from the pinned section.</T>}
+          {...searchableSetting("terminal-close-confirmation")}
+          description="Ask before closing terminals, stopping their processes and deleting their history."
           resetAction={
-            settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin ? (
+            settings.confirmTerminalClose !== DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose ? (
               <SettingResetButton
-                label="unpin confirmation"
+                label="terminal close confirmation"
                 onClick={() =>
                   updateSettings({
-                    confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
+                    confirmTerminalClose: DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose,
                   })
                 }
               />
@@ -950,9 +1051,38 @@ export function GeneralSettingsPanel() {
           }
           control={
             <Switch
-              checked={settings.confirmThreadUnpin}
+              checked={settings.confirmTerminalClose}
               onCheckedChange={(checked) =>
-                updateSettings({ confirmThreadUnpin: Boolean(checked) })
+                updateSettings({
+                  confirmTerminalClose: Boolean(checked),
+                })
+              }
+              aria-label="Confirm terminal closing"
+            />
+          }
+        />
+        <SettingsRow
+          {...setting("unpin-confirmation")}
+          description="Ask before unpinning a thread from the pinned section."
+          resetAction={
+            settings.skipThreadUnpinConfirmation !==
+            DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation ? (
+              <SettingResetButton
+                label="unpin confirmation"
+                onClick={() =>
+                  updateSettings({
+                    skipThreadUnpinConfirmation:
+                      DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={!settings.skipThreadUnpinConfirmation}
+              onCheckedChange={(checked) =>
+                updateSettings({ skipThreadUnpinConfirmation: !checked })
               }
               aria-label={gt("Confirm thread unpinning")}
             />
@@ -1266,6 +1396,34 @@ export function ChatSettingsPanel() {
 
       <SettingsSection id="follow-ups" title="Follow-ups">
         <SettingsRow
+          {...searchableSetting("start-threads-in-background")}
+          description="Start new threads in the background with Enter or the send button. Ctrl/⌘+Enter does the opposite; turning this off reverses those actions."
+          resetAction={
+            settings.startThreadsInBackground !==
+            DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground ? (
+              <SettingResetButton
+                label="start threads in background"
+                onClick={() =>
+                  updateSettings({
+                    startThreadsInBackground: DEFAULT_UNIFIED_SETTINGS.startThreadsInBackground,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.startThreadsInBackground}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  startThreadsInBackground: Boolean(checked),
+                })
+              }
+              aria-label="Start threads in background"
+            />
+          }
+        />
+        <SettingsRow
           {...searchableSetting("follow-up-behavior")}
           description={
             "Queue follow-ups while the agent runs or steer the current run. " +
@@ -1289,14 +1447,18 @@ export function ChatSettingsPanel() {
             <Select
               value={settings.followUpBehavior}
               onValueChange={(value) => {
-                if (value === "queue" || value === "steer") {
+                if (value === "queue" || value === "next-tool" || value === "steer") {
                   updateSettings({ followUpBehavior: value });
                 }
               }}
             >
               <SelectTrigger size="sm" className="w-auto min-w-0" aria-label="Follow-up behavior">
                 <SelectValue>
-                  {settings.followUpBehavior === "queue" ? "Queue" : "Steer"}
+                  {settings.followUpBehavior === "queue"
+                    ? "Queue after turn"
+                    : settings.followUpBehavior === "next-tool"
+                      ? "Queue after next tool"
+                      : "Steer"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -2060,7 +2222,9 @@ export function ThreadsSettingsPanel() {
                     model={textGenModel}
                     modelOptions={textGenModelOptions}
                     allowPromptInjectedEffort={false}
-                    includePlanAgent={selectsPlanAgent(textGenModelOptions)}
+                    planModeEnabled={
+                      settings.planModeEnabled || selectsPlanAgent(textGenModelOptions)
+                    }
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(nextOptions) => {
                       updateSettings({

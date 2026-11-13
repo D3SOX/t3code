@@ -4358,6 +4358,11 @@ it.effect(
             driver: CODEX_DRIVER,
             nativeItemId: "sh_anchored",
           }),
+          nativeItemRef: {
+            driver: CODEX_DRIVER,
+            nativeId: "sh_anchored",
+            strength: "strong" as const,
+          },
           runId: idAllocator.derive.run({ threadId, ordinal: 1 }),
         };
         const commandEvents = [

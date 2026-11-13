@@ -570,18 +570,43 @@ export const layer: Layer.Layer<
                   nodeId: input.event.message.nodeId,
                 }),
               ];
-            case "turn_item.updated":
+            case "turn_item.updated": {
+              let item = input.event.turnItem;
+              if (
+                input.event.sessionScoped === true &&
+                item.type === "command_execution" &&
+                item.providerThreadId !== null &&
+                item.nativeItemRef?.strength === "strong" &&
+                item.nativeItemRef.nativeId !== null
+              ) {
+                const previous = yield* projections.getCommandByNativeRef({
+                  threadId: item.threadId,
+                  providerThreadId: item.providerThreadId,
+                  nativeId: item.nativeItemRef.nativeId,
+                });
+                if (previous !== null) {
+                  item = {
+                    ...item,
+                    id: previous.id,
+                    runId: previous.runId,
+                    nodeId: previous.nodeId,
+                    providerTurnId: previous.providerTurnId,
+                    parentItemId: previous.parentItemId,
+                    ordinal: previous.ordinal,
+                    startedAt: previous.startedAt,
+                  };
+                }
+              }
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",
-                  threadId: input.event.turnItem.threadId,
-                  payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
-                  ),
-                  runId: input.event.turnItem.runId,
-                  nodeId: input.event.turnItem.nodeId,
+                  threadId: item.threadId,
+                  payload: boundFileChangeForStorage(stripUnservedToolOutputImageBytes(item)),
+                  runId: item.runId,
+                  nodeId: item.nodeId,
                 }),
               ];
+            }
             case "runtime_request.updated":
               return [
                 yield* makeDomainEvent(input, {

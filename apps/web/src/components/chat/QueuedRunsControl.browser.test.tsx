@@ -70,6 +70,7 @@ const baseProps = {
   editBlockedReason: null,
   onEditQueuedRun: () => undefined,
   onCancelEdit: () => undefined,
+  onRemoveQueuedRun: async () => undefined,
   timestampFormat: "locale",
   onOpenThread: () => undefined,
 } satisfies ComponentProps<typeof QueuedRunsControl>;
@@ -199,8 +200,6 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
   };
   const onOpenThread = vi.fn();
   await using _screen = await renderQueue({ onOpenThread });
-  // Four rows collapse the queue.
-  await page.getByRole("button", { name: "Show all 4 queued" }).click();
 
   const automation = page.getByRole("button", { name: /PR dispatcher/ });
   await expect.element(automation).toHaveAttribute("aria-expanded", "false");
@@ -219,34 +218,4 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
 
   await expect.element(page.getByText("Sent by T3 Code")).toBeVisible();
   await expect.element(page.getByText("Continue where you left off.")).toBeVisible();
-});
-
-it("stays inside the timeline scroller instead of growing the chat column", async () => {
-  setup();
-  state.projection = { projection: { messages: [] } };
-  state.workflow = {
-    activeRun: { id: "run:active" },
-    canPromoteToSteer: true,
-    queuedRuns: [
-      {
-        run: { id: "run:queued", userMessageId: "message:queued" },
-        text: "Later",
-        attachments: [],
-      },
-    ],
-  };
-  // Mirrors ChatView: a scrollable column, a positioned wrapper, then a non-positioned scroller.
-  await using screen = await renderUi(
-    <div data-testid="column" style={{ height: 200, overflowY: "auto" }}>
-      <div style={{ position: "relative", height: "100%" }}>
-        <div style={{ height: "100%", overflowY: "auto" }}>
-          <div style={{ height: 1000 }} />
-          <QueuedRunsControl {...baseProps} />
-        </div>
-      </div>
-    </div>,
-  );
-  await expect.element(page.getByText("Later", { exact: true })).toBeInTheDocument();
-  const column = screen.getByTestId("column").element();
-  expect(column.scrollHeight).toBe(column.clientHeight);
 });

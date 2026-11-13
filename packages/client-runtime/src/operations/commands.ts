@@ -37,6 +37,7 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as Schema from "effect/Schema";
 
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import {
@@ -193,7 +194,7 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly bootstrap?: StartThreadBootstrap;
   readonly sourceProposedPlan?: { readonly threadId: ThreadId; readonly planId: PlanId };
-  readonly dispatchMode?: "auto" | "queue" | "steer" | "restart" | "start";
+  readonly dispatchMode?: "auto" | "queue" | "next-tool" | "steer" | "restart" | "start";
   /** Start a new provider session; needs the server's `freshContext` capability. */
   readonly freshContext?: boolean;
   /** Defaults to true. Callers with their own retry queue opt out so a dead socket fails fast. */
@@ -254,8 +255,14 @@ export interface ResumeThreadQueueInput extends ThreadCommandInput {
   readonly runId?: RunId;
 }
 
+export interface ReorderQueuedRunInput extends ThreadCommandInput {
+  readonly runId: RunId;
+  readonly beforeRunId: RunId | null;
+}
+
 export interface PromoteQueuedRunInput extends ThreadCommandInput {
   readonly queuedRunId: RunId;
+  readonly afterNextTool?: boolean;
   readonly targetRunId: RunId;
 }
 
@@ -270,6 +277,7 @@ export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
 export interface EditQueuedRunInput extends ThreadCommandInput {
   readonly runId: RunId;
   readonly text: string;
+  readonly editing?: boolean;
   /**
    * Full replacement attachment list for the queued message. Omitted =
    * text-only edit that leaves attachments untouched.
@@ -351,6 +359,21 @@ const dispatchMessage = Effect.fn("EnvironmentCommands.dispatchMessage")(functio
 const getProjection = (threadId: ThreadId) =>
   request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId });
 
+class NextToolQueueUnavailableError extends Schema.TaggedError<NextToolQueueUnavailableError>()(
+  "NextToolQueueUnavailableError",
+  {},
+) {
+  override get message() {
+    return "This timing requires an updated D3SOX fork server. Use Queue or Steer on upstream servers.";
+  }
+}
+
+const requireNextToolQueue = Effect.gen(function* () {
+  const config = yield* getInitialServerConfig();
+  if (config.environment.capabilities.nextToolQueue !== true) {
+    return yield* new NextToolQueueUnavailableError();
+  }
+});
 const persistAttachments = Effect.fn("EnvironmentCommands.persistAttachments")(function* (
   threadId: ThreadId,
   messageId: MessageId,
@@ -803,6 +826,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
 
   const requestedMode = input.dispatchMode ?? "auto";
   const resendAfterSocketLoss = input.resendAfterSocketLoss ?? true;
+  if (requestedMode === "next-tool") yield* requireNextToolQueue;
   if (requestedMode === "start") {
     return yield* dispatchMessage(
       {
@@ -833,8 +857,11 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
   }
 
   const dispatchMode =
-    requestedMode === "queue"
-      ? ({ type: "queue_after_active" } as const)
+    requestedMode === "queue" || requestedMode === "next-tool"
+      ? ({
+          type: "queue_after_active",
+          ...(requestedMode === "next-tool" ? { afterNextTool: true } : {}),
+        } as const)
       : ({ type: "start_immediately" } as const);
   return yield* dispatchMessage(
     {
@@ -856,7 +883,9 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
         ? {}
         : { sourcePlanRef: input.sourceProposedPlan }),
       ...(input.freshContext ? { freshContext: true } : {}),
-      ...(requestedMode !== "queue" ? { deliveryIntent: requestedMode } : {}),
+      ...(requestedMode !== "queue" && requestedMode !== "next-tool"
+        ? { deliveryIntent: requestedMode }
+        : {}),
       dispatchMode,
     },
     resendAfterSocketLoss,
@@ -1121,15 +1150,29 @@ export const resumeThreadQueue = Effect.fn("EnvironmentCommands.resumeThreadQueu
   });
 });
 
+export const reorderQueuedRun = Effect.fn("EnvironmentCommands.reorderQueuedRun")(function* (
+  input: ReorderQueuedRunInput,
+) {
+  return yield* dispatch({
+    type: "queued-run.reorder",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    runId: input.runId,
+    beforeRunId: input.beforeRunId,
+  });
+});
+
 export const promoteQueuedRun = Effect.fn("EnvironmentCommands.promoteQueuedRun")(function* (
   input: PromoteQueuedRunInput,
 ) {
+  if (input.afterNextTool !== undefined) yield* requireNextToolQueue;
   return yield* dispatch({
     type: "queued-message.promote-to-steer",
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     queuedRunId: input.queuedRunId,
     targetRunId: input.targetRunId,
+    ...(input.afterNextTool === undefined ? {} : { afterNextTool: input.afterNextTool }),
   });
 });
 
@@ -1164,6 +1207,7 @@ export const editQueuedRun = Effect.fn("EnvironmentCommands.editQueuedRun")(func
       : yield* persistAttachments(input.threadId, input.edit.messageId, input.edit.attachments);
   return yield* dispatch({
     type: "queued-run.edit",
+    ...(input.editing === undefined ? {} : { editing: input.editing }),
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     runId: input.runId,

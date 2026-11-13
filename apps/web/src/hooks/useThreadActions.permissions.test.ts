@@ -47,9 +47,12 @@ const state = vi.hoisted(() => ({
   toasts: [] as string[],
   afterRequest: undefined as ((action: string) => void) | undefined,
   sessionLookupFails: false,
+  route: null as ScopedThreadRef | null,
+  newThread: vi.fn(),
 }));
 
 vi.mock("react", () => ({
+  useEffect: (effect: () => void) => effect(),
   useCallback: (callback: unknown) => callback,
   useMemo: (factory: () => unknown) => factory(),
   useRef: (current: unknown) => ({ current }),
@@ -139,7 +142,6 @@ vi.mock("../state/entities", () => ({
   readProject: () => ({ workspaceRoot: "/project" }),
 }));
 vi.mock("../components/Sidebar.logic", () => ({
-  getFallbackThreadIdAfterDelete: () => null,
   pinOrderKeyBetween: () => "a",
 }));
 vi.mock("../composerDraftStore", () => ({
@@ -173,7 +175,7 @@ vi.mock("../localApi", () => ({
   readLocalApi: () => ({ dialogs: { confirm: state.confirm } }),
 }));
 vi.mock("../threadRoutes", () => ({
-  resolveThreadRouteRef: () => null,
+  resolveThreadRouteRef: () => state.route,
   buildThreadRouteParams: (ref: ScopedThreadRef) => ref,
 }));
 vi.mock("../components/ui/toast", () => ({
@@ -184,13 +186,13 @@ vi.mock("../components/ui/toast", () => ({
     },
   },
 }));
-vi.mock("./useHandleNewThread", () => ({ useNewThreadHandler: () => async () => {} }));
+vi.mock("./useHandleNewThread", () => ({ useNewThreadHandler: () => state.newThread }));
 vi.mock("./useSettings", () => ({
   useClientSettings: (select: (settings: unknown) => unknown) =>
     select({
       sidebarThreadSortOrder: "createdAt",
       confirmThreadDelete: true,
-      confirmThreadUnpin: true,
+      skipThreadUnpinConfirmation: false,
     }),
 }));
 
@@ -280,9 +282,67 @@ beforeEach(() => {
   state.toasts = [];
   state.afterRequest = undefined;
   state.sessionLookupFails = false;
+  state.route = null;
+  state.newThread.mockReset().mockResolvedValue(null);
   useRightPanelStore.setState(useRightPanelStore.getInitialState(), true);
   useDiffPanelStore.setState(useDiffPanelStore.getInitialState(), true);
   usePreviewMiniPlayerStore.setState(usePreviewMiniPlayerStore.getInitialState(), true);
+});
+
+describe("thread action navigation", () => {
+  it("deletion opens a draft for the active thread's project even when other threads remain", async () => {
+    state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
+    state.route = target;
+    state.threads.push({ ...state.threads[0]!, id: ThreadId.make("another-thread") });
+    await useThreadActions().deleteThread(target);
+    expect(state.newThread).toHaveBeenCalledExactlyOnceWith(
+      { environmentId: secondary, projectId: ProjectId.make("project") },
+      { replace: true, rememberProject: false },
+    );
+  });
+
+  it("deletion leaves a different active thread alone", async () => {
+    state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
+    state.route = { ...target, threadId: ThreadId.make("another-thread") };
+    await useThreadActions().deleteThread(target);
+    expect(state.newThread).not.toHaveBeenCalled();
+  });
+
+  it("deletion respects navigation while the command is in flight", async () => {
+    state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
+    state.route = target;
+    state.afterRequest = () => {
+      state.route = { ...target, environmentId: primary };
+    };
+    await useThreadActions().deleteThread(target);
+    expect(state.newThread).not.toHaveBeenCalled();
+  });
+
+  it("deletion keeps the active thread when the command fails", async () => {
+    state.route = target;
+    await useThreadActions().deleteThread(target);
+    expect(state.newThread).not.toHaveBeenCalled();
+  });
+
+  it("archive still opens a draft in the active thread's project", async () => {
+    state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
+    state.route = target;
+    await useThreadActions().archiveThread(target);
+    expect(state.newThread).toHaveBeenCalledExactlyOnceWith(
+      { environmentId: secondary, projectId: ProjectId.make("project") },
+      { rememberProject: false },
+    );
+  });
+
+  it.each(operations.filter(({ name }) => name !== "archive"))(
+    "$name does not add navigation in the shared thread action",
+    async ({ run }) => {
+      state.scopes.get(secondary)!.add(AuthOrchestrationOperateScope);
+      state.route = target;
+      await run(useThreadActions(), target);
+      expect(state.newThread).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("thread action permissions", () => {

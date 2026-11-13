@@ -1,3 +1,4 @@
+import { subscriptionUsageTimeline } from "./subscriptionUsageSnapshot";
 import {
   EnvironmentId,
   ProviderDriverKind,
@@ -64,6 +65,42 @@ describe("subscription widget snapshots", () => {
     expect(snapshot.url).toBe(deepLink);
     expect(JSON.stringify(snapshot)).not.toContain("private@example.com");
   });
+  it("keeps two Codex subscriptions as separate widget rows", () => {
+    const snapshot = buildSubscriptionUsageSnapshot(
+      presentations([
+        provider({
+          instanceId: ProviderInstanceId.make("codex-work"),
+          auth: { status: "authenticated", email: "work@example.com" },
+          usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 20 }] },
+        }),
+        provider({
+          instanceId: ProviderInstanceId.make("codex-personal"),
+          auth: { status: "authenticated", email: "personal@example.com" },
+          usageLimits: {
+            checkedAt,
+            windows: [
+              { ...window, usedPercent: 80, resetsAt: new Date(now + 20 * 60_000).toISOString() },
+            ],
+          },
+        }),
+      ]),
+      deepLink,
+      Infinity,
+      "accounts",
+    );
+    const codex = snapshot.providers.filter((entry) => entry.name.startsWith("Codex"));
+    expect(
+      codex.map((entry) => entry.windows[0]?.remaining).sort((a, b) => Number(a) - Number(b)),
+    ).toEqual([20, 80]);
+    expect(new Set(codex.map((entry) => entry.name)).size).toBe(2);
+    expect(
+      subscriptionUsageTimeline(snapshot, now)[1]
+        ?.props.providers.filter((entry) => entry.windows.length > 0)
+        .map((entry) => entry.windows[0]?.remaining),
+    ).toEqual([20]);
+    expect(JSON.stringify(snapshot)).not.toContain("@example.com");
+  });
+
   it("uses upstream deduplication for a native account also present in a proxy hub", () => {
     const input = new Map([
       [
@@ -100,6 +137,50 @@ describe("subscription widget snapshots", () => {
     expect(snapshot.providers[0]?.name).toBe("Codex");
     expect(JSON.stringify(snapshot)).not.toContain("example.com");
   });
+  it("shows separate Codex accounts reported by a proxy hub", () => {
+    const input = new Map([
+      [
+        EnvironmentId.make("env"),
+        {
+          entry: { target: { label: "Remote" } },
+          serverConfig: {
+            providers: [],
+            usageLimitSources: [
+              {
+                id: UsageLimitSourceId.make("hub"),
+                kind: "cliproxy" as const,
+                label: "Hub",
+                checkedAt,
+                accounts: [
+                  {
+                    id: "first",
+                    driver: ProviderDriverKind.make("codex"),
+                    email: "first@example.com",
+                    usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 20 }] },
+                  },
+                  {
+                    id: "second",
+                    driver: ProviderDriverKind.make("codex"),
+                    email: "second@example.com",
+                    usageLimits: { checkedAt, windows: [{ ...window, usedPercent: 80 }] },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const snapshot = buildSubscriptionUsageSnapshot(input, deepLink, Infinity, "accounts");
+    expect(snapshot.providers.map((entry) => entry.name)).toEqual(["Codex 1", "Codex 2"]);
+    expect(
+      snapshot.providers
+        .map((entry) => entry.windows[0]?.remaining)
+        .sort((a, b) => Number(a) - Number(b)),
+    ).toEqual([20, 80]);
+    expect(JSON.stringify(snapshot)).not.toContain("@example.com");
+  });
+
   it("bounds OS storage and puts the most constrained windows first", () => {
     const windows = Array.from({ length: 20 }, (_, index) => ({
       ...window,
@@ -132,6 +213,9 @@ describe("subscription widget snapshots", () => {
     const snapshot = buildSubscriptionUsageSnapshot(input, deepLink);
     expect(snapshot.providers[0]?.detail).toBe("Subscription remaining");
     expect(snapshot.providers[0]?.windows[0]?.remaining).toBe(20);
+    expect(
+      buildSubscriptionUsageSnapshot(input, deepLink, Infinity, "accounts").providers,
+    ).toHaveLength(1);
   });
 });
 

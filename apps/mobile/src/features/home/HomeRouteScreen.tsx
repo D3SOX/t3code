@@ -1,3 +1,4 @@
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { uuidv4 } from "../../lib/uuid";
 import { ThreadUndoNotice } from "./ThreadUndoNotice";
 import { use } from "react";
@@ -141,6 +142,7 @@ export function HomeRouteScreen() {
       pickableProjectGroups(projectScopes).map((scope) => ({
         key: scope.key,
         label: scope.title,
+        project: scope.representative,
       })),
     [projectScopes],
   );
@@ -171,6 +173,14 @@ export function HomeRouteScreen() {
           }}
           filter={{
             customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
+            renderActionIcon: (action, size) => {
+              const project = projectFilterOptions.find(
+                (item) => action.id === `project:${item.key}`,
+              )?.project;
+              return project ? (
+                <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+              ) : null;
+            },
             items: buildHomeListFilterMenuItems({
               environments,
               projects: projectFilterOptions,

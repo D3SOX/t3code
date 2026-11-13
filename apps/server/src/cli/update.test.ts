@@ -1,3 +1,6 @@
+import * as NetService from "@t3tools/shared/Net";
+import { Command } from "effect/cli";
+import { updateCommand } from "./update.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import type { ManagedUpdatesPolicy } from "@t3tools/contracts";
@@ -71,6 +74,23 @@ it.effect("authenticates each release page until the requested channel is found"
   }),
 );
 
+it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("desktop CLI updates", (it) => {
+  it.effect("keeps desktop CLI updates with the desktop installation", () =>
+    Effect.gen(function* () {
+      const error = yield* Command.runWith(updateCommand, { version: "0.1.0" })([]).pipe(
+        Effect.provideService(HostProcess.Arguments, [
+          "/opt/t3/t3code",
+          "/opt/t3/resources/app.asar/apps/server/dist/bin.mjs",
+        ]),
+        Effect.provideService(HostProcess.Environment, { ELECTRON_RUN_AS_NODE: "1" }),
+        Effect.flip,
+      );
+      assert.equal(error._tag, "CliUpdateError");
+      assert.include(error.message, "desktop app");
+      assert.include(error.message, "t3 service restart");
+    }),
+  );
+});
 it.effect("reads the newest version from the update feed file a mirror publishes", () =>
   Effect.gen(function* () {
     const requested: string[] = [];

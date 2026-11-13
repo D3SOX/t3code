@@ -190,6 +190,9 @@ Choose how commit messages and pull request titles and descriptions are written 
 project's instructions and recent commit subjects. **Custom instructions** applies your own
 instructions to commits and pull requests.
 
+The same page can disable automatic titles for new threads and automatic names for temporary
+worktree branches. Choose a project first to override either setting for that project.
+
 ## Review and merge
 
 Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
@@ -333,7 +336,9 @@ the pull request without merging it. Threads in a project that watch the same pu
 first asks whether anything changed and reads the pull request only when it did, which keeps
 watching inside GitHub's rate limit. Comments from your own account do not wake it. Watching ends
 when the pull request merges or closes, after 10 wakes in a row that bring only comments, after 8
-failed reads in a row, or when you press Stop on the thread. A rate limit only pauses watching.
+failed reads in a row, or when you press Stop on the thread. The agent gets a final update when a
+watched pull request merges or closes, so work waiting for it can continue. A rate limit only pauses
+watching.
 Settling or archiving a thread also ends all its watches. Unsettle the thread before starting a new
 watch. Watching a pull request again does not repeat check or conflict news its last
 watch already reported; unlinking the pull request clears that. Subagents cannot watch pull requests; the thread that delegated to them does. To start or stop

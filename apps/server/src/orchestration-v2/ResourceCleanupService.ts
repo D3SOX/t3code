@@ -3,8 +3,10 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { imageSnapshotsDirectory } from "../assets/ImageSnapshots.ts";
 import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
 import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -31,6 +33,7 @@ export class ResourceCleanupService extends Context.Reference<{
   readonly cleanupDevices: (threadId: ThreadId) => Effect.Effect<void, ResourceCleanupError>;
   readonly cleanupAttachments: (
     attachmentIds: ReadonlyArray<string>,
+    threadId: string,
   ) => Effect.Effect<void, ResourceCleanupError>;
 }>("t3/orchestration-v2/ResourceCleanupService", {
   defaultValue: () => ({
@@ -50,6 +53,7 @@ export const layer = Layer.effect(
     const devices = yield* DeviceService.DeviceService;
     const fileSystem = yield* FileSystem.FileSystem;
     const config = yield* ServerConfig.ServerConfig;
+    const path = yield* Path.Path;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
     return {
       cleanupScheduledTasks: Effect.fn("ResourceCleanupService.cleanupScheduledTasks")(function (
@@ -103,7 +107,9 @@ export const layer = Layer.effect(
       }),
       cleanupAttachments: Effect.fn("ResourceCleanupService.cleanupAttachments")(function (
         attachmentIds: ReadonlyArray<string>,
+        threadId: string,
       ) {
+        const directory = imageSnapshotsDirectory(config.attachmentsDir, threadId, path);
         return Effect.forEach(
           attachmentIds,
           (attachmentId) => {
@@ -130,6 +136,19 @@ export const layer = Layer.effect(
                 );
           },
           { discard: true, concurrency: 4 },
+        ).pipe(
+          Effect.andThen(
+            directory === null
+              ? Effect.void
+              : fileSystem
+                  .remove(directory, { recursive: true, force: true })
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ResourceCleanupError({ operation: "attachment", threadId, cause }),
+                    ),
+                  ),
+          ),
         );
       }),
     };

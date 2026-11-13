@@ -2,6 +2,7 @@ import {
   CommandId,
   type EnvironmentId,
   type ModelSelection,
+  type ProviderInteractionMode,
   type ScopedThreadRef,
   type ThreadId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -35,6 +36,7 @@ import { getComposerPromptInjectionState, getComposerProviderState } from "./com
 import {
   formatOutgoingPrompt,
   getAntigravitySendBlockReason,
+  resolveComposerInteractionMode,
   cloneComposerImageForRetry,
   type ComposerSendSnapshot,
   readFileAsDataUrl,
@@ -43,6 +45,7 @@ import {
 } from "../ChatView.logic";
 import { readPreparedConnection } from "../../state/session";
 import { recallableComposerPrompt } from "./composerPromptHistory";
+import { createLocalSubmissionQueue } from "../../lib/localSubmissionQueue";
 
 // Kept per route so a send in flight, and the multiple-model selections, survive
 // ChatView remounting while the user navigates.
@@ -53,13 +56,18 @@ const draftSendStateByRouteKey = new Map<
   string,
   {
     readonly sendInFlight: { current: boolean };
+    readonly submissions: ReturnType<typeof createLocalSubmissionQueue>;
     readonly uncertainSubmissions: { current: Map<string, ThreadId> };
   }
 >();
 export function draftSendState(routeKey: string) {
   let state = draftSendStateByRouteKey.get(routeKey);
   if (!state) {
-    state = { sendInFlight: { current: false }, uncertainSubmissions: { current: new Map() } };
+    state = {
+      sendInFlight: { current: false },
+      submissions: createLocalSubmissionQueue(),
+      uncertainSubmissions: { current: new Map() },
+    };
     draftSendStateByRouteKey.set(routeKey, state);
   }
   return state;
@@ -275,6 +283,7 @@ export function restoreComposerDraft(
 export interface MultipleModelTarget {
   readonly selection: ModelSelection;
   readonly text: string;
+  readonly interactionMode: ProviderInteractionMode;
 }
 
 /**
@@ -285,8 +294,10 @@ export function resolveMultipleModelTargets(input: {
   readonly selections: ReadonlyArray<ModelSelection>;
   readonly providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   readonly messageText: string;
+  readonly planModeEnabled: boolean;
+  readonly interactionMode: ProviderInteractionMode;
 }): Array<MultipleModelTarget | { readonly error: string }> {
-  const { messageText } = input;
+  const { messageText, planModeEnabled } = input;
   return input.selections.map((selection) => {
     const provider = input.providerInstanceEntries.find(
       (entry) => entry.instanceId === selection.instanceId,
@@ -302,6 +313,7 @@ export function resolveMultipleModelTargets(input: {
       models: provider.models,
       modelOptions: selection.options,
       promptInjectionState: getComposerPromptInjectionState(messageText),
+      planModeEnabled,
     });
     return {
       selection: createModelSelection(
@@ -316,6 +328,11 @@ export function resolveMultipleModelTargets(input: {
         effort: providerState.promptEffort,
         text: messageText || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
       }),
+      interactionMode: resolveComposerInteractionMode({
+        planModeEnabled,
+        provider: provider.snapshot,
+        interactionMode: input.interactionMode,
+      }).interactionMode,
     };
   });
 }

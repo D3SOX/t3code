@@ -1,5 +1,4 @@
-import { assert, describe, it } from "@effect/vitest";
-
+import { assert, describe, expect, it } from "vite-plus/test";
 import { buildRuntimeInstructions } from "./runtimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
@@ -14,7 +13,7 @@ describe("buildRuntimeInstructions", () => {
     assert.notInclude(instructions, "<pull_request_linking>");
   });
 
-  it("links PRs the agent creates, takes over, or pushes to, and no others", () => {
+  it("requires task-related PRs and stack layers while excluding incidental maintenance", () => {
     const instructions = buildRuntimeInstructions({ harness: "Codex" });
 
     assert.include(instructions, "Link each PR you create, take over, or push to");
@@ -23,8 +22,8 @@ describe("buildRuntimeInstructions", () => {
     assert.include(instructions, "If linking fails, say so.");
     assert.notInclude(instructions, "git log -1");
     assert.notInclude(instructions, "work on");
-    // Listing linked PRs as an end-of-work check found nothing to add in audited threads.
-    assert.notInclude(instructions, "list_thread_pull_requests");
+    assert.include(instructions, "list_thread_pull_requests");
+    assert.include(instructions, "PRs explicitly assigned to this thread for review or monitoring");
   });
 
   it("waits on a PR only with the watch, never with a poll loop", () => {
@@ -38,13 +37,10 @@ describe("buildRuntimeInstructions", () => {
       instructions,
       "Call watch_pull_request when asked to monitor or babysit, or when work you were asked to do, such as a merge, still waits on checks or reviews, even after an earlier unwatch",
     );
-    assert.notInclude(instructions, "merge it now");
-    assert.include(instructions, "Otherwise act now or hand back.");
-    assert.include(instructions, "then watch and end your turn");
-    assert.include(instructions, "never watch, even if the brief says babysit");
-    assert.include(
-      instructions,
-      "After PR work, a child's last line is: PR <full URL>, head <SHA>, checks and reviews <state>.",
+    expect(instructions).toContain("URL, every stack layer, as your next call");
+    expect(instructions).toContain("call list_thread_pull_requests and link any missing task PRs");
+    expect(instructions).toContain(
+      "Do not link PRs touched only for incidental maintenance, such as release-note metadata",
     );
     assert.include(
       instructions,

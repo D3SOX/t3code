@@ -98,6 +98,7 @@ const taskCacheConfig = {
 };
 
 export default defineConfig({
+  assetsInclude: ["**/*.wasm"],
   run: {
     cache: taskCacheConfig,
     tasks: {
