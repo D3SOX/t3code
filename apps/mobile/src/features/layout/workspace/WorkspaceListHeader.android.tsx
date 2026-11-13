@@ -86,6 +86,7 @@ export function WorkspaceListHeader(props: WorkspaceListHeaderProps) {
                   title: "Filter threads",
                   icon: workspaceListFilterIcon(props.filter.customized),
                   items: props.filter.items,
+                  renderActionIcon: props.filter.renderActionIcon,
                 },
               ]
             : undefined

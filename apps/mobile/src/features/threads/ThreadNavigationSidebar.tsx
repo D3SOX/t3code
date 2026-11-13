@@ -1,3 +1,4 @@
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -569,6 +570,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
       }}
       filter={{
         customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
+        renderActionIcon: (action, size) => {
+          const project = projectFilterOptions.find(
+            (item) => action.id === `project:${item.key}`,
+          )?.project;
+          return project ? (
+            <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+          ) : null;
+        },
         items: buildHomeListFilterMenuItems({
           environments,
           projects: projectFilterOptions,
