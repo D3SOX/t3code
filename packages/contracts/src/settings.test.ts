@@ -348,7 +348,13 @@ describe("ClientSettings sidebar", () => {
     });
   });
 
-  it("defaults terminal confirmation off and background thread creation on", () => {
+  it("confirms unpinning by default and preserves explicit confirmation opt-outs", () => {
+    expect(decodeClientSettings({ confirmThreadUnpin: false }).skipThreadUnpinConfirmation).toBe(
+      false,
+    );
+    const unpinOptOut = { skipThreadUnpinConfirmation: true };
+    expect(decodeClientSettingsPatch(unpinOptOut)).toEqual(unpinOptOut);
+    expect(encodeClientSettings(decodeClientSettings(unpinOptOut))).toMatchObject(unpinOptOut);
     expect(decodeClientSettings({}).confirmTerminalClose).toBe(false);
     expect(decodeClientSettings({}).startThreadsInBackground).toBe(true);
     expect(decodeClientSettings({}).defaultScratchEnvironmentId).toBeNull();

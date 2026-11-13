@@ -137,6 +137,7 @@ export interface Preferences {
   readonly toolCallVisibility?: ToolCallVisibility;
   readonly workingShelfEnabled?: boolean;
   readonly sidebarShowThreadBranches?: boolean;
+  readonly skipThreadUnpinConfirmation?: boolean;
   readonly useLastProjectForNewThreads?: boolean;
   readonly lastThreadProject?: typeof ThreadProject.Type;
   /** @deprecated Retained to migrate favorites to the connected environment. */
@@ -233,6 +234,7 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
     toolCallVisibility?: ToolCallVisibility;
     workingShelfEnabled?: boolean;
     sidebarShowThreadBranches?: boolean;
+    skipThreadUnpinConfirmation?: boolean;
     useLastProjectForNewThreads?: boolean;
     lastThreadProject?: typeof ThreadProject.Type;
     modelFavorites?: Preferences["modelFavorites"];
@@ -377,6 +379,9 @@ export function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.workingShelfEnabled === "boolean") {
     preferences.workingShelfEnabled = parsed.workingShelfEnabled;
+  }
+  if (typeof parsed.skipThreadUnpinConfirmation === "boolean") {
+    preferences.skipThreadUnpinConfirmation = parsed.skipThreadUnpinConfirmation;
   }
   if (typeof parsed.sidebarShowThreadBranches === "boolean") {
     preferences.sidebarShowThreadBranches = parsed.sidebarShowThreadBranches;

@@ -330,7 +330,9 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
-  const confirmThreadUnpin = useClientSettings((settings) => settings.confirmThreadUnpin);
+  const skipThreadUnpinConfirmation = useClientSettings(
+    (settings) => settings.skipThreadUnpinConfirmation,
+  );
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
@@ -898,7 +900,7 @@ export function useThreadActions() {
     const localApi = readLocalApi();
     const resolved = resolveThreadTarget(target);
     const confirmationResult = await requestThreadUnpinConfirmation({
-      enabled: confirmThreadUnpin,
+      enabled: !skipThreadUnpinConfirmation,
       title: resolved?.thread.title ?? "this thread",
       confirm: localApi ? (message) => localApi.dialogs.confirm(message) : null,
     });

@@ -72,6 +72,8 @@ and desktop, results stay within your selected settings scope.
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
+Unpinning with the pin icon or thread menu asks for confirmation.
+You can turn this off in **Settings > General**.
 
 Click or tap the **Pinned** or **Active** heading to collapse or expand its section.
 Both start expanded and remember your choice on each client. Threads showing

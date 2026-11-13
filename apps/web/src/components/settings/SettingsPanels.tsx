@@ -575,7 +575,8 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.ghqCloneLayout !== DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout
       ? ["Clone into host folders"]
       : []),
-    ...(settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin
+    ...(settings.skipThreadUnpinConfirmation !==
+    DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation
       ? ["Unpin confirmation"]
       : []),
     ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
@@ -700,7 +701,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ghqCloneLayout: DEFAULT_UNIFIED_SETTINGS.ghqCloneLayout,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
-      confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
+      skipThreadUnpinConfirmation: DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation,
       confirmQuit: DEFAULT_UNIFIED_SETTINGS.confirmQuit,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
       threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
@@ -1051,12 +1052,14 @@ export function GeneralSettingsPanel() {
           {...setting("unpin-confirmation")}
           description="Ask before unpinning a thread from the pinned section."
           resetAction={
-            settings.confirmThreadUnpin !== DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin ? (
+            settings.skipThreadUnpinConfirmation !==
+            DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation ? (
               <SettingResetButton
                 label="unpin confirmation"
                 onClick={() =>
                   updateSettings({
-                    confirmThreadUnpin: DEFAULT_UNIFIED_SETTINGS.confirmThreadUnpin,
+                    skipThreadUnpinConfirmation:
+                      DEFAULT_UNIFIED_SETTINGS.skipThreadUnpinConfirmation,
                   })
                 }
               />
@@ -1064,9 +1067,9 @@ export function GeneralSettingsPanel() {
           }
           control={
             <Switch
-              checked={settings.confirmThreadUnpin}
+              checked={!settings.skipThreadUnpinConfirmation}
               onCheckedChange={(checked) =>
-                updateSettings({ confirmThreadUnpin: Boolean(checked) })
+                updateSettings({ skipThreadUnpinConfirmation: !checked })
               }
               aria-label={gt("Confirm thread unpinning")}
             />

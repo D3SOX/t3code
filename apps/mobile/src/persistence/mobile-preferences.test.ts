@@ -32,10 +32,12 @@ describe("environment identification preferences", () => {
       {},
     );
   });
-  it.each([true, false])("retains thread branch visibility %s", (sidebarShowThreadBranches) => {
-    expect(sanitizePreferences({ sidebarShowThreadBranches })).toEqual({
-      sidebarShowThreadBranches,
-    });
+  it.each([true, false])("retains thread preferences %s", (enabled) => {
+    const preferences = {
+      sidebarShowThreadBranches: enabled,
+      skipThreadUnpinConfirmation: enabled,
+    };
+    expect(sanitizePreferences(preferences)).toEqual(preferences);
   });
 
   it.each(["queue", "next-tool", "steer"] as const)(

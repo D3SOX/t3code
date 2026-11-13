@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   dropBusy: false,
   holdingRows: false,
   workingShelfEnabled: false,
+  skipThreadUnpinConfirmation: true as boolean | undefined,
   failedAction: null as string | null,
   titleOutcome: null as ThreadTitleRegenerationOutcome | null,
   archivedRefreshes: [] as string[],
@@ -29,7 +30,7 @@ const state = vi.hoisted(() => ({
     environmentId: string;
     input: { threadId: string; orderKey?: string; snoozedUntil?: string; reason?: string };
   }[],
-  dialogs: [] as { onConfirm: () => void }[],
+  dialogs: [] as { onConfirm: () => void; onCancel?: () => void }[],
   alerts: [] as {
     title: string;
     buttons?: { text: string; onPress?: () => void }[];
@@ -86,7 +87,10 @@ vi.mock("../../state/atom-registry", () => ({
           : atom === "steady-shells-holding"
             ? state.holdingRows
             : atom === "mobile-preferences"
-              ? AsyncResult.success({ workingShelfEnabled: state.workingShelfEnabled })
+              ? AsyncResult.success({
+                  workingShelfEnabled: state.workingShelfEnabled,
+                  skipThreadUnpinConfirmation: state.skipThreadUnpinConfirmation,
+                })
               : atom === "thread-shells"
                 ? state.shells
                 : atom === "queued-thread-keys"
@@ -206,6 +210,7 @@ beforeEach(() => {
   state.dropBusy = false;
   state.holdingRows = false;
   state.workingShelfEnabled = false;
+  state.skipThreadUnpinConfirmation = true;
   state.scopes = new Map([
     [primaryEnvironmentId, new Set([AuthOrchestrationOperateScope])],
     [otherEnvironmentId, new Set<string>()],
@@ -223,6 +228,30 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
 });
+
+it.each([undefined, false, true])(
+  "requires confirmation unless explicitly skipped (%s)",
+  async (skip) => {
+    state.skipThreadUnpinConfirmation = skip;
+    const actions = useThreadListActions();
+    const thread = makeThread();
+    const pending = actions.unpinThread(thread);
+    if (skip === true) {
+      expect(await pending).toBe(true);
+      expect(state.dialogs).toEqual([]);
+    } else {
+      expect(state.requests).toEqual([]);
+      expect(state.dialogs).toHaveLength(1);
+      state.dialogs[0]!.onCancel!();
+      expect(await pending).toBe(false);
+      expect(state.requests).toEqual([]);
+      const confirmed = actions.unpinThread(thread);
+      state.dialogs[1]!.onConfirm();
+      expect(await confirmed).toBe(true);
+    }
+    expect(state.requests.map(({ action }) => action)).toEqual(["unpin"]);
+  },
+);
 
 it("reports a failed title generation as unsuccessful and allows another request", async () => {
   const actions = useThreadListActions();
@@ -256,16 +285,21 @@ describe("thread list operation permissions", () => {
     expect(state.requests).toEqual([]);
   });
 
-  it("rechecks permission after a retained delete confirmation", async () => {
-    useThreadListActions().confirmDeleteThread(makeThread());
-    const confirm = state.dialogs[0]?.onConfirm;
-    expect(confirm).toBeTypeOf("function");
-    state.scopes.get(primaryEnvironmentId)!.clear();
+  it.each(["confirmDeleteThread", "unpinThread"] as const)(
+    "rechecks permission after %s confirmation",
+    async (action) => {
+      state.skipThreadUnpinConfirmation = false;
+      const result = useThreadListActions()[action](makeThread());
+      const confirm = state.dialogs[0]?.onConfirm;
+      expect(confirm).toBeTypeOf("function");
+      state.scopes.get(primaryEnvironmentId)!.clear();
 
-    await confirm!();
+      await confirm!();
+      await result;
 
-    expect(state.requests).toEqual([]);
-  });
+      expect(state.requests).toEqual([]);
+    },
+  );
 });
 
 describe("pinned thread operation permissions", () => {

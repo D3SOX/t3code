@@ -192,7 +192,7 @@ vi.mock("./useSettings", () => ({
     select({
       sidebarThreadSortOrder: "createdAt",
       confirmThreadDelete: true,
-      confirmThreadUnpin: true,
+      skipThreadUnpinConfirmation: false,
     }),
 }));
 

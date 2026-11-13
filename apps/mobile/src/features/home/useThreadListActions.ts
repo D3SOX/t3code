@@ -500,6 +500,23 @@ export function useThreadListActions(): {
     offerUndo(thread, "Unpinned", claim, plan);
     return true;
   };
+  const confirmAndUnpinThread = async (thread: EnvironmentThreadShell) => {
+    if (!checkThreadOperationPermission(thread, "Could not unpin thread")) return false;
+    const preferences = appAtomRegistry.get(mobilePreferencesAtom);
+    if (!AsyncResult.isSuccess(preferences) || !preferences.value.skipThreadUnpinConfirmation) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Dialog.confirm({
+          title: `Unpin thread "${thread.title}"?`,
+          message: "This will move the thread out of your pinned section.",
+          confirmText: "Unpin",
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return false;
+    }
+    return unpinThread(liveThread(thread));
+  };
   const setThreadAutoSettle = async (thread: EnvironmentThreadShell, enabled: boolean) => {
     if (!environmentSupportsAutoSettleOptOut(thread.environmentId)) {
       Dialog.alert(
@@ -780,7 +797,7 @@ export function useThreadListActions(): {
     unsnoozeThread: (thread) => unsnoozeThread(liveThread(thread)),
     unsettleThread: (thread) => unsettleThread(liveThread(thread)),
     pinThread: (thread) => pinThread(liveThread(thread)),
-    unpinThread: (thread) => unpinThread(liveThread(thread)),
+    unpinThread: (thread) => confirmAndUnpinThread(liveThread(thread)),
     setThreadAutoSettle: (thread, enabled) => setThreadAutoSettle(liveThread(thread), enabled),
     moveThread,
     renameThread: (thread) => renameThread(liveThread(thread)),
