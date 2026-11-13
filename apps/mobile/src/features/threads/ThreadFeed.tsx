@@ -1073,8 +1073,6 @@ function ThreadMediaVisibility(props: { readonly children: ReactNode }) {
 /** The reply a link sits in; a file it cites may be where the agent worked before writing it. */
 type MarkdownLinkReply = Pick<OrchestrationV2ProjectedTurnItem, "sourceThreadId" | "sourceItemId">;
 
-const VIEWED_IMAGE_GAP = 8;
-
 interface MarkdownLinkHandlers {
   readonly onLinkPress: (href: string, reply?: MarkdownLinkReply) => void;
   readonly fileContextMenu: (href: string) => MarkdownFileContextMenu | undefined;
@@ -1790,19 +1788,6 @@ function renderFeedEntry(
             skills={props.skills}
           />
         </MarkdownImageAvailableWidthContext>
-      </View>
-    );
-  }
-
-  if (entry.type === "viewed-images") {
-    const thumbnailWidth = Math.floor((props.contentWidth - VIEWED_IMAGE_GAP) / 2);
-    return (
-      <View className="flex-row flex-wrap pb-2" style={{ gap: VIEWED_IMAGE_GAP }}>
-        {entry.paths.map((path) => (
-          <View key={path} style={{ width: thumbnailWidth }}>
-            {props.renderViewedImage({ href: path, alt: null, title: null })}
-          </View>
-        ))}
       </View>
     );
   }

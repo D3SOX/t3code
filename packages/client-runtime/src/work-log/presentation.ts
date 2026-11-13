@@ -414,6 +414,12 @@ export function workEntryViewedImagePath(entry: WorkLogPresentationEntry): strin
     : null;
 }
 
+export function workEntriesViewedImagePaths(
+  entries: ReadonlyArray<WorkLogPresentationEntry>,
+): string[] {
+  return [...new Set(entries.flatMap((entry) => workEntryViewedImagePath(entry) ?? []))];
+}
+
 export interface ViewedImageAsset {
   readonly resource: Extract<AssetResource, { readonly _tag: "media-file" }>;
   readonly alt: string;

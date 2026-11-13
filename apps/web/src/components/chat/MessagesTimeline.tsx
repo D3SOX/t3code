@@ -119,7 +119,6 @@ import {
   LiveWorkEntryTimelineRow,
   WorkGroupToggleTimelineRow,
 } from "./TimelineWorkGroupRows";
-import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
 import { UserMessageRow } from "./TimelineUserMessageRow";
 import {
   AssistantTimelineRow,
@@ -1628,7 +1627,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "html-render" ||
                   row.kind === "sent-message" ||
                   row.kind === "mcp-app" ||
-                  row.kind === "viewed-images"
+                  row.kind === "viewed-image"
                 ? "pb-2"
                 : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
@@ -1678,7 +1677,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "html-render" ? <HtmlRenderTimelineRow row={row} /> : null}
       {row.kind === "sent-message" ? <SentMessageTimelineRow row={row} /> : null}
-      {row.kind === "viewed-images" ? <ViewedImagesTimelineRow row={row} /> : null}
       {row.kind === "mcp-app" ? <McpAppTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
