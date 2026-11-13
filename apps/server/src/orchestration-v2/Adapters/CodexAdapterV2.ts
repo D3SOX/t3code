@@ -158,7 +158,6 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const CODEX_PROVIDER = ProviderDriverKind.make("codex");
-const CODEX_CAPACITY_MAX_RETRIES = 5;
 // Codex can announce a retry and never resume. Recovered retries resume model output within ~75s.
 const CODEX_PROVIDER_RETRY_STALL_TIMEOUT = "10 minutes";
 export const CODEX_DRIVER_KIND = CODEX_PROVIDER;
@@ -494,6 +493,7 @@ function codexNativeSubagentDetail(task: OrchestrationV2Subagent): string {
 }
 
 export interface CodexDynamicToolProjection extends McpToolPresentation {
+  readonly viewedImagePath?: string;
   readonly toolName: string;
   readonly title?: string;
   readonly input: unknown;
@@ -543,35 +543,44 @@ export function codexDynamicToolOutput(
   return item.success === false ? { success: false } : undefined;
 }
 
-const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDynamicToolItem")(function* (
-  item: CodexDynamicToolItem,
-): Effect.fn.Return<CodexDynamicToolProjection, never, Digest.Digest> {
-  const output =
-    item.type === "mcpToolCall" ? codexMcpToolOutput(item) : codexDynamicToolOutput(item);
-  const toolName =
-    item.type === "mcpToolCall"
-      ? `${item.server}.${item.tool}`
-      : [trimText(item.namespace), item.tool].filter(Boolean).join(".");
-  const presentation: McpToolPresentation =
-    item.type === "mcpToolCall" ? yield* mcpToolPresentation(item) : {};
-  const title =
-    dynamicToolTitle(toolName, item.arguments, presentation.title) ?? presentation.title;
-  const toolSurface = presentation.toolSurface ?? dynamicToolSurface(toolName, item.arguments);
-  const toolSource =
-    toolSurface === "computer" && presentation.toolSource?.kind !== "computer"
-      ? COMPUTER_USE_TOOL_SOURCE
-      : presentation.toolSource;
-  const projection: CodexDynamicToolProjection = {
-    ...presentation,
-    ...(toolSurface ? { toolSurface } : {}),
-    ...(toolSource ? { toolSource } : {}),
-    toolName,
-    ...(title ? { title } : {}),
-    input: item.arguments,
-    status: codexItemStatus(item.status).turnItem,
-  };
-  return output === undefined ? projection : { ...projection, output };
-});
+export const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDynamicToolItem")(
+  function* (
+    item: CodexDynamicToolItem,
+  ): Effect.fn.Return<CodexDynamicToolProjection, never, Digest.Digest> {
+    const output =
+      item.type === "mcpToolCall" ? codexMcpToolOutput(item) : codexDynamicToolOutput(item);
+    const toolName =
+      item.type === "mcpToolCall"
+        ? `${item.server}.${item.tool}`
+        : [trimText(item.namespace), item.tool].filter(Boolean).join(".");
+    const presentation: McpToolPresentation =
+      item.type === "mcpToolCall" ? yield* mcpToolPresentation(item) : {};
+    const title =
+      dynamicToolTitle(toolName, item.arguments, presentation.title) ?? presentation.title;
+    const imagePath =
+      typeof item.arguments === "object" && item.arguments !== null && "path" in item.arguments
+        ? item.arguments.path
+        : undefined;
+    const viewedImagePath =
+      toolName === "view_image" && typeof imagePath === "string" ? trimText(imagePath) : undefined;
+    const toolSurface = presentation.toolSurface ?? dynamicToolSurface(toolName, item.arguments);
+    const toolSource =
+      toolSurface === "computer" && presentation.toolSource?.kind !== "computer"
+        ? COMPUTER_USE_TOOL_SOURCE
+        : presentation.toolSource;
+    const projection: CodexDynamicToolProjection = {
+      ...presentation,
+      ...(toolSurface ? { toolSurface } : {}),
+      ...(toolSource ? { toolSource } : {}),
+      toolName,
+      ...(title ? { title } : {}),
+      input: item.arguments,
+      status: codexItemStatus(item.status).turnItem,
+      ...(viewedImagePath ? { viewedImagePath } : {}),
+    };
+    return output === undefined ? projection : { ...projection, output };
+  },
+);
 
 function codexNativeItemRef(nativeItemId: string) {
   return {
@@ -1235,7 +1244,7 @@ interface ActiveCodexTurnContext {
   readonly projectionAppThread: OrchestrationV2AppThread;
   readonly projectionThreadId: ThreadId;
   readonly projectionRunId: ProviderAdapter.ProviderAdapterV2TurnInput["runId"] | null;
-  readonly nativeTurnId: string;
+  nativeTurnId: string;
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly providerTurnId: ProviderTurnId;
   readonly providerTurnOrdinal: number;
@@ -1415,6 +1424,7 @@ export interface CodexAppServerClientFactoryShape {
     readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
     readonly settings: CodexSettings;
     readonly environment: NodeJS.ProcessEnv;
+    readonly onTermination?: (error: CodexErrors.CodexAppServerError) => Effect.Effect<void, never>;
   }) => Effect.Effect<
     CodexClient.CodexAppServerClient["Service"],
     ProviderAdapter.ProviderAdapterOpenSessionError,
@@ -1739,14 +1749,12 @@ export const layerAppServerClientFactory: Layer.Layer<
           nativeEventLogger,
           providerSessionId: input.providerSessionId,
         });
-        const clientOptions: CodexClient.CodexAppServerClientOptions =
-          protocolLogger === undefined
+        const clientOptions: CodexClient.CodexAppServerClientOptions = {
+          ...(protocolLogger === undefined
             ? {}
-            : {
-                logIncoming: true,
-                logOutgoing: true,
-                logger: protocolLogger,
-              };
+            : { logIncoming: true, logOutgoing: true, logger: protocolLogger }),
+          ...(input.onTermination === undefined ? {} : { onTermination: input.onTermination }),
+        };
         const context = yield* Layer.build(CodexClient.layerChildProcess(handle, clientOptions));
         return yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
           Effect.provide(context),
@@ -4187,6 +4195,34 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           },
         );
 
+        const emitImageView = Effect.fn("CodexAdapterV2.emitImageView")(function* (
+          context: ActiveCodexTurnContext,
+          item: { readonly id: string; readonly path: string },
+          completed: boolean,
+          nativeTurnId: string,
+        ) {
+          const tool: CodexDynamicToolItem = {
+            type: "dynamicToolCall",
+            id: item.id,
+            tool: "view_image",
+            arguments: { path: item.path },
+            status: completed ? "completed" : "inProgress",
+          };
+          if (completed) yield* clearRunningDynamicTool(nativeTurnId, item.id);
+          else yield* trackRunningDynamicTool(nativeTurnId, tool);
+          const artifacts = yield* buildDynamicToolArtifacts(context, tool);
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver: CODEX_PROVIDER,
+            node: artifacts.node,
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CODEX_PROVIDER,
+            turnItem: artifacts.turnItem,
+          });
+        });
+
         /**
          * The item stays running until then, which keeps the run's event
          * ingestion open past turn/completed; it runs off the notification
@@ -5316,6 +5352,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.type === "imageView") {
+              yield* emitImageView(context, payload.item, false, payload.turnId);
+              return;
+            }
+
             if (payload.item.type === "mcpToolCall" || payload.item.type === "dynamicToolCall") {
               if (!codexItemStatus(payload.item.status).completed) {
                 yield* trackRunningDynamicTool(payload.turnId, payload.item);
@@ -5479,6 +5520,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.type === "imageView") {
+              yield* emitImageView(context, payload.item, true, payload.turnId);
+              if (settled) yield* releaseSettledTurnIfIdle(payload.turnId);
+              return;
+            }
+
             if (payload.item.type === "mcpToolCall" || payload.item.type === "dynamicToolCall") {
               yield* clearRunningDynamicTool(payload.turnId, payload.item.id);
               const appResourceUri = codexMcpAppResourceUri(payload.item);
@@ -5588,27 +5635,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               if (settled) {
                 yield* releaseSettledTurnIfIdle(payload.turnId);
               }
-              return;
-            }
-
-            if (payload.item.type === "imageView") {
-              const artifacts = yield* buildDynamicToolArtifacts(context, {
-                type: "dynamicToolCall",
-                id: payload.item.id,
-                tool: "view_image",
-                arguments: { path: payload.item.path },
-                status: "completed",
-              });
-              yield* emitProviderEvent({
-                type: "node.updated",
-                driver: CODEX_PROVIDER,
-                node: artifacts.node,
-              });
-              yield* emitProviderEvent({
-                type: "turn_item.updated",
-                driver: CODEX_PROVIDER,
-                turnItem: { ...artifacts.turnItem, viewedImagePath: payload.item.path },
-              });
               return;
             }
 
@@ -6973,17 +6999,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             Effect.gen(function* () {
               if ((yield* Ref.get(activeTurns)).get(terminal.nativeTurnId) !== context) return true;
               if (context.capacityRetryPending !== undefined) return true;
-              if (
-                (context.capacityRetryAttempt ?? 0) >= CODEX_CAPACITY_MAX_RETRIES ||
-                (yield* Ref.get(interruptingNativeTurns)).has(terminal.nativeTurnId)
-              )
+              if ((yield* Ref.get(interruptingNativeTurns)).has(terminal.nativeTurnId))
                 return false;
 
               const attempt = (context.capacityRetryAttempt ?? 0) + 1;
               context.capacityRetryAttempt = attempt;
               const pending = yield* Deferred.make<ActiveCodexTurnContext | undefined>();
               context.capacityRetryPending = pending;
-              const retryDelayMs = Math.min(2_000 * 2 ** (attempt - 1), 30_000);
+              const retryDelayMs = 10_000 * 2 ** (attempt - 1);
               const now = yield* DateTime.now;
               const previous = (yield* Ref.get(providerRetries)).get(context.providerTurnId);
               const state: ActiveCodexProviderRetry = {
@@ -7000,7 +7023,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   class: "provider_error",
                   retryable: true,
                 }),
-                retry: { attempt, maxAttempts: CODEX_CAPACITY_MAX_RETRIES, retryDelayMs },
+                retry: { attempt, maxAttempts: null, retryDelayMs },
                 itemOrdinal:
                   previous?.itemOrdinal ??
                   (yield* resolveItemOrdinal(

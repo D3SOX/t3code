@@ -137,6 +137,18 @@ describe("thread outbox", () => {
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
   });
+  it.each(["queue", "next-tool", "auto"] as const)(
+    "retains %s timing after reloading from storage",
+    (dispatchMode) => {
+      const message: QueuedThreadMessage = {
+        ...queuedMessage({ messageId: "queued-switch", createdAt: "2026-09-17T09:00:00.000Z" }),
+        dispatchMode,
+      };
+      expect(
+        decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
+      ).toEqual(message);
+    },
+  );
   it.each(["read", "json", "schema"] as const)(
     "recovers usable messages without permitting cleanup after a record %s failure",
     async (failure) => {
@@ -556,7 +568,7 @@ describe("thread outbox", () => {
     registry.dispose();
   });
 
-  it("publishes an enqueued message before the durable write resolves", async () => {
+  it("accepts another message while an earlier durable write is pending", async () => {
     const registry = AtomRegistry.make();
     let releaseWrite!: () => void;
     const writeBlocked = new Promise<void>((resolve) => {
@@ -580,10 +592,19 @@ describe("thread outbox", () => {
       "environment-1:thread-1": [message],
     });
 
-    releaseWrite();
-    await enqueueing;
+    const nextMessage = queuedMessage({
+      messageId: "message-2",
+      createdAt: "2026-06-08T10:00:02.000Z",
+    });
+    const enqueueingNext = manager.enqueue(nextMessage);
     expect(registry.get(manager.queuedMessagesByThreadKeyAtom)).toEqual({
-      "environment-1:thread-1": [message],
+      "environment-1:thread-1": [message, nextMessage],
+    });
+
+    releaseWrite();
+    await Promise.all([enqueueing, enqueueingNext]);
+    expect(registry.get(manager.queuedMessagesByThreadKeyAtom)).toEqual({
+      "environment-1:thread-1": [message, nextMessage],
     });
     registry.dispose();
   });

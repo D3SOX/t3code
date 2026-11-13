@@ -96,6 +96,7 @@ export function serviceUnitProgramOf(contents: string): string | undefined {
   const task = /<Arguments>--headless "([^"]*)"/.exec(contents)?.[1];
   return task === undefined ? undefined : unquoteWindowsArgument(task);
 }
+export const SERVICE_RESTART_INTENT_FILE = ".restart-intent";
 
 export interface PendingServiceUpdate {
   readonly id: string;

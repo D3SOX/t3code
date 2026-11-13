@@ -45,7 +45,7 @@ import {
   deriveTimelineEntriesFromVisibleTurnItems,
 } from "../../session-logic";
 import type { Root } from "mdast";
-import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
+import { ViewedImageTimelineRow } from "./TimelineRowParts";
 import { remarkThoughtPreview, THOUGHT_PREVIEW_MAX_LENGTH } from "./TimelineWorkEntryRow.logic";
 import { TimelineRowCtx } from "./timelineRowContext";
 import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
@@ -1691,16 +1691,28 @@ describe("MessagesTimeline attachments", () => {
           } as never
         }
       >
-        <ViewedImagesTimelineRow
-          row={{
-            kind: "viewed-images",
-            id: "viewed",
-            createdAt: CREATED_AT,
-            paths: ["/repo/first.png", "/repo/second.png", "/repo/third.png"],
-          }}
-        />
+        <div data-image-gallery>
+          {["first.png", "second.png", "third.png"].map((name) => (
+            <ViewedImageTimelineRow
+              key={name}
+              row={{
+                kind: "viewed-image",
+                id: name,
+                createdAt: CREATED_AT,
+                entry: { id: name, tone: "tool", createdAt: CREATED_AT, label: name },
+                imagePath: `/repo/${name}`,
+                active: false,
+              }}
+            />
+          ))}
+        </div>
       </TimelineRowCtx>,
     );
+    for (const name of ["first.png", "second.png", "third.png"]) {
+      await screen
+        .getByRole("button", { name: new RegExp(`Viewed image.*${name.replace(".", "\\.")}`) })
+        .click();
+    }
     await screen.getByRole("button", { name: "Preview second.png" }).click();
     expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({

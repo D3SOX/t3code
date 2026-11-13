@@ -53,6 +53,14 @@ describe("createThreadNotificationGate", () => {
     observe(working);
     observe(completed(1));
     expect(notify).toHaveBeenCalledTimes(1);
+
+    observe({ ...completed(2), settled: false });
+    observe(completed(2));
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    observe(working);
+    observe(completed(3));
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it("notifies each newer completion immediately", () => {
@@ -159,6 +167,13 @@ describe("createThreadNotificationGate", () => {
       ["thread", "completion"],
       ["thread", "completion"],
     ]);
+    observe(waking);
+    observe(woke(4));
+    observe({ ...woke(4), settled: false });
+    vi.advanceTimersByTime(RELEASED_COMPLETION_GRACE_MS);
+    observe(woke(4));
+    vi.advanceTimersByTime(RELEASED_COMPLETION_GRACE_MS);
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it("notifies a wake's completion once after the grace when no run follows, even across a pause", () => {

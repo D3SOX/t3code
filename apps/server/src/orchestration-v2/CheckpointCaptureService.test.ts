@@ -85,6 +85,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           rootNodeId,
           activeAttemptId: null,
           status: "waiting",
+          completionSilent: true,
           requestedAt: now,
           startedAt: now,
           completedAt: null,
@@ -330,6 +331,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
             return;
           }
           assert.equal(runUpdated.payload.status, "completed");
+          assert.isTrue(runUpdated.payload.completionSilent);
           const capturedEvent = events.find((event) => event.type === "checkpoint.captured");
           assert.equal(
             runUpdated.payload.checkpointId,

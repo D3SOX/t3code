@@ -1,3 +1,4 @@
+import { DEFAULT_PULL_REQUEST_LINK_TARGET } from "@t3tools/contracts";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -18,8 +19,14 @@ const FOLLOW_UP_OPTIONS: ReadonlyArray<{
 }> = [
   {
     behavior: "queue",
-    label: "Queue",
+    label: "After current turn",
     description: "Your message waits and runs after the current turn finishes.",
+  },
+  {
+    behavior: "next-tool",
+    label: "After next tool call",
+    description:
+      "Wait for the next tool to finish, then steer the active turn. If the turn ends first, run next.",
   },
   {
     behavior: "steer",
@@ -58,6 +65,7 @@ export function SettingsFollowUpRouteScreen() {
           />
         ))}
       </SettingsSection>
+      <PullRequestLinkSettings />
       <Text className="px-2 text-sm text-foreground-muted">
         Long-press the send button to use the other option for a single message. With a hardware
         keyboard, hold {Platform.OS === "android" ? "Ctrl" : "Command"} while sending.
@@ -66,4 +74,32 @@ export function SettingsFollowUpRouteScreen() {
   );
 
   return <SettingsScreen title="Chat">{content}</SettingsScreen>;
+}
+
+function PullRequestLinkSettings() {
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const save = useAtomSet(updateMobilePreferencesAtom);
+  const ready = AsyncResult.isSuccess(preferences) && !preferences.waiting;
+  const target = AsyncResult.isSuccess(preferences)
+    ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)
+    : null;
+  return (
+    <SettingsSection title="Open pull requests in">
+      <SettingsChoiceRow
+        label="System browser"
+        description="Open links with your device's default app."
+        selected={target === "system"}
+        disabled={!ready}
+        onPress={() => save({ pullRequestLinkTarget: "system" })}
+      />
+      <SettingsChoiceRow
+        label="T3 Code"
+        description="View pull requests inside T3 Code."
+        selected={target === "app"}
+        disabled={!ready}
+        separated
+        onPress={() => save({ pullRequestLinkTarget: "app" })}
+      />
+    </SettingsSection>
+  );
 }

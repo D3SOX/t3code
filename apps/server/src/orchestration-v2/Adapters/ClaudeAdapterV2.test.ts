@@ -3156,6 +3156,7 @@ describe("ClaudeAdapterV2 native session identity", () => {
 });
 
 const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeWakePrompt = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const providerThreadJson = Schema.fromJsonString(Schema.toCodecJson(OrchestrationV2ProviderThread));
 const encodeProviderThreadJson = Schema.encodeEffect(providerThreadJson);
 const decodeProviderThreadJson = Schema.decodeUnknownEffect(providerThreadJson);
@@ -4113,6 +4114,65 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   describe("Claude settings restrictions", () => {
+    it.effect("allows forwarded tool callbacks in Full access without requesting approval", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-full-access-callback"),
+            text: "Clean scratch logs.",
+            attachments: [],
+          }),
+        );
+        const options = harness.getOpenedOptions()!;
+        assert.equal(options.permissionMode, "bypassPermissions");
+        for (const [toolName, toolInput] of [
+          ["Bash", { command: "rm -f $TMPDIR/*.log; git worktree prune" }],
+          ["Edit", { file_path: "/workspace/file.txt", old_string: "before", new_string: "after" }],
+          ["mcp__example__update", { value: "after" }],
+        ] as const) {
+          const decision = yield* Effect.promise((signal) =>
+            options.canUseTool!(toolName, toolInput, {
+              signal,
+              toolUseID: `full-access-${toolName}`,
+              requestId: `request-full-access-${toolName}`,
+            }),
+          ).pipe(Effect.forkScoped);
+          const first = yield* Effect.raceFirst(
+            Queue.take(harness.runtimeRequestReceipts).pipe(
+              Effect.map((event) => ({ type: "request", event }) as const),
+            ),
+            Fiber.join(decision).pipe(
+              Effect.map((result) => ({ type: "decision", result }) as const),
+            ),
+          );
+          if (first.type === "request") {
+            yield* Fiber.interrupt(decision);
+          }
+          assert.equal(first.type, "decision", `${toolName} requested approval in Full access`);
+          if (first.type !== "decision") return;
+          assert.deepEqual(first.result, {
+            behavior: "allow",
+            updatedInput: toolInput,
+            toolUseID: `full-access-${toolName}`,
+          });
+        }
+        assert.isFalse(harness.events.some((event) => event.type === "runtime_request.updated"));
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    );
+
     it.effect("resolves cached managed policy from the configured home through the real SDK", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -4420,8 +4480,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* start("/unrestricted");
         assert.equal(harness.getOpenedOptions()?.permissionMode, "bypassPermissions");
         assert.equal(harness.getOpenedOptions()?.allowDangerouslySkipPermissions, true);
-        // Forwarded asks (including ask rules and settings fallback) still need a decision
-        // before queued init/status frames arrive.
+        // Full access applies both before and after the CLI confirms bypass mode.
         for (const { phase, frame } of [
           {
             phase: "init",
@@ -4464,18 +4523,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               Effect.map((result) => ({ type: "decision", result }) as const),
             ),
           );
-          assert.equal(
-            forwardedFirst.type,
-            "request",
-            `CLI-forwarded Bash must ask before the queued ${phase} frame reaches the adapter`,
-          );
-          if (forwardedFirst.type !== "request") return;
-          assert.equal(forwardedFirst.event.runtimeRequest.kind, "command");
-          yield* harness.runtime.respondToRuntimeRequest({
-            requestId: forwardedFirst.event.runtimeRequest.id,
-            decision: "decline",
-          });
-          assert.equal((yield* Fiber.join(forwardedDecision))?.behavior, "deny");
+          if (forwardedFirst.type === "request") {
+            yield* harness.runtime.respondToRuntimeRequest({
+              requestId: forwardedFirst.event.runtimeRequest.id,
+              decision: "decline",
+            });
+            yield* Fiber.join(forwardedDecision);
+          }
+          assert.equal(forwardedFirst.type, "decision", `Full access asked before ${phase}`);
+          if (forwardedFirst.type !== "decision") return;
+          assert.equal(forwardedFirst.result?.behavior, "allow");
           yield* harness.offerAndWait(frame);
         }
         const fallbackDecision = yield* Effect.promise(() =>
@@ -11169,6 +11226,112 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             McpProviderSessions.layer,
             NodeServices.layer,
             NodeCrypto.layer,
+          ),
+        ),
+      ),
+  );
+
+  it.effect.each(["buffered", "attached", "no-native-turn", "native"] as const)(
+    "delivers an awaited completion through a roster gap: %s wake",
+    (completion) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("awaited-task-roster-gap"),
+              text: "Watch the post-merge tests in the background.",
+              attachments: [],
+            }),
+          );
+          yield* harness.offerAndWait(wakeTaskStarted);
+          yield* harness.runtime.awaitBackgroundTasks!({
+            providerThread: harness.providerThread,
+            taskIds: [WAKE_TASK_ID],
+            awaited: true,
+          });
+          yield* harness.offerAndWait(turnOneResult);
+          yield* Queue.take(harness.terminalReceipts);
+          yield* Queue.takeAll(harness.providerThreadReceipts);
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "system",
+              subtype: "background_tasks_changed",
+              tasks: [],
+              uuid: "00000000-0000-4000-8000-000000000308",
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+          const { providerThread: latest } = yield* Queue.take(harness.providerThreadReceipts);
+          assert.deepStrictEqual(
+            latest.pendingBackgroundTasks?.map((task) => [task.taskId, task.awaited]),
+            [[WAKE_TASK_ID, true]],
+          );
+          yield* harness.offerAndWait(wakeNotification);
+          assert.lengthOf(harness.continuationRequests, 1);
+          if (completion !== "no-native-turn") yield* harness.offerAndWait(wakeTurnInit);
+          const emptyWake = makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000309",
+            result: "",
+            numTurns: 0,
+            origin: { kind: "task-notification" },
+            terminalReason: null,
+          });
+          if (completion === "buffered") yield* harness.offerAndWait(emptyWake);
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: latest,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("awaited-task-roster-gap-wake"),
+              text: WAKE_SUMMARY,
+              attachments: [],
+              providerTurnOrdinal: 2,
+              messageCreatedBy: "agent",
+              messageCreationSource: "provider",
+              nativeThreadHasTurns: true,
+            }),
+          );
+          if (completion === "attached") yield* harness.offerAndWait(emptyWake);
+          if (completion === "no-native-turn") yield* TestClock.adjust("2 minutes");
+          assert.lengthOf(harness.terminalEvents(), 1);
+          assert.lengthOf(harness.offeredMessages, completion === "native" ? 1 : 2);
+          if (completion !== "native") {
+            const prompt = yield* decodeWakePrompt(harness.offeredMessages[1]?.message.content);
+            assert.deepStrictEqual(prompt, [
+              {
+                task_id: WAKE_TASK_ID,
+                status: "completed",
+                summary: WAKE_SUMMARY,
+                output_file: `/tmp/claude-replay/tasks/${WAKE_TASK_ID}.output`,
+              },
+            ]);
+          }
+          yield* harness.offerAndWait(wakeAssistant);
+          yield* harness.offerAndWait(
+            completion === "native"
+              ? wakeResult
+              : claudeSdkFrame({
+                  ...makeResultFrame({
+                    uuid: "00000000-0000-4000-8000-000000000310",
+                    result: "I checked the test results.",
+                  }),
+                  user_message_uuid: harness.promptUuid(1),
+                }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+          assert.equal(harness.terminalEvents()[1]?.status, "completed");
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              IdAllocator.layer,
+              McpProviderSessions.layer,
+              NodeServices.layer,
+              NodeCrypto.layer,
+            ),
           ),
         ),
       ),

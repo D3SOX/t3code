@@ -47,8 +47,10 @@ apply, including images already in the conversation. A video attachment gives
 the agent a file path; only [Antigravity](./providers-antigravity.md#skills-and-attachments)
 sends supported videos to Gemini models as video.
 
-Uploads begin when you add an attachment. All uploads must finish before the
-message can send. Retry or remove a failed upload. On web and desktop, reloading
+Uploads begin when you add an attachment. You can submit while uploads or an earlier
+send are still in progress; messages wait locally and send in submission order once ready.
+You can keep composing the next message while they wait. Retry or remove a failed upload.
+On web and desktop, keep the client open while messages wait locally; reloading
 before an upload finishes requires you to attach that file again.
 
 You can drag or paste images into the web or desktop composer. HEIC and HEIF
@@ -63,14 +65,14 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 ## Send while the agent is working
 
 On web and desktop, choose **Settings → Chat → Follow-up behavior** to queue
-new messages for a later turn or steer the running turn immediately. The setting
+new messages after the current turn, after the next tool call, or steer immediately. The setting
 applies to this client; already queued messages keep their place. Queued messages
-are saved on the server and can be edited or removed before they send.
-When Enter sends, `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses
-the opposite action: it steers when your default is Queue and queues when your
-default is Steer.
+are saved on the server and can be edited, reordered, or removed above the composer.
+`Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses the alternate timing:
+it queues after the next tool call when your default is Queue, and queues after the
+current turn for the other defaults. Queue after the next tool call is the default.
 If your **Send shortcut** requires `Cmd+Enter` or `Ctrl+Enter`, that shortcut uses
-your default follow-up behavior; add **Shift** to use the opposite action. This
+your default follow-up timing. Add **Shift** to use the alternate timing. This
 applies only to multiline messages when you choose the multiline send option.
 
 Use `Cmd+Shift+Enter` on macOS or `Ctrl+Shift+Enter` on Windows and Linux to send
@@ -247,15 +249,17 @@ cancellation. The transcript stays in your draft until you send the message to t
 
 On web and desktop, the composer shows **Interrupt** while the agent is working and the draft is
 empty. Adding text or attachments replaces it with a send button that shows your
-[Follow-up behavior](#send-while-the-agent-is-working): a queue icon for Queue or a steer arrow for
-Steer. Click it or press your send shortcut to use that action. Hold `Cmd` on macOS or `Ctrl` on
+[Follow-up behavior](#send-while-the-agent-is-working): a clock for queued messages or a steer arrow
+for immediate messages. Click it or press your send shortcut to use that action. Hold `Cmd` on macOS or `Ctrl` on
 Windows and Linux to switch the button to the opposite action, then click, or use the opposite-action
 shortcut described above.
 
-On web and desktop, queued messages appear at the end of the thread as dashed messages that have
-not been sent yet. On mobile they appear above the composer. Each shows its text and any attached
-images. **Send now** sends a message right away, into the running turn if there is one. You can
-also edit or remove it.
+Queued messages appear above the composer. Rows show a thumbnail of any attached image alongside
+the text. Drag a row by its handle to reorder it, use the handle's arrow keys, promote the message
+to a steer, change its timing between after the turn and after the next tool call, or remove it.
+The next-tool timing steers only the first queued message after a completed tool call; it respects
+queue order and falls back to a new turn if the agent finishes first or cannot steer.
+This timing requires an updated D3SOX fork server on the host. Upstream servers support Queue and Steer.
 
 If you stop the agent or the server restarts, queued messages keep their order and are held.
 Press **Resume** in an empty composer to continue. **Resume** also continues a stopped

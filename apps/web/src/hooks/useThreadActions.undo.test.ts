@@ -7,6 +7,7 @@ import { threadEnvironment } from "../state/threads";
 import { toastManager } from "../components/ui/toast";
 import { useThreadUndoNotice } from "./showThreadUndoNotice";
 import { announce } from "../lib/announce";
+import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 
 const commands = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock("../state/session", async (original) => ({
 vi.mock("react", async (original) => ({
   ...(await original<typeof import("react")>()),
   useCallback: (callback: unknown) => callback,
+  useEffect: (effect: () => void) => effect(),
   useMemo: (create: () => unknown) => create(),
   useRef: (value: unknown) => ({ current: value }),
 }));
@@ -65,6 +67,9 @@ const threadShell = vi.hoisted(() => ({
   projectId: "project",
   environmentId: "undo-env",
   session: null,
+  archivedAt: null,
+  settledOverride: "settled" as "settled" | "active",
+  settledAt: "2026-01-01T00:00:00.000Z",
 }));
 // Archived rows have no loaded shell, so deleting one takes the unresolved path.
 const shellLoaded = vi.hoisted(() => ({ current: true }));
@@ -121,6 +126,9 @@ beforeEach(() => {
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
   shellLoaded.current = true;
+  threadShell.settledOverride = "settled";
+  threadShell.settledAt = "2026-01-01T00:00:00.000Z";
+  vi.mocked(refreshArchivedThreadsForEnvironment).mockClear();
 });
 afterEach(() => {
   vi.runAllTimers();
@@ -211,6 +219,54 @@ describe("unpin Undo", () => {
 });
 
 describe("archive Undo", () => {
+  it.each([false, true])(
+    "refreshes once and retains every successful archive for Undo, failure: %s",
+    async (fails) => {
+      const targets = Array.from({ length: 20 }, (_, index) => ({
+        ...target,
+        threadId: ThreadId.make(`batch-${index}`),
+      }));
+      let successCount = 0;
+      commands.archive.mockImplementation(async ({ input }: { input: { threadId: string } }) => {
+        if (fails && input.threadId === "batch-3") {
+          return { _tag: "Failure", cause: Cause.fail(new Error("Archive failed")) };
+        }
+        successCount++;
+        return { _tag: "Success", value: undefined };
+      });
+      const actions = useThreadActions();
+      const outcome = await actions.archiveSettledThreads(targets, {
+        settledBefore: new Map([[target.environmentId, "2026-02-01T00:00:00.000Z"]]),
+      });
+      expect(outcome?._tag === "Failure").toBe(fails);
+      if (fails) expect(successCount).toBeLessThan(targets.length);
+      else expect(successCount).toBe(targets.length);
+      expect(refreshArchivedThreadsForEnvironment).toHaveBeenCalledExactlyOnceWith(
+        target.environmentId,
+      );
+      expect(useThreadUndoNotice.getState().notice).toMatchObject({
+        action: "Archived",
+        count: successCount,
+      });
+      await currentUndo()();
+      expect(commands.unarchive).toHaveBeenCalledTimes(successCount);
+    },
+  );
+
+  it.each(["woke", "settled-later"])(
+    "keeps threads that %s while the bulk action was pending",
+    async (state) => {
+      if (state === "woke") threadShell.settledOverride = "active";
+      else threadShell.settledAt = "2026-03-01T00:00:00.000Z";
+      await useThreadActions().archiveSettledThreads([target], {
+        settledBefore: new Map([[target.environmentId, "2026-02-01T00:00:00.000Z"]]),
+      });
+      expect(commands.archive).not.toHaveBeenCalled();
+      expect(refreshArchivedThreadsForEnvironment).not.toHaveBeenCalled();
+      expect(useThreadUndoNotice.getState().notice).toBeNull();
+    },
+  );
+
   it("unarchives and returns to the thread when archiving left it", async () => {
     const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
     router.state.matches[0]!.params = {
@@ -266,6 +322,7 @@ describe("delete navigation", () => {
     { type: "REPLACE", by: "the app's missing-thread redirect", fallsBack: true },
     { type: "PUSH", by: "the user opening another thread", fallsBack: false },
   ])("falls back: $fallsBack after $by while deleting", async ({ type, fallsBack }) => {
+    router.state.location.href = "/undo-env/thread";
     router.state.matches[0]!.params = {
       environmentId: target.environmentId,
       threadId: target.threadId,
@@ -275,7 +332,7 @@ describe("delete navigation", () => {
       return { _tag: "Success", value: undefined };
     });
     expect((await useThreadActions().deleteThread(target))._tag).toBe("Success");
-    expect(router.navigate).toHaveBeenCalledTimes(fallsBack ? 1 : 0);
+    expect(router.state.location.href).toBe(fallsBack ? "/draft/project" : "/undo-env/thread");
     expect(router.history.listeners.size).toBe(0);
   });
 });

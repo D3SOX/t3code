@@ -2854,6 +2854,120 @@ it.effect.each([
     }),
 );
 
+it.effect.each(
+  [
+    { text: "", withImage: false, silent: true },
+    { text: " \n\t", withImage: false, silent: true },
+    { text: "The task is finished.", withImage: false, silent: false },
+    { text: "", withImage: true, silent: false },
+  ].flatMap((scenario) => [false, true].map((itemNodes) => ({ ...scenario, itemNodes }))),
+)(
+  "marks a final response $text withImage=$withImage itemNodes=$itemNodes silent=$silent",
+  ({ text, withImage, silent, itemNodes }) =>
+    Effect.gen(function* () {
+      const { finalizedRuns, committedEffects } = yield* captureRootRunTermination({
+        key: "empty-final-response",
+        shouldFinalizeRun: () => Effect.succeed(true),
+        events: (ids) => {
+          const now = DateTime.makeUnsafe("2026-10-08T10:00:00.000Z");
+          const message = (
+            id: string,
+            body: string,
+            parentNodeId = ids.rootNodeId,
+          ): ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event> => {
+            const nodeId = itemNodes
+              ? NodeId.make(`node:provider:codex:native-item:${id}`)
+              : parentNodeId;
+            return [
+              ...(itemNodes
+                ? [
+                    {
+                      type: "node.updated" as const,
+                      driver,
+                      node: {
+                        id: nodeId,
+                        threadId: ids.threadId,
+                        runId: ids.runId,
+                        parentNodeId,
+                        rootNodeId: ids.rootNodeId,
+                        kind: "assistant_message" as const,
+                        status: "completed" as const,
+                        countsForRun: false,
+                        providerThreadId: ids.providerThreadId,
+                        providerTurnId: ids.rootProviderTurnId,
+                        nativeItemRef: null,
+                        runtimeRequestId: null,
+                        checkpointScopeId: null,
+                        startedAt: now,
+                        completedAt: now,
+                      },
+                    },
+                  ]
+                : []),
+              {
+                type: "message.updated",
+                driver,
+                message: {
+                  id: MessageId.make(id),
+                  threadId: ids.threadId,
+                  runId: ids.runId,
+                  nodeId,
+                  role: "assistant",
+                  text: body,
+                  attachments:
+                    id === "final" && withImage
+                      ? [
+                          {
+                            type: "image",
+                            id: ChatAttachmentId.make("image-1"),
+                            name: "image.png",
+                            mimeType: "image/png",
+                            sizeBytes: 100,
+                          },
+                        ]
+                      : [],
+                  streaming: false,
+                  createdBy: "agent",
+                  creationSource: "provider",
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              },
+            ];
+          };
+          return Stream.fromIterable([
+            ...message("progress", "I’ll check the worker."),
+            backgroundTurnItemEvent(ids, "command_execution", "completed", 1),
+            ...message("final", text),
+            ...message("child", text.trim() ? "" : "Child finished.", ids.subagentNodeId),
+            rootTerminalEvent(ids, "completed"),
+          ]);
+        },
+      });
+      assert.equal(finalizedRuns.at(-1)?.completionSilent, silent);
+      assert.deepEqual(
+        committedEffects.map((effect) => effect.request.type),
+        ["checkpoint.capture"],
+      );
+    }),
+);
+
+it.effect.each(["completed", "interrupted", "cancelled", "failed"] as const)(
+  "refreshes pull requests after the current root run %s",
+  (status) =>
+    Effect.gen(function* () {
+      const { observed } = yield* captureRootRunTermination({
+        key: `pull-request-refresh:${status}`,
+        shouldFinalizeRun: () => Effect.succeed(true),
+        events: (ids) => Stream.make(rootTerminalEvent(ids, status)),
+      });
+      assert.deepEqual(observed, [
+        `run:${status === "completed" ? "waiting" : status}`,
+        "pull-requests-refreshed",
+      ]);
+    }),
+);
+
 it.effect("records a finished run as failed when its ownership check cannot be read", () =>
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
@@ -3466,6 +3580,7 @@ function captureRootRunTermination(input: {
       status: "running",
     });
     const writtenItems = yield* Ref.make<ReadonlyArray<OrchestrationV2TurnItem>>([]);
+    const finalizedRuns = yield* Ref.make<ReadonlyArray<OrchestrationV2Run>>([]);
     const finalEvents = yield* Ref.make<ReadonlyArray<OrchestrationV2DomainEvent>>([]);
     const observed = yield* Ref.make<ReadonlyArray<string>>([]);
     const submittedEffects = yield* Ref.make<ReadonlyArray<PendingOrchestrationEffectV2>>([]);
@@ -3481,6 +3596,7 @@ function captureRootRunTermination(input: {
             yield* captureTurnItem(event.payload);
           }
           if (event.type === "run.updated") {
+            yield* Ref.update(finalizedRuns, (current) => [...current, event.payload]);
             yield* Ref.update(observed, (current) => [...current, `run:${event.payload.status}`]);
           }
         }
@@ -3661,6 +3777,7 @@ function captureRootRunTermination(input: {
     return {
       previewActivityEnded,
       written: yield* Ref.get(writtenItems),
+      finalizedRuns: yield* Ref.get(finalizedRuns),
       finalEvents: yield* Ref.get(finalEvents),
       observed: yield* Ref.get(observed),
       submittedEffects: yield* Ref.get(submittedEffects),

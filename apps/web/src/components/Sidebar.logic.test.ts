@@ -1,3 +1,4 @@
+import { shouldShowSidebarV2Duration } from "./Sidebar.logic";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { isThreadWorking as isSidebarThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
@@ -6,15 +7,20 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import {
-  shouldCreateNewThreadInCurrentProject,
+  archiveSettledThreadEntries,
   deleteSelectedThreadEntries,
-  getFallbackThreadIdAfterDelete,
   hasUnseenCompletion,
+  isSidebarNestedLinkClick,
+  getFallbackThreadIdAfterDelete,
   resolveSidebarRowThreadId,
+  belongsInSidebarWorkingShelf,
+  isSidebarEnvironmentDisconnected,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
   resolveSidebarSweepKeys,
   resolveSidebarThreadStatus,
+  shouldShowCollapsedSidebarThread,
+  resolveSidebarV2TopStatus,
   resolveThreadStatusPill,
   resolveWindowTitleThreadStatus,
   resolveWorkingStartedAt,
@@ -28,6 +34,7 @@ import {
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
   shouldNavigateAfterThreadPark,
+  shouldCreateNewThreadInCurrentProject,
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
@@ -43,7 +50,14 @@ import {
 } from "@t3tools/client-runtime/state/thread-sort";
 import { resolveProjectExpanded } from "../uiStateStore";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -59,6 +73,56 @@ import {
 } from "./sidebar/routeReveal";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("archiveSettledThreadEntries", () => {
+  it("archives the entire section with bounded concurrent requests", async () => {
+    const entries = Array.from({ length: 548 }, (_, index) => `thread-${index}`);
+    const archived: string[] = [];
+    let release!: () => void;
+    let started!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let active = 0;
+    let maxActive = 0;
+    const operation = archiveSettledThreadEntries({
+      entries,
+      archive: async (entry) => {
+        archived.push(entry);
+        active++;
+        maxActive = Math.max(maxActive, active);
+        started();
+        await pending;
+        active--;
+        return AsyncResult.success(undefined);
+      },
+    });
+    await firstStarted;
+    const firstWave = archived.length;
+    release();
+    expect(await operation).toBeNull();
+    expect(firstWave).toBe(8);
+    expect(maxActive).toBe(8);
+    expect(archived).toEqual(entries);
+  });
+  it("drains in-flight requests and leaves later threads intact after a failed archive", async () => {
+    const archived: string[] = [];
+    const failure = AsyncResult.failure(Cause.fail(new Error("Archive failed")));
+    expect(
+      await archiveSettledThreadEntries({
+        entries: Array.from({ length: 20 }, (_, index) => `thread-${index}`),
+        archive: async (entry) => {
+          archived.push(entry);
+          return failure;
+        },
+      }),
+    ).toBe(failure);
+    expect(archived).toEqual(Array.from({ length: 8 }, (_, index) => `thread-${index}`));
+  });
+});
 
 describe("deleteSelectedThreadEntries", () => {
   const entries = [{ threadKey: "one" }, { threadKey: "two" }, { threadKey: "three" }] as const;
@@ -193,6 +257,77 @@ function makeLatestRun(overrides?: {
       overrides?.completedAt !== undefined ? overrides.completedAt : "2026-03-09T10:05:00.000Z",
   };
 }
+
+describe("hasUnseenCompletion", () => {
+  it("does not mark a PR-watch update Done", () => {
+    expect(
+      hasUnseenCompletion({
+        hasActionableProposedPlan: false,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        interactionMode: "default",
+        latestRun: { ...makeLatestRun(), completionSilent: true },
+        lastVisitedAt: "2026-03-09T10:04:00.000Z",
+        runtime: null,
+      }),
+    ).toBe(false);
+  });
+  it("keeps Done and Input visible in collapsed sections, while other unselected rows collapse", () => {
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "ready", isUnread: true, isActive: false }),
+    ).toBe(true);
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "input", isUnread: false, isActive: false }),
+    ).toBe(true);
+    expect(
+      shouldShowCollapsedSidebarThread({ status: "ready", isUnread: false, isActive: false }),
+    ).toBe(false);
+    for (const status of ["working", "waiting", "failed", "limited", "approval"] as const) {
+      expect(shouldShowCollapsedSidebarThread({ status, isUnread: true, isActive: false })).toBe(
+        false,
+      );
+      expect(shouldShowCollapsedSidebarThread({ status, isUnread: false, isActive: true })).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe("isSidebarNestedLinkClick", () => {
+  const linkTarget = {
+    closest: (selector: string) => (selector === "a[href]" ? ({} as Element) : null),
+  } as unknown as EventTarget;
+
+  it("ignores row clicks that originated on a nested link", () => {
+    expect(isSidebarNestedLinkClick(linkTarget)).toBe(true);
+  });
+
+  it("walks up from a text node to the enclosing link", () => {
+    expect(isSidebarNestedLinkClick({ parentElement: linkTarget } as unknown as EventTarget)).toBe(
+      true,
+    );
+  });
+
+  it("leaves ordinary row clicks alone", () => {
+    expect(isSidebarNestedLinkClick({ closest: () => null } as unknown as EventTarget)).toBe(false);
+    expect(isSidebarNestedLinkClick(null)).toBe(false);
+  });
+});
+
+describe("shouldCreateNewThreadInCurrentProject", () => {
+  it("opens the picker on shift+click in a multi-project setup", () => {
+    expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(false);
+  });
+
+  it("creates directly on a plain click in a multi-project setup", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 2, 2)).toBe(true);
+  });
+
+  it("creates directly on any click with a single project", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 1, 1)).toBe(true);
+    expect(shouldCreateNewThreadInCurrentProject(true, 1, 1)).toBe(true);
+  });
+});
 
 describe("orderItemsByPreferredIds", () => {
   it("resolves legacy preference aliases without materializing project state", () => {
@@ -944,14 +1079,49 @@ describe("navigation after parking a thread", () => {
   );
 });
 
+describe("async questions during active work", () => {
+  it("shows Input in Active until the question is answered, then returns to Working", () => {
+    const source = {
+      ...makeThreadFixture().source,
+      latestRunId: RunId.make("run-async-question"),
+      activeRunId: RunId.make("run-async-question"),
+      status: "running" as const,
+      pendingRuntimeRequest: {
+        id: RuntimeRequestId.make("async-question"),
+        kind: "user_input" as const,
+        blocking: false,
+        createdAt: DateTime.makeUnsafe("2026-10-20T19:32:22.337Z"),
+      },
+    };
+    const thread = presentThreadShell(localEnvironmentId, source);
+    const status = resolveSidebarThreadStatus(thread);
+    expect(thread.runtime?.status).toBe("running");
+    expect(isSidebarThreadWorking(thread)).toBe(false);
+    expect(status).toBe("input");
+    expect(resolveSidebarV2TopStatus({ status, isUnread: false, isWoke: false })).toBe("input");
+    expect(shouldShowCollapsedSidebarThread({ status, isUnread: false, isActive: false })).toBe(
+      true,
+    );
+    expect(resolveThreadStatusPill({ thread })?.label).toBe("Awaiting Input");
+
+    const answered = presentThreadShell(localEnvironmentId, {
+      ...source,
+      pendingRuntimeRequest: null,
+    });
+    expect(isSidebarThreadWorking(answered)).toBe(true);
+    expect(resolveSidebarThreadStatus(answered)).toBe("working");
+  });
+});
+
 describe("unseen completion with background work", () => {
   it.each([
     {
       roster: "dev server",
       task: { kind: "command" },
-      status: "ready",
-      receded: false,
-      pill: "Completed",
+      status: "background",
+      topStatus: "background",
+      receded: true,
+      pill: "Background",
     },
     {
       roster: "dev server watchdog",
@@ -992,6 +1162,14 @@ describe("unseen completion with background work", () => {
     ).toBe(expected.receded);
     expect(isSidebarThreadWorking(thread)).toBe(expected.receded);
     expect(resolveThreadStatusPill({ thread })).toMatchObject({ label: expected.pill });
+    if (expected.status === "background") {
+      expect(resolveThreadStatusPill({ thread })?.pulse).toBe(false);
+      expect(shouldShowSidebarV2Duration(status)).toBe(true);
+      expect(thread.runtime?.status).toBe("completed");
+      expect(resolveSidebarThreadStatus({ ...thread, pendingBackgroundTasks: [] })).toBe("ready");
+      expect(isSidebarThreadWorking({ ...thread, pendingBackgroundTasks: [] })).toBe(false);
+      expect(resolveSidebarThreadStatus({ ...thread, hasPendingApprovals: true })).toBe("approval");
+    }
   });
 });
 
@@ -1046,6 +1224,37 @@ describe("Working shelf (beta)", () => {
         hasActionableProposedPlan: true,
       }),
     ).toBe(false);
+  });
+
+  it.each([
+    ["connected", false],
+    ["connecting", false],
+    ["reconnecting", false],
+    ["offline", true],
+    ["error", true],
+    ["unsupported", true],
+    ["available", true],
+  ] as const)("lists threads outside the shelf on a %s environment: %s", (phase, disconnected) => {
+    expect(isSidebarEnvironmentDisconnected(phase)).toBe(disconnected);
+  });
+
+  it("lists a running thread outside the shelf while its environment is disconnected", () => {
+    const thread = { ...idle, runtime, environmentId: localEnvironmentId };
+    const shelve = (disconnected: ReadonlyArray<EnvironmentId>, enabled = true) =>
+      belongsInSidebarWorkingShelf(thread, {
+        enabled,
+        disconnectedEnvironmentIds: new Set(disconnected),
+        isWorking: isSidebarThreadWorking,
+      });
+
+    expect(shelve([])).toBe(true);
+    expect(shelve(isSidebarEnvironmentDisconnected("connected") ? [localEnvironmentId] : [])).toBe(
+      true,
+    );
+    expect(shelve([localEnvironmentId])).toBe(false);
+    expect(shelve([])).toBe(true);
+    expect(shelve([EnvironmentId.make("environment-other")])).toBe(true);
+    expect(shelve([], false)).toBe(false);
   });
 
   describe("sortInboxThreadsByReturn", () => {
@@ -1149,7 +1358,6 @@ describe("Working shelf (beta)", () => {
               ["a1", "f"],
               ["a2", "t"],
             ]),
-            activeTimeOrdered: true,
           }),
         ).toEqual({ kind: "none" });
       },
@@ -1430,7 +1638,7 @@ describe("Working shelf (beta)", () => {
       );
     });
 
-    it("only changes lifecycle when the inbox is time-ordered", () => {
+    it("arranges Active threads when the Working shelf is enabled", () => {
       const base = {
         pinnedOrder: ["p1"],
         pinnedKeysById: new Map([["p1", "m"]]),
@@ -1439,7 +1647,6 @@ describe("Working shelf (beta)", () => {
           ["a1", "f"],
           ["a2", "t"],
         ]),
-        activeTimeOrdered: true,
       };
       expect(
         planSidebarThreadDrop({
@@ -1448,7 +1655,11 @@ describe("Working shelf (beta)", () => {
           activeSection: "active",
           target: { section: "active", pinnedOrder: ["p1"], activeOrder: ["a2", "a1"] },
         }),
-      ).toEqual({ kind: "none" });
+      ).toMatchObject({
+        kind: "move-active",
+        order: ["a2", "a1"],
+        assignments: [{ id: "a1", orderKey: expect.any(String) }],
+      });
       expect(
         planSidebarThreadDrop({
           ...base,
@@ -1458,8 +1669,8 @@ describe("Working shelf (beta)", () => {
         }),
       ).toEqual({
         kind: "move-active",
-        order: null,
-        assignments: [],
+        order: ["a1", "p1", "a2"],
+        assignments: [{ id: "p1", orderKey: "m" }],
         unpin: true,
         unsettle: false,
         unsnooze: false,
@@ -1661,11 +1872,11 @@ describe("resolveSidebarFolderDot", () => {
 });
 
 describe("shouldCreateNewThreadInCurrentProject", () => {
-  it("opens the picker when several projects are open, or only archived ones exist", () => {
-    expect(shouldCreateNewThreadInCurrentProject(false, 2, 3)).toBe(false);
-    expect(shouldCreateNewThreadInCurrentProject(false, 0, 2)).toBe(false);
+  it("keeps plain clicks in context and opens the picker on shift-click with multiple open projects", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 2, 3)).toBe(true);
+    expect(shouldCreateNewThreadInCurrentProject(false, 0, 2)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(false, 1, 3)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(false, 0, 0)).toBe(true);
-    expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(true);
+    expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(false);
   });
 });

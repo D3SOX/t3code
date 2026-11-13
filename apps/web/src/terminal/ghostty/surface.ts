@@ -1,7 +1,11 @@
 import { resolveEventKeys } from "@t3tools/shared/keybindingMatching";
 import { isMacPlatform } from "../../lib/utils";
 import { SELECTION_MULTI_CLICK_INTERVAL_MS } from "../../lib/selectionActions";
-import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
+import {
+  collectWrappedTerminalLinkLine,
+  extractTerminalLinks,
+  isTerminalUrl,
+} from "../../terminal-links";
 import {
   GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
@@ -530,8 +534,11 @@ export interface GhosttyTerminalSurfaceOptions {
   readonly validateLink?: (text: string) => Promise<boolean>;
   /** Reports hovered candidates once their rendered text is stable for 250 ms; null cancels. */
   readonly onLinkHover?: (text: string | null) => void;
-  /** The host must prevent the default menu; native Paste cannot reach a canvas terminal. */
-  readonly onContextMenu?: (event: MouseEvent) => void;
+  /**
+   * The host owns the menu, so it also owns preventing the browser default —
+   * whose Paste entry can never reach a canvas terminal.
+   */
+  readonly onContextMenu?: (event: MouseEvent, link: string | null) => void;
 }
 
 export class GhosttyTerminalSurface {
@@ -1692,7 +1699,11 @@ export class GhosttyTerminalSurface {
         this.canvas.releasePointerCapture(event.pointerId);
       }
       if (event.type !== "pointercancel") {
-        if (link && isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY, true))) {
+        if (
+          link &&
+          (isTerminalUrl(link.text) || !event.shiftKey) &&
+          isSameTerminalLink(link, this.linkAt(event.clientX, event.clientY, true))
+        ) {
           this.activateLink(link, event, validation);
         }
       }
@@ -1777,7 +1788,7 @@ export class GhosttyTerminalSurface {
       event.preventDefault();
       return;
     }
-    this.options.onContextMenu?.(event);
+    this.options.onContextMenu?.(event, this.linkAt(event.clientX, event.clientY)?.text ?? null);
   };
 
   private readonly onScrollbarPointerDown = (event: PointerEvent) => {

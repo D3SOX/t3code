@@ -5,7 +5,6 @@ import {
   type ServerProvider,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
-  type ServerProviderResetCredits,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -55,6 +54,7 @@ import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/dr
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import {
   type ClaudeScopedLimitNames,
+  type ClaudeSubscriptionUsage,
   claudeUsageResponseToLimits,
   recordClaudeUsageResponse,
 } from "./claudeUsageLimits.ts";
@@ -221,17 +221,23 @@ const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 // Native CLI startup on Windows can exceed the shared probe deadline.
 const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
 
+/**
+ * Keep workspace-scoped command discovery intact while isolating the periodic
+ * health check from configured MCP servers.
+ */
 const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
   "user",
   "project",
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
 
+/** Build the exact SDK options used by the periodic Claude capability probe. */
 export function buildClaudeCapabilitiesProbeQueryOptions(input: {
   readonly executablePath: string;
   readonly abortController: AbortController;
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string | undefined;
+  /** An administrator's `managed-mcp.json` is installed; see `hasClaudeManagedMcpConfig`. */
   readonly managedMcpConfig: boolean;
 }): ClaudeQueryOptions {
   return {
@@ -266,9 +272,14 @@ function nonEmptyProbeString(value: string): string | undefined {
 
 export type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
+  /**
+   * The organization UUID from the login's `.claude.json`. The driver reads it
+   * in the same cached probe, so it describes the same login as the rest.
+   */
   readonly workspaceId?: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
+  /** Where the CLI found an API key, when it authenticates with one. */
   readonly apiKeySource: string | undefined;
   /** OAuth applies only to firstParty; Bedrock uses external AWS credentials and omits subscription/token fields. */
   readonly apiProvider: string | undefined;
@@ -583,6 +594,7 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   return yield* spawnAndCollect(claudeSettings.binaryPath, command);
 });
 
+/** Read commands from the same cwd Claude uses for a workspace session. */
 export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnapshot")(function* (
   claudeSettings: ClaudeSettings,
   machineSnapshot: ServerProvider,
@@ -620,7 +632,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   modelCatalog: ClaudeModelCatalog = BUNDLED_CLAUDE_MODEL_CATALOG,
   /** Shared with the adapter so turn events reuse the scoped-bucket names this probe saw. */
   scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>,
-  resolveResetCredits?: (version: string) => Effect.Effect<ServerProviderResetCredits | undefined>,
+  /** Limits and banked resets for a subscription login, using the CLI's user agent. */
+  resolveSubscriptionUsage?: (
+    version: string,
+  ) => Effect.Effect<ClaudeSubscriptionUsage | undefined>,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -808,26 +823,30 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
-    });
-  const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
-  const usageLimits = !capabilities.usage
+    }) ??
+    apiProviderAuthMetadata(capabilities.apiProvider) ??
+    (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined);
+  const subscriptionUsage =
+    resolveSubscriptionUsage &&
+    capabilities.subscriptionType &&
+    capabilities.usage?.rate_limits_available !== false &&
+    parsedVersion
+      ? yield* resolveSubscriptionUsage(parsedVersion)
+      : undefined;
+  const usage = capabilities.usage?.rate_limits
+    ? capabilities.usage
+    : (subscriptionUsage?.response ?? capabilities.usage);
+  const usageCheckedAt =
+    usage === subscriptionUsage?.response ? checkedAt : (capabilities.usageCheckedAt ?? checkedAt);
+  const usageLimits = !usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
       ? yield* recordClaudeUsageResponse(scopedLimitNames, {
-          response: capabilities.usage,
+          response: usage,
           checkedAt: usageCheckedAt,
         })
-      : claudeUsageResponseToLimits({
-          response: capabilities.usage,
-          checkedAt: usageCheckedAt,
-        }).limits;
-  const resetCredits =
-    resolveResetCredits &&
-    capabilities.subscriptionType &&
-    !usageLimits.unavailable &&
-    parsedVersion
-      ? yield* resolveResetCredits(parsedVersion)
-      : undefined;
+      : claudeUsageResponseToLimits({ response: usage, checkedAt: usageCheckedAt }).limits;
+  const resetCredits = subscriptionUsage?.resetCredits;
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,
