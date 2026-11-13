@@ -522,8 +522,8 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
     }),
   );
 
-  it.effect.each(["linux", "darwin"] as const)(
-    "repairs a same-version downloaded service to use the desktop launcher on %s",
+  it.effect.each(["linux", "darwin", "win32"] as const)(
+    "keeps the required service entry point when repairing a desktop install on %s",
     (platform) =>
       Effect.gen(function* () {
         const { service, makeService, fs, runtime, desktopLauncherPath } =
@@ -533,11 +533,17 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         const desktop = yield* makeService(undefined, "1.2.3", undefined, true);
         expect((yield* desktop.status).current).toBe(false);
         const repaired = yield* desktop.install();
-        expect(repaired.program).toEqual([desktopLauncherPath, "serve"]);
-        expect(yield* fs.readFileString(repaired.unitPath)).not.toContain(runtime.entryPath);
-        expect((yield* desktop.status).current).toBe(true);
+        expect(repaired.program).toEqual(
+          platform === "win32"
+            ? [runtime.entryPath, "__service-launcher"]
+            : [desktopLauncherPath, "serve"],
+        );
+        expect((yield* fs.readFileString(repaired.unitPath)).includes(runtime.entryPath)).toBe(
+          platform === "win32",
+        );
+        expect((yield* desktop.status).current).toBe(platform !== "win32");
         yield* desktop.restart;
-        expect((yield* desktop.status).current).toBe(true);
+        expect((yield* desktop.status).current).toBe(platform !== "win32");
       }),
   );
 

@@ -3641,7 +3641,9 @@ layer("GitHubPullRequestApi.layer", (it) => {
   );
 
   const unresolvedCore = {
-    ...coreResponse({ baseRef: { compare: null } }),
+    ...coreResponse({
+      baseRef: { ...coreResponse().data.repository.pullRequest.baseRef, compare: null },
+    }),
     errors: [unresolvedPullRef],
   };
   it.effect.each([

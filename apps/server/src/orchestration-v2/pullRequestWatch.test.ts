@@ -1,14 +1,20 @@
 import {
+  MessageId,
+  ThreadId,
+  type OrchestrationV2ConversationMessage,
   type PullRequestCheck,
   PullRequestComment,
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { assert, describe, it } from "@effect/vitest";
 
 import {
   PULL_REQUEST_WATCH_WAKE_LIMIT,
   evaluatePullRequestWatch as evaluate,
   pullRequestWatchMessage,
+  refreshQueuedPullRequestMessage,
+  combinePullRequestWatchWakes,
 } from "./pullRequestWatch.ts";
 
 // These cases read the head once or at one moment, so the no-checks notice never comes due.
@@ -1024,7 +1030,12 @@ describe("evaluatePullRequestWatch", () => {
     assert.equal(evaluatePullRequestWatch(first.next, again, noRemarks).changes.length, 1);
     const before = removed("before", "2026-10-02T11:00:00Z");
     const baseline = evaluatePullRequestWatch(
-      watch({ headSha: watching.headSha, passed: true, passedChecks: watching.passedChecks }),
+      watch({
+        headSha: watching.headSha,
+        passed: true,
+        passedChecks: watching.passedChecks,
+        allPassedChecks: watching.allPassedChecks,
+      }),
       before,
       noRemarks,
     );
@@ -1249,3 +1260,90 @@ describe("pullRequestWatchMessage", () => {
     });
   });
 });
+
+it.each(["single", "first", "second"] as const)(
+  "strips stale check news but keeps remarks and other PR sections: %s",
+  (position) => {
+    const link = {
+      host: "github.com",
+      repository: "o/r",
+      number: 1,
+      url: "https://github.com/o/r/pull/1",
+    };
+    const mixed = {
+      text: `Update on pull request #1 (${link.url}), which T3 Code is watching for you:\n- Checks failed on aaaaaaa:\n  - lint\n- 1 new comment:\n  - reviewer: Fix this`,
+      outcome: "failed" as const,
+      summary: "#1: checks failed, new comments",
+    };
+    const other = {
+      text: "Update on pull request #2 (https://github.com/o/r/pull/2), which T3 Code is watching for you:\n- Checks failed on ccccccc:\n  - build",
+      outcome: "failed" as const,
+      summary: "#2: checks failed",
+    };
+    const first = {
+      host: link.host,
+      repository: link.repository,
+      number: 1,
+      watchStartedAt: STARTED,
+      headSha: "aaaaaaaaaa",
+      ...(position === "single" ? {} : { section: mixed }),
+    };
+    const second = { ...first, number: 2, headSha: "cccccccccc", section: other };
+    const stamps =
+      position === "second" ? [second, first] : position === "first" ? [first, second] : [first];
+    const sections = position === "second" ? [other, mixed] : [mixed, other];
+    const wake = combinePullRequestWatchWakes(
+      sections.map((section) => ({
+        text: section.text,
+        notification: {
+          source: { kind: "monitor" as const },
+          outcome: section.outcome,
+          summary: section.summary,
+        },
+      })) as [
+        Parameters<typeof combinePullRequestWatchWakes>[0][0],
+        ...Array<Parameters<typeof combinePullRequestWatchWakes>[0][0]>,
+      ],
+    );
+    const message: OrchestrationV2ConversationMessage = {
+      id: MessageId.make("message:pr-watch:mixed"),
+      threadId: ThreadId.make("thread"),
+      runId: null,
+      nodeId: null,
+      role: "user",
+      text: position === "single" ? mixed.text : wake.text,
+      attachments: [],
+      streaming: false,
+      createdAt: DateTime.makeUnsafe(STARTED),
+      updatedAt: DateTime.makeUnsafe(STARTED),
+      createdBy: "agent",
+      creationSource: "server",
+      notification: {
+        source: {
+          kind: "monitor",
+          pullRequest: stamps[0]!,
+          ...(position === "single" ? {} : { otherPullRequests: stamps.slice(1) }),
+        },
+        outcome: "failed",
+        summary: mixed.summary,
+      },
+    };
+    const refreshed = refreshQueuedPullRequestMessage(message, link, "bbbbbbbbbb");
+    assert.isNotNull(refreshed);
+    assert.notInclude(refreshed!.text, "aaaaaaa");
+    assert.include(refreshed!.text, "reviewer: Fix this");
+    const source = refreshed!.notification!.source;
+    assert.equal(
+      source.kind === "monitor"
+        ? [source.pullRequest, ...(source.otherPullRequests ?? [])].find(
+            (stamp) => stamp?.number === 1,
+          )?.headSha
+        : undefined,
+      null,
+    );
+    if (position !== "single") {
+      assert.include(refreshed!.text, "Checks failed on ccccccc");
+      assert.equal(refreshed!.notification?.outcome, "failed");
+    } else assert.equal(refreshed!.notification?.outcome, "updated");
+  },
+);

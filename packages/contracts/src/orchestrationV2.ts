@@ -1291,7 +1291,7 @@ const PullRequestWakeSection = Schema.Struct({
 });
 const MonitorPullRequestStamp = Schema.Struct({
   ...ThreadPullRequestKey.fields,
-  watchStartedAt: IsoDateTime,
+  watchStartedAt: Schema.optional(IsoDateTime),
   /** Null when the wake is not about one head, so a newer push does not outdate it. */
   headSha: Schema.NullOr(TrimmedNonEmptyString),
   watchEnded: Schema.optional(Schema.Boolean),

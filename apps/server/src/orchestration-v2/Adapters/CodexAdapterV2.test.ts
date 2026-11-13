@@ -640,8 +640,15 @@ describe("CodexAdapterV2 process spawning", () => {
       yield* open({ T3CODE_CODEX_LAUNCH_ARGS: " --enable env-feature " });
 
       assert.deepEqual(spawnedArgs, [
-        ["app-server", "--strict-config", "-c", "model_reasoning_summary=detailed"],
-        ["app-server", "--enable", "env-feature"],
+        [
+          "app-server",
+          "-c",
+          "thread_unload_delay_secs=0",
+          "--strict-config",
+          "-c",
+          "model_reasoning_summary=detailed",
+        ],
+        ["app-server", "-c", "thread_unload_delay_secs=0", "--enable", "env-feature"],
       ]);
     }).pipe(Effect.provideService(HostProcess.Platform, "linux")),
   );
@@ -4430,7 +4437,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   approvalPolicy: "never",
                   approvalsReviewer: "user",
                   sandboxPolicy: { type: "dangerFullAccess" },
-                  summary: "detailed",
+                  summary: "auto",
                 },
               },
             },
@@ -8973,7 +8980,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           }),
         );
         yield* Deferred.await(retrying);
-        yield* TestClock.adjust("2 seconds");
+        yield* TestClock.adjust("10 seconds");
         if (parentStatus === "interrupted") assert.isEmpty(harness.terminalEvents());
         else {
           yield* harness.awaitTerminal(1);
@@ -9099,7 +9106,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       const root = harness.events.find((event) => event.type === "provider_turn.updated");
       assert.equal(root?.type, "provider_turn.updated");
       if (root?.type !== "provider_turn.updated") return;
-      yield* TestClock.adjust("2 seconds");
+      yield* TestClock.adjust("10 seconds");
       yield* Deferred.await(starting);
       const stopping = yield* harness.runtime
         .interruptTurn({

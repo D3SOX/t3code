@@ -80,7 +80,6 @@ export function startThreadNotifications(
       notifiedAt: number;
     }
   >();
-  const pendingToasts = new Map<string, ReturnType<typeof toastManager.add>>();
   const activeTag = () => {
     const params = router.state.matches.at(-1)?.params as
       | { environmentId?: EnvironmentId; threadId?: ThreadId }
@@ -97,9 +96,7 @@ export function startThreadNotifications(
     pending.delete(tag);
     unread.delete(tag);
     setNotificationBadge(unread.size);
-    const toast = pendingToasts.get(tag);
-    if (toast) toastManager.close(toast);
-    pendingToasts.delete(tag);
+    closeOpenedThreadToasts();
   };
   const clearBadge = () => {
     unread.clear();
@@ -229,23 +226,15 @@ export function startThreadNotifications(
     }
     if (showToast) {
       const toastKey = threadKey({ environmentId, threadId: thread.id });
-      const previousToastId = pendingToasts.get(threadNotificationTag(environmentId, thread.id));
-      if (previousToastId) toastManager.close(previousToastId);
+      closeToasts((key) => key === toastKey);
       const toastId: ToastId = toastManager.add({
         timeout: 0,
         onRemove: (): void => {
           forgetToast(toastKey, toastId);
-          const tag = threadNotificationTag(environmentId, thread.id);
-          if (pendingToasts.get(tag) === toastId) pendingToasts.delete(tag);
         },
         type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
         title,
         description: thread.title,
-        onClose: () => {
-          if (pendingToasts.get(threadNotificationTag(environmentId, thread.id)) === toastId) {
-            pendingToasts.delete(threadNotificationTag(environmentId, thread.id));
-          }
-        },
         data: {
           hideCopyButton: true,
           leadingIcon:
@@ -275,7 +264,6 @@ export function startThreadNotifications(
           },
         },
       });
-      pendingToasts.set(threadNotificationTag(environmentId, thread.id), toastId);
       openToasts.set(toastKey, [...(openToasts.get(toastKey) ?? []), toastId]);
       return;
     }
@@ -374,8 +362,8 @@ export function startThreadNotifications(
         : requestId !== null
           ? `${status}:${requestId}`
           : `${thread.latestRun?.runId ?? ""}:${status}`;
-      const completed = status === "ready" && thread.latestRun?.status === "completed";
-      const settled = completed && !monitorHoldsWakeCompletion(rawThread);
+      const completed = thread.latestRun?.status === "completed";
+      const settled = status === "ready" && completed && !monitorHoldsWakeCompletion(rawThread);
       const parsedCompletedAt = Date.parse(thread.latestRun?.completedAt ?? "");
       const completedAt = Number.isFinite(parsedCompletedAt) ? parsedCompletedAt : null;
       const state = {
@@ -511,9 +499,7 @@ export function startThreadNotifications(
   };
 
   const clearToasts = () => {
-    for (const toast of pendingToasts.values()) toastManager.close(toast);
-    pendingToasts.clear();
-    openToasts.clear();
+    closeToasts(() => true);
   };
   const onSettings = () => {
     if (!getClientSettings().inAppNotificationsEnabled) clearToasts();
@@ -536,7 +522,6 @@ export function startThreadNotifications(
     registry.subscribe(environmentThreadShells.anyEnvironmentHidingAtom, closeHiddenPending),
     registry.subscribe(environmentThreadShells.threadRefsAtom, closeHiddenPending),
   ];
-  const unsubscribeRoute = router.subscribe("onResolved", closeOpenedThreadToasts);
   onSettings();
 
   return () => {
@@ -547,7 +532,6 @@ export function startThreadNotifications(
     unsubscribeSettings();
     unsubscribeEnvironmentIds();
     for (const unsubscribe of unsubscribeHidden) unsubscribe();
-    unsubscribeRoute();
     for (const entry of watched.values()) entry.unsubscribe();
     watched.clear();
     stopModeListeners();

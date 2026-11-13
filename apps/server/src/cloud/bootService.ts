@@ -842,7 +842,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   // The stable shim follows app updates; an AppImage's asar path lasts only
   // for this invocation and must never be written into a boot service.
   const desktopLauncher =
-    input.preferBundledCli && isDesktopCliInvocation(args, runAsNode)
+    platform !== "win32" && input.preferBundledCli && isDesktopCliInvocation(args, runAsNode)
       ? cliPath.trim() || path.join(input.baseDir, "bin", "t3")
       : undefined;
   const runtimePaths = pinnedRuntimePaths(path, input.baseDir, input.cliVersion, platform);

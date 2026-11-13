@@ -68,6 +68,7 @@ import {
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -1614,6 +1615,14 @@ export function useComposerSend(input: ComposerSendInput) {
         }
       })
       .catch((error: unknown) => {
+        setOptimisticUserMessages((current) => {
+          for (const message of current) {
+            if (message.id === messageIdForSend) optimisticBlobPreviews.release(message);
+          }
+          return current.filter((message) => message.id !== messageIdForSend);
+        });
+        sendInFlightRef.current = false;
+        if (!sendQueuesBehindSetup) resetLocalDispatch();
         if (!draftAccepted) {
           setThreadError(
             threadIdForSend,
@@ -1622,6 +1631,30 @@ export function useComposerSend(input: ComposerSendInput) {
           return;
         }
         const currentDraft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+        if (composerDraftHasUserContent(currentDraft)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Message not sent",
+              description: "Your new draft was kept. Copy the failed message to send it again.",
+              timeout: 0,
+              data: { hideCopyButton: true },
+              actionProps: {
+                children: "Copy message",
+                onClick: () => {
+                  void writeTextToClipboard(messageTextForSend, "failed message").catch(
+                    () => undefined,
+                  );
+                },
+              },
+            }),
+          );
+          setThreadError(
+            threadIdForSend,
+            error instanceof Error ? error.message : "Failed to send message.",
+          );
+          return;
+        }
         const restoredPrompt = [messageTextForSend, currentDraft?.prompt ?? ""]
           .filter((text) => text.length > 0)
           .join("\n\n");
@@ -1656,18 +1689,11 @@ export function useComposerSend(input: ComposerSendInput) {
           ...(currentDraft?.threadContexts ?? []),
         ]);
         if (currentRouteThreadKeyRef.current === routeThreadKey) promptRef.current = restoredPrompt;
-        setOptimisticUserMessages((current) => {
-          for (const message of current) {
-            if (message.id === messageIdForSend) optimisticBlobPreviews.release(message);
-          }
-          return current.filter((message) => message.id !== messageIdForSend);
-        });
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
         );
         setDockedDraftHeroThreadKey((current) => (current === activeThreadKey ? null : current));
-        if (!sendQueuesBehindSetup) resetLocalDispatch();
       })
       .finally(() => {
         if (claimedFreshArm !== undefined) restoreFreshSessionArm(routeThreadKey, claimedFreshArm);

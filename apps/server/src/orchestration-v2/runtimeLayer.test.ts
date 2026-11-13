@@ -3926,10 +3926,13 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     "completed-mixed",
     "conflict",
     "delivery",
-  ])("discards queued check updates from previous PR commits: %s", (mode) =>
+    "delivery-comments",
+  ])("refreshes queued PR updates from previous commits: %s", (mode) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const mixed = mode.endsWith("mixed");
+      const delivery = mode.startsWith("delivery");
+      const savedComments = mode === "delivery-comments";
       const threadId = ThreadId.make(`pr-watch-obsolete-queue-${mode}`);
       yield* seedProject({
         projectId: ProjectId.make(`obsolete-project-${mode}`),
@@ -3981,12 +3984,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           `${header}\n${mode === "conflict" ? "- The branch now conflicts with main.\n" : mode === "legacy-passed" ? "- All 3 required checks passed on aaaaaaa.\n" : mode.startsWith("completed") ? "- All 3 checks finished on aaaaaaa; 1 still need attention:\n  - lint (failure)\n" : "- Checks failed on aaaaaaa:\n  - lint\n"}${mixed ? "- 1 new comment:\n  - reviewer: Fix this\n" : ""}`,
         ],
         ["comments", `${header}\n- 1 new comment:\n  - reviewer: Fix this`],
-        [
-          "other-pr",
-          `Update on pull request #8 (https://github.com/pingdotgg/t3code/pull/8), which T3 Code is watching for you:\n- Checks failed on aaaaaaa:\n  - lint`,
-        ],
       ]) {
-        if (mode === "delivery" && id !== "checks") continue;
+        if (delivery && id !== "checks") continue;
         yield* orchestrator.dispatch({
           type: "thread.pull-request-watch.sync",
           commandId: CommandId.make(`obsolete-wake-${id}-${mode}`),
@@ -3996,6 +3995,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           watch: { ...watch, headSha: "aaaaaaaaaa" },
           wake: {
             messageId: MessageId.make(`message:pr-watch:obsolete-${id}-${mode}`),
+            includesRemarks: mixed || id === "comments",
             text: text!,
             notification: {
               source: {
@@ -4005,7 +4005,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
                   : {
                       pullRequest: {
                         ...key,
-                        number: id === "other-pr" ? 8 : 7,
+                        number: 7,
                         headSha: "aaaaaaaaaa",
                         watchStartedAt: watch.startedAt,
                       },
@@ -4017,7 +4017,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           },
         });
       }
-      if (mode !== "delivery")
+      if (!delivery)
         yield* orchestrator.dispatch({
           type: "message.dispatch",
           createdBy: "user",
@@ -4030,21 +4030,18 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           dispatchMode: { type: "queue_after_active" },
         });
       const before = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
-      assert.equal(
-        before.runs.filter((run) => run.status === "queued").length,
-        mode === "delivery" ? 1 : 4,
-      );
-      if (mode === "delivery") {
+      assert.equal(before.runs.filter((run) => run.status === "queued").length, delivery ? 1 : 3);
+      if (delivery) {
         // Recover a backlog saved before push handling expired queued updates.
         const eventSink = yield* EventSink.EventSinkV2;
         const projection = yield* orchestrator.getThreadProjection(threadId);
         const active = projection.runs.find((run) => run.status !== "queued")!;
         const now = yield* DateTime.now;
         yield* eventSink.write({
-          commandId: CommandId.make("obsolete-recovery"),
+          commandId: CommandId.make(`obsolete-recovery-${mode}`),
           events: [
             {
-              id: EventId.make("obsolete-recovery-head"),
+              id: EventId.make(`obsolete-recovery-head-${mode}`),
               type: "thread.pull-request-synced",
               threadId,
               occurredAt: now,
@@ -4056,8 +4053,32 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
                 })),
               },
             },
+            ...(savedComments
+              ? [
+                  {
+                    id: EventId.make(`obsolete-recovery-legacy-comments-${mode}`),
+                    type: "message.updated" as const,
+                    threadId,
+                    occurredAt: now,
+                    payload: {
+                      ...projection.messages.find(
+                        (message) => message.id === `message:pr-watch:obsolete-checks-${mode}`,
+                      )!,
+                      text: `${header}\n- 1 new comment:\n  - reviewer: Fix this`,
+                      notification: {
+                        source: {
+                          kind: "monitor" as const,
+                          pullRequest: { ...key, headSha: "aaaaaaaaaa" },
+                        },
+                        outcome: "updated" as const,
+                        summary: "#7: new comments",
+                      },
+                    },
+                  },
+                ]
+              : []),
             {
-              id: EventId.make("obsolete-recovery-completed"),
+              id: EventId.make(`obsolete-recovery-completed-${mode}`),
               type: "run.updated",
               threadId,
               runId: active.id,
@@ -4068,7 +4089,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         });
         yield* orchestrator.dispatch({
           type: "queue.resume",
-          commandId: CommandId.make("obsolete-recovery-resume"),
+          commandId: CommandId.make(`obsolete-recovery-resume-${mode}`),
           threadId,
         });
       } else
@@ -4102,8 +4123,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const expired = records.runs.find(
         (run) => run.userMessageId === `message:pr-watch:obsolete-checks-${mode}`,
       )!;
-      assert.equal(expired.status, mixed ? "queued" : "cancelled");
-      if (mixed) {
+      assert.equal(expired.status, savedComments ? "starting" : mixed ? "queued" : "cancelled");
+      if (mixed || savedComments) {
         const retained = records.messages.find((message) => message.id === expired.userMessageId)!;
         assert.notInclude(retained.text, "Checks failed");
         assert.include(retained.text, "reviewer: Fix this");
@@ -4121,9 +4142,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       }
       assert.equal(
         records.runs.filter((run) => run.status === "queued").length,
-        mode === "delivery" ? 0 : mixed ? 5 : 4,
+        delivery ? 0 : mixed ? 4 : 3,
       );
-      if (mode !== "delivery") {
+      if (!delivery) {
         assert.equal(
           records.runs.find((run) => run.userMessageId === `obsolete-user-${mode}`)?.status,
           "queued",
@@ -4134,8 +4155,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           "queued",
         );
       }
-      assert.isFalse(
+      assert.equal(
         records.turnItems.some((item) => item.runId === expired.id && item.type === "notification"),
+        savedComments,
       );
       yield* orchestrator.dispatch({
         type: "thread.pull-request.watch",
@@ -4900,7 +4922,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         e2e = "success";
         yield* TestClock.adjust("10 minutes");
         yield* reactor.sweep;
-        assert.deepEqual(yield* summaries, []);
+        assert.lengthOf(yield* summaries, 1);
         assert.isFalse(yield* checksPending);
 
         // A push clears the answer while a read with news is in flight. That read's answer is the
@@ -4929,7 +4951,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         gate = null;
         yield* Deferred.succeed(release, undefined);
         yield* Fiber.join(inFlight);
-        assert.lengthOf(yield* summaries, 1);
+        assert.lengthOf(yield* summaries, 2);
         assert.isUndefined(yield* checksPending);
 
         // The next sweep reads it again though nothing on the host changed.
@@ -5933,6 +5955,14 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         return;
       }
       if (mode === "CI completion" || mode === "failed CI completion") {
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request-watch.sync",
+          commandId: CommandId.make(`pr-watch-wake-baseline-${mode}`),
+          threadId,
+          ...key,
+          startedAt: initialWatch.startedAt,
+          watch: { ...initialWatch, awaitingBaseline: undefined },
+        });
         const required = [
           "Analyze (actions)",
           "Analyze (javascript-typescript)",
@@ -6310,7 +6340,11 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         watch: finalNotice ? null : recordedWatch,
         wake: {
           messageId: wakeMessageId,
-          text: finalNotice ? "Closed, stopped watching" : "Checks failed",
+          text: finalNotice
+            ? "Closed, stopped watching"
+            : mode === "comments then newer head"
+              ? "- 1 new comment:\n  - reviewer: Fix this"
+              : "Checks failed",
           notification: {
             source: { kind: "monitor" },
             outcome: "updated",
@@ -6493,7 +6527,13 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         after.messages
           .filter((message) => message.id === wakeMessageId)
           .map((message) => message.notification?.summary),
-        [finalNotice ? "#7: closed, stopped watching" : "#7: checks failed"],
+        [
+          finalNotice
+            ? "#7: closed, stopped watching"
+            : mode === "comments then newer head"
+              ? "#7: new comments"
+              : "#7: checks failed",
+        ],
       );
     }),
   );
@@ -12111,21 +12151,21 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
       yield* reactor.sweep;
       yield* TestClock.adjust("10 minutes");
       yield* reactor.sweep;
-      assert.deepEqual(yield* summaries, ["#12: checks passed"]);
+      assert.deepEqual(yield* summaries, []);
 
       const restarted = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
       yield* restarted.sweep;
-      assert.deepEqual(yield* summaries, ["#12: checks passed"]);
+      assert.deepEqual(yield* summaries, []);
 
       yield* watch(false, "stop");
       yield* watch(true, "again");
       yield* restarted.sweep;
-      assert.deepEqual(yield* summaries, ["#12: checks passed"]);
+      assert.deepEqual(yield* summaries, []);
 
       headSha = "bbbbbbbbbb";
       yield* TestClock.adjust("10 minutes");
       yield* restarted.sweep;
-      assert.deepEqual(yield* summaries, ["#12: checks passed", "#12: checks passed"]);
+      assert.deepEqual(yield* summaries, ["#12: checks passed"]);
       yield* watch(false, "end");
     }),
   );

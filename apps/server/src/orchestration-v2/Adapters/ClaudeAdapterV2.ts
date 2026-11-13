@@ -6326,10 +6326,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeThreadId: string,
             tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>,
           ) {
-            const awaited = taskIdSetForNativeThread(
-              yield* Ref.get(awaitedBackgroundTasksByNativeThread),
-              nativeThreadId,
-            );
             yield* Ref.update(pendingBackgroundTasksByNativeThread, (current) => {
               const updated = new Map(current);
               const roster = new Map(
@@ -6341,10 +6337,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     ] as const,
                 ),
               );
-              // Roster removal can precede the notification that delivers an awaited task's result.
-              for (const [taskId, task] of rosterForNativeThread(current, nativeThreadId)) {
-                if (awaited.has(taskId) && !roster.has(taskId)) roster.set(taskId, task);
-              }
               if (roster.size === 0) {
                 updated.delete(nativeThreadId);
               } else {
@@ -6376,7 +6368,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             yield* markWakeEligibleOpaqueBackgroundTasks(nativeThreadId, [task.taskId]);
           });
 
-        const clearPendingBackgroundTask = (nativeThreadId: string, taskId: string) =>
+        const clearPendingBackgroundTask = (
+          nativeThreadId: string,
+          taskId: string,
+          retainAwaited = false,
+        ) =>
           Ref.modify(pendingBackgroundTasksByNativeThread, (current) => {
             const roster = rosterForNativeThread(current, nativeThreadId);
             if (!roster.has(taskId)) {
@@ -6393,11 +6389,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return [true, updated] as const;
           }).pipe(
             Effect.tap(() =>
-              clearTaskIdFromNativeThreadSet(
-                awaitedBackgroundTasksByNativeThread,
-                nativeThreadId,
-                taskId,
-              ),
+              retainAwaited
+                ? Effect.void
+                : clearTaskIdFromNativeThreadSet(
+                    awaitedBackgroundTasksByNativeThread,
+                    nativeThreadId,
+                    taskId,
+                  ),
             ),
           );
 
@@ -9822,14 +9820,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             rosterChanged = true;
           } else if (message.type === "system" && message.subtype === "task_notification") {
             yield* endClaudeMonitorTasks((taskId) => taskId === message.task_id);
-            if (
-              input.activeContext === null &&
-              taskIdSetForNativeThread(
-                yield* Ref.get(awaitedBackgroundTasksByNativeThread),
-                input.nativeThreadId,
-              ).has(message.task_id)
-            )
-              return false;
             yield* Ref.update(toolUseIdsByTaskId, (current) => {
               if (!current.has(message.task_id)) return current;
               const updated = new Map(current);
@@ -9839,6 +9829,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const removed = yield* clearPendingBackgroundTask(
               input.nativeThreadId,
               message.task_id,
+              input.activeContext === null,
             );
             yield* clearTaskIdFromNativeThreadSet(
               wakeEligibleBackgroundTasksByNativeThread,

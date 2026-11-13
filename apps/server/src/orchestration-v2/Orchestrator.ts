@@ -1015,6 +1015,10 @@ function isStalePullRequestWatchStamp(
       candidate.source !== "stack-dismissed" && threadPullRequestKeysEqual(candidate, stamp),
   );
   if (link === undefined) return true;
+  if (stamp.watchStartedAt === undefined) {
+    const headSha = (link.watch ?? link.endedWatch)?.headSha;
+    return stamp.headSha !== null && headSha != null && headSha !== stamp.headSha;
+  }
   if (stamp.watchEnded === true) {
     // The final notice outlives its watch, but a replacement watch supersedes it.
     const latestWatch = link.watch ?? link.endedWatch;
@@ -2290,6 +2294,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (yield* cancelStaleQuestionWakes(projection)) {
         projection = yield* readCommandProjection(threadId);
       }
+      const refreshed = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
+      if (
+        yield* refreshQueuedPullRequestRuns(
+          threadId,
+          threadPullRequestsOf(projection.thread),
+          CommandId.make(`command:system:refresh-pr-wakes:${threadId}`),
+          refreshed,
+        )
+      ) {
+        yield* writeSystemEvents(yield* Ref.get(refreshed));
+        projection = yield* readCommandProjection(threadId);
+      }
       let storedQueuedRun =
         options?.queuedRunId === undefined
           ? nextQueuedRun(projection)
@@ -2330,18 +2346,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       if (storedQueuedRun === undefined) {
         return;
-      }
-      const refreshed = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
-      if (
-        yield* refreshQueuedPullRequestRuns(
-          threadId,
-          threadPullRequestsOf(projection.thread),
-          CommandId.make(`command:system:refresh-pr-wakes:${threadId}`),
-          refreshed,
-        )
-      ) {
-        yield* writeSystemEvents(yield* Ref.get(refreshed));
-        projection = yield* readCommandProjection(threadId);
       }
       const refreshedQueuedRun =
         options?.queuedRunId === undefined
@@ -3788,36 +3792,33 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       for (const run of queued) {
         const message = messages.find((candidate) => candidate.id === run.userMessageId);
         if (message === undefined) continue;
+        let refreshed: OrchestrationV2ConversationMessage | null = message;
         for (const link of watched) {
-          const refreshed = refreshQueuedPullRequestMessage(
-            message,
-            link,
-            link.watch?.headSha ?? null,
-          );
-          if (refreshed === message) continue;
-          changed = true;
-          const command = {
-            type: "queued-run.cancel" as const,
-            commandId,
+          if (refreshed === null) break;
+          refreshed = refreshQueuedPullRequestMessage(refreshed, link, link.watch?.headSha ?? null);
+        }
+        if (refreshed === message) continue;
+        changed = true;
+        const command = {
+          type: "queued-run.cancel" as const,
+          commandId,
+          threadId,
+          runId: run.id,
+        };
+        if (refreshed === null) {
+          yield* dispatchQueuedRunCancel(command, events);
+        } else {
+          const now = yield* DateTime.now;
+          yield* emit(
+            events,
+            command,
+          )({
+            type: "message.updated",
             threadId,
             runId: run.id,
-          };
-          if (refreshed === null) {
-            yield* dispatchQueuedRunCancel(command, events);
-          } else {
-            const now = yield* DateTime.now;
-            yield* emit(
-              events,
-              command,
-            )({
-              type: "message.updated",
-              threadId,
-              runId: run.id,
-              occurredAt: now,
-              payload: { ...refreshed, updatedAt: now },
-            });
-          }
-          break;
+            occurredAt: now,
+            payload: { ...refreshed, updatedAt: now },
+          });
         }
       }
       return changed;
@@ -3883,6 +3884,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: "The pull request watch ended or its thread settled while it was read.",
         });
       }
+      yield* refreshQueuedPullRequestRuns(
+        command.threadId,
+        entries.flatMap(({ entry, link }) =>
+          link && entry.watch !== null ? [{ ...link, watch: entry.watch }] : [],
+        ),
+        command.commandId,
+        events,
+      );
       for (const { entry } of entries) {
         const { includesRemarks: _, ...mutation } = entry;
         yield* dispatchThreadMutation(mutation, events, effects);
@@ -3892,7 +3901,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const stamps = entries.map(({ entry, key }, index) => ({
         ...key,
         watchStartedAt: entry.startedAt,
-        headSha: entry.includesRemarks === true ? null : (entry.watch?.headSha ?? null),
+        headSha: entry.watch?.headSha ?? null,
         ...(entry.watch === null ? { watchEnded: true } : {}),
         ...(entries.length > 1 && sections?.[index] !== undefined
           ? { section: sections[index] }

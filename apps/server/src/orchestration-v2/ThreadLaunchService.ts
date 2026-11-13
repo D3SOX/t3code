@@ -665,12 +665,17 @@ const make = Effect.gen(function* () {
 
       if (
         reused === undefined &&
-        resolveProjectSettings(yield* serverSettings.getSettings, input.projectId).settings
-          .autoGenerateBranchNames &&
         worktreePath !== null &&
         branch !== null &&
         initialMessage !== undefined &&
-        (generatedTemporaryBranch || isTemporaryWorktreeBranch(branch))
+        (generatedTemporaryBranch || isTemporaryWorktreeBranch(branch)) &&
+        (yield* serverSettings.getSettings.pipe(
+          Effect.map(
+            (settings) =>
+              resolveProjectSettings(settings, input.projectId).settings.autoGenerateBranchNames,
+          ),
+          Effect.orElseSucceed(() => false),
+        ))
       ) {
         const oldBranch = branch;
         const worktreeCwd = worktreePath;

@@ -242,7 +242,13 @@ describe("composerSubmissionIntentForKey", () => {
   ] as const)(
     "starts a new thread in the foreground on Mod+Enter with %s",
     (sendShortcut, prompt) => {
-      const draft = { ...input, isDraftThread: true, sendShortcut, prompt };
+      const draft = {
+        ...input,
+        isDraftThread: true,
+        sendShortcut,
+        prompt,
+        startThreadsInBackground: false,
+      };
       expect(composerSubmissionIntentForKey({ ...draft, event: { ...enter, ctrlKey: true } })).toBe(
         "foreground",
       );
@@ -325,9 +331,10 @@ describe("composerSubmissionIntentForKey", () => {
           sendShortcut,
           prompt,
           isDraftThread: true,
+          startThreadsInBackground: false,
           event: modEnter,
         }),
-      ).toBe("foreground");
+      ).toBe(requiresModifier ? "foreground" : "background");
       expect(
         composerSubmissionIntentForKey({ ...running, event: { ...enter, shiftKey: true } }),
       ).toBeNull();

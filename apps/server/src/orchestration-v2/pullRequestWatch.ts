@@ -203,7 +203,7 @@ export function evaluatePullRequestWatch(
     if (
       !checksBaseline &&
       allPassedNow &&
-      allNames.join("\n") !== (allPassedChecks ?? (passed ? passedChecks : [])).join("\n") &&
+      allNames.join("\n") !== (allPassedChecks ?? []).join("\n") &&
       !reportGate
     ) {
       changes.push({ kind: "checks-passed", count: allNames.length, required: false });
@@ -508,6 +508,58 @@ export function refreshQueuedPullRequestMessage(
 ): OrchestrationV2ConversationMessage | null {
   const notification = message.notification;
   if (notification?.source.kind !== "monitor" || headSha === null) return message;
+  if (notification.source.otherPullRequests?.length) {
+    const stamps = [notification.source.pullRequest!, ...notification.source.otherPullRequests];
+    const refreshed = stamps.flatMap((stamp) => {
+      if (stamp.section === undefined) return [stamp];
+      const sectionMessage = {
+        ...message,
+        text: stamp.section.text,
+        notification: {
+          ...stamp.section,
+          source: { kind: "monitor" as const, pullRequest: stamp },
+        },
+      };
+      const section = refreshQueuedPullRequestMessage(sectionMessage, link, headSha);
+      if (section === sectionMessage) return [stamp];
+      if (section === null) return [];
+      return [
+        {
+          ...stamp,
+          headSha: null,
+          section: {
+            text: section.text,
+            outcome: section.notification!.outcome,
+            summary: section.notification!.summary,
+          },
+        },
+      ];
+    });
+    if (
+      refreshed.every((stamp, index) => stamp === stamps[index]) &&
+      refreshed.length === stamps.length
+    )
+      return message;
+    const [first, ...rest] = refreshed;
+    if (first === undefined) return null;
+    const wakeOf = (stamp: typeof first): PullRequestWatchWake => ({
+      text: stamp.section!.text,
+      notification: { ...stamp.section!, source: { kind: "monitor" } },
+    });
+    const wake = combinePullRequestWatchWakes([wakeOf(first), ...rest.map(wakeOf)]);
+    return {
+      ...message,
+      text: wake.text,
+      notification: {
+        ...wake.notification,
+        source: {
+          kind: "monitor",
+          pullRequest: first,
+          ...(rest.length ? { otherPullRequests: rest } : {}),
+        },
+      },
+    };
+  }
   const observed = notification.source.pullRequest;
   if (observed !== undefined) {
     if (
@@ -526,7 +578,7 @@ export function refreshQueuedPullRequestMessage(
     )
       return message;
     const commit = message.text.match(
-      /^- (?:Checks failed|All \d+ (?:required )?checks? passed) on ([\da-f]+)[:.]$/m,
+      /^- (?:Checks failed|All \d+ (?:required )?checks? (?:passed|finished)) on ([\da-f]+)(?:[:.;]|$)/m,
     )?.[1];
     if (commit === undefined || headSha.startsWith(commit)) return message;
   }
@@ -535,13 +587,16 @@ export function refreshQueuedPullRequestMessage(
     /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? (?:passed|finished)[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
     "",
   );
-  if (text === message.text) return message;
-  if (!/^- \d+ new comments?:$/m.test(text)) return null;
+  if (!/^- \d+ new comments?:$/m.test(text)) return text === message.text ? message : null;
   return {
     ...message,
     text,
     notification: {
       ...notification,
+      source: {
+        ...notification.source,
+        ...(observed === undefined ? {} : { pullRequest: { ...observed, headSha: null } }),
+      },
       outcome: "updated",
       summary: `#${link.number}: new comments${notification.summary.includes("stopped watching") ? ", stopped watching" : ""}`,
     },
