@@ -440,6 +440,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sort projects sidebar manual created recent"],
   },
   {
+    id: "sidebar-thread-branches",
+    title: "Show thread branches",
+    to: "/settings/appearance",
+    searchTerms: ["sidebar compact density hide branch names rows"],
+  },
+  {
     id: "snooze-options",
     title: "Snooze options",
     to: "/settings/threads",
@@ -754,10 +760,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["enter return command ctrl multiline prompt new line composer"],
   },
   {
+    id: "start-threads-in-background",
+    title: "Start threads in background",
+    to: "/settings/general",
+    searchTerms: ["new thread enter send stay draft foreground"],
+  },
+  {
+    id: "no-project-machine",
+    title: "Machine for threads without a project",
+    to: "/settings/general",
+    searchTerms: ["default preferred machine environment no project scratch desktop laptop remote"],
+  },
+  {
     id: "follow-up-behavior",
     title: "Follow-up behavior",
     to: "/settings/chat",
-    searchTerms: ["queue steer running turn send default behavior composer"],
+    searchTerms: [
+      "queue follow up steer next tool call after current turn immediately send default composer",
+    ],
   },
   {
     id: "provider-update-checks",
@@ -820,6 +840,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/threads",
     scope: "environment-defaults",
     searchTerms: ["base directory folder browser path home"],
+  },
+  {
+    id: "terminal-close-confirmation",
+    title: "Terminal close confirmation",
+    to: "/settings/general",
+    searchTerms: ["ask before closing terminal shell processes history"],
   },
   {
     id: "ghq-clone-layout",
@@ -891,7 +917,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "mobile-app",
     title: "Mobile app",
     to: "/settings/about",
-    searchTerms: ["phone tablet iPhone iPad iOS Android App Store Google Play QR"],
+    searchTerms: ["phone tablet Android nightly APK Obtainium"],
   },
   {
     id: "welcome-page",
@@ -924,6 +950,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/about",
+  },
+  {
+    id: "legacy-plan-mode",
+    title: "Plan mode (legacy)",
+    to: "/settings/labs",
+    searchTerms: ["build plan composer old"],
+  },
+  {
+    id: "legacy-context-window-indicator",
+    title: "Context window indicator (legacy)",
+    to: "/settings/labs",
+    searchTerms: ["composer meter usage tokens circle old"],
   },
   {
     id: "keybindings",
@@ -1106,8 +1144,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom url"],
   },
   {
-    id: "pull-request-links-open-in-app",
-    title: "Open pull requests in T3 Code",
+    id: "pull-request-link-target",
+    title: "Open pull requests in",
     to: "/settings/diffs",
     searchTerms: [
       `pr commit links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
@@ -1161,6 +1199,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
     environmentOnly: true,
     scope: "environment-defaults",
+  },
+  {
+    id: "automatic-thread-titles",
+    title: "Automatic thread titles",
+    to: "/settings/source-control",
+    searchTerms: ["disable generate first message rename thread"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
+    id: "automatic-branch-names",
+    title: "Automatic branch names",
+    to: "/settings/source-control",
+    searchTerms: ["disable generate rename worktree temporary feature branch"],
+    environmentOnly: true,
+    scope: "project-defaults",
   },
   {
     id: "worktree-branch-naming",

@@ -41,7 +41,7 @@ function countLabel(action: UndoOptions["action"], count: number) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
+export function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
   return `${notice.action} ${countLabel(notice.action, notice.count)}`;
 }
 
@@ -151,8 +151,13 @@ export function releaseThreadUndoShortcut() {
 
 /** Shows one compact confirmation for the currently undoable thread actions. */
 export function showThreadUndoNotice(options: UndoOptions) {
-  if (!options.claim.isCurrent()) return;
-  liveUndos.push(options);
+  showThreadUndoNotices([options]);
+}
+
+export function showThreadUndoNotices(options: readonly UndoOptions[]) {
+  const current = options.filter(({ claim }) => claim.isCurrent());
+  if (current.length === 0) return;
+  liveUndos.push(...current);
   shortcutClaimed = true;
   refreshNotice();
   clearTimeout(expiry);

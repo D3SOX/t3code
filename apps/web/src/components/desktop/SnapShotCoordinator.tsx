@@ -7,7 +7,6 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-
 import {
   type DraftId,
   type PersistedComposerImageAttachment,
@@ -41,7 +40,6 @@ import {
   openQuestionAttachmentDraft,
 } from "../../questionAttachments";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-
 type CaptureTarget = DraftId | ScopedThreadRef;
 type CaptureFailure = "missing-project" | "delivery";
 
@@ -49,7 +47,6 @@ function isSameCaptureTarget(a: CaptureTarget, b: CaptureTarget): boolean {
   if (typeof a === "string" || typeof b === "string") return a === b;
   return a.environmentId === b.environmentId && a.threadId === b.threadId;
 }
-
 export function resolveExistingSnapShotTarget(
   target: CaptureTarget,
   routeThreadRef: ScopedThreadRef | null,
@@ -84,7 +81,6 @@ export function resolveSnapShotAttachmentTarget(
 }
 
 const NEXT_PAINT_FALLBACK_MS = 100;
-
 export async function beginSnapShotAnimationWhenReady(
   id: string,
   target: Promise<CaptureTarget | null>,
@@ -100,7 +96,6 @@ export async function beginSnapShotAnimationWhenReady(
     pendingStarts.delete(id);
   }
 }
-
 export function dismissFailedSnapShot(
   id: string | undefined,
   soundedIds: Set<string>,
@@ -116,9 +111,10 @@ export function dismissFailedSnapShot(
     dismissAllSnapShotAnimations();
   }
 }
-
 function resolveSnapShotTargetOnce(
-  resolutionRef: { current: Promise<CaptureTarget | null> | null },
+  resolutionRef: {
+    current: Promise<CaptureTarget | null> | null;
+  },
   resolveTarget: () => Promise<CaptureTarget | null>,
 ): Promise<CaptureTarget | null> {
   if (resolutionRef.current) return resolutionRef.current;
@@ -128,7 +124,6 @@ function resolveSnapShotTargetOnce(
   resolutionRef.current = resolution;
   return resolution;
 }
-
 export function resolveSnapShotDeliveryTarget(
   targets: Map<string, Promise<CaptureTarget | null>>,
   id: string,
@@ -143,7 +138,6 @@ export function resolveSnapShotDeliveryTarget(
   });
   return target;
 }
-
 async function afterNextPaint(): Promise<void> {
   await new Promise<void>((resolve) => {
     const fallback = window.setTimeout(resolve, NEXT_PAINT_FALLBACK_MS);
@@ -155,7 +149,6 @@ async function afterNextPaint(): Promise<void> {
     });
   });
 }
-
 export async function deliverSnapShot(
   bridge: DesktopBridge,
   item: DesktopPendingSnapShot,
@@ -226,11 +219,11 @@ export async function deliverSnapShot(
   await bridge.acknowledgeSnapShot(capture.id);
   dispatchSnapShotComposerFocus();
 }
-
 export function SnapShotCoordinator() {
   const {
     activeDraftThread,
     activeThread,
+    preferredProjectRef,
     defaultProjectRef,
     defaultProjectFallbackReady,
     handleNewThread,
@@ -291,9 +284,11 @@ export function SnapShotCoordinator() {
     return settled && settled.routeTarget === routeTarget ? settled.target : routeTarget;
   };
   const settleTarget = (routeTarget: CaptureTarget | null, target: CaptureTarget | null) => {
-    settledTargetRef.current = { routeTarget, target };
+    settledTargetRef.current = {
+      routeTarget,
+      target,
+    };
   };
-
   const resolveTarget = async (): Promise<CaptureTarget | null> => {
     const routeTarget = readLastRouteTarget();
     const lastTarget = readSettledTarget(routeTarget);
@@ -308,6 +303,7 @@ export function SnapShotCoordinator() {
     const projectRef = resolveThreadActionProjectRef({
       activeDraftThread,
       activeThread: activeThread ?? undefined,
+      preferredProjectRef,
       defaultProjectRef,
       handleNewThread,
     });
@@ -317,9 +313,7 @@ export function SnapShotCoordinator() {
     settleTarget(routeTarget, created.draftId);
     return created.draftId;
   };
-
   const resolveCaptureTarget = () => resolveSnapShotTargetOnce(targetResolutionRef, resolveTarget);
-
   const playCaptureSound = (id: string) => {
     if (!captureSound || soundedCaptureIdsRef.current.has(id)) return;
     soundedCaptureIdsRef.current.add(id);
@@ -349,7 +343,6 @@ export function SnapShotCoordinator() {
       rerunRequestedRef.current = true;
       return drainingRef.current;
     }
-
     const operation = (async () => {
       do {
         rerunRequestedRef.current = false;
@@ -380,7 +373,6 @@ export function SnapShotCoordinator() {
             );
             continue;
           }
-
           try {
             // Pending captures may have arrived without a requested event; pin before reading.
             resolveSnapShotAttachmentTarget(questionPinsRef.current, item.id, target);
@@ -399,9 +391,7 @@ export function SnapShotCoordinator() {
               stackedThreadToast({
                 type: "error",
                 title: "Snapshot failed",
-                description: `Capture ${item.id}: ${
-                  error instanceof Error ? error.message : "Try the capture again."
-                }`,
+                description: `Capture ${item.id}: ${error instanceof Error ? error.message : "Try the capture again."}`,
               }),
             );
           }
@@ -528,6 +518,5 @@ export function SnapShotCoordinator() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
-
   return null;
 }

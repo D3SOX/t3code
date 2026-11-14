@@ -52,6 +52,7 @@ import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { TriageDraftHero } from "./TriageDraftHero";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { useUiStateStore } from "~/uiStateStore";
 import { resolveProjectDefaultProviderModelSelection } from "../../providerInstances";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 
@@ -187,6 +188,8 @@ export function DraftHeroHeadline({
     }
     pendingScratchRef.current = null;
     const currentDraft = getComposerDraft(draftId);
+    const projectRef = scopeProjectRef(project.environmentId, project.id);
+    useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
     if (!composerDraftHasUserContent(currentDraft)) {
       void openProjectDraft(scopeProjectRef(project.environmentId, project.id));
       return;
@@ -288,6 +291,11 @@ export function DraftHeroHeadline({
             />
           }
         >
+          {activeProjectGroup && !isScratchDraft ? (
+            <span aria-hidden="true" className="inline-flex shrink-0">
+              <ProjectFavicon project={activeProjectGroup} className="size-[0.8em] shrink-0" />
+            </span>
+          ) : null}
           <DraftProjectName
             value={isScratchDraft ? "No project" : (activeProjectTitle ?? "Choose a project")}
             singleLine

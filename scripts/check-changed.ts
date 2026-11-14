@@ -245,8 +245,23 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
 
   const { ref, base } = yield* comparisonBase(root, input.ref);
   // --no-renames lists a rename as its old and new path, as CI does.
-  const changedFiles = lines("diff", "--name-only", "--no-renames", base, "--");
-  const untrackedFiles = lines("ls-files", "--others", "--exclude-standard");
+  const changedFiles = lines(
+    "diff",
+    "--name-only",
+    "--no-renames",
+    base,
+    "--",
+    ".",
+    ":(exclude).repos",
+  );
+  const untrackedFiles = lines(
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "--",
+    ".",
+    ":(exclude).repos",
+  );
   const files = [...new Set([...(yield* changedFiles), ...(yield* untrackedFiles)])].sort();
 
   if (files.length === 0) {
@@ -272,6 +287,8 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
         "--no-textconv",
         base,
         "--",
+        ".",
+        ":(exclude).repos",
       ]),
     );
     const ignored = yield* lines(

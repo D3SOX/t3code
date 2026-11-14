@@ -362,6 +362,17 @@ const CLAUDE_BOOT_TIMEOUT = "5 minutes";
 // Claude can consume a subagent result before the launching turn ends, leaving
 // its notification with no native wake turn to answer the continuation.
 const CLAUDE_WAKE_TURN_START_DEADLINE = "2 minutes";
+const ClaudeWakeNotifications = Schema.fromJsonString(
+  Schema.Array(
+    Schema.Struct({
+      task_id: Schema.String,
+      status: Schema.String,
+      summary: Schema.String,
+      output_file: Schema.String,
+    }),
+  ),
+);
+const encodeClaudeWakeNotifications = Schema.encodeEffect(ClaudeWakeNotifications);
 // Claude Code flushes transcript writes every 100 ms, so a workflow member's
 // reply can land after the progress frame that settles it. Its transcript
 // stays the source of its answer this long after it settles.
@@ -3419,11 +3430,17 @@ function claudeBypassAvailability(
   };
 }
 
-function requiresClaudeApproval(context: ActiveClaudeTurnContext): boolean {
-  // CLI-forwarded requests need a person's decision even under bypass (ask rules,
-  // safety checks, or settings fallback). Do not wait for queued init/status updates.
+function requiresClaudeApproval(
+  context: ActiveClaudeTurnContext,
+  livePermissionMode: PermissionMode,
+): boolean {
+  // A forwarded callback alone does not revoke Full access. Settings fallback or
+  // a CLI mode change can still restrict a query that requested bypass.
   const policy = context.queryPolicy;
-  return policy.installPermissionCallback || policy.permissionMode === "bypassPermissions";
+  return (
+    policy.installPermissionCallback ||
+    (policy.permissionMode === "bypassPermissions" && livePermissionMode !== "bypassPermissions")
+  );
 }
 
 function claudeRuntimeQueryPolicyKey(policy: ClaudeRuntimeQueryPolicy): string {
@@ -4953,6 +4970,10 @@ interface ActiveClaudeTurnContext {
   promptEcho: "pending" | "confirmed";
   promptStarted: boolean;
   nativeWakeStarted: boolean;
+  readonly awaitedWakeNotifications: Map<
+    string,
+    Extract<SDKMessage, { subtype: "task_notification" }>
+  >;
   gatedFramesBeforeEcho: number;
   readonly heldRootFrames: Array<SDKMessage>;
   // Steers Claude has not started or echoed yet, by prompt uuid. Claude holds
@@ -6587,18 +6608,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ) {
             yield* Ref.update(pendingBackgroundTasksByNativeThread, (current) => {
               const updated = new Map(current);
-              if (tasks.length === 0) {
+              const roster = new Map(
+                tasks.map(
+                  (task) =>
+                    [
+                      task.taskId,
+                      { ...current.get(nativeThreadId)?.get(task.taskId), ...task },
+                    ] as const,
+                ),
+              );
+              if (roster.size === 0) {
                 updated.delete(nativeThreadId);
               } else {
-                updated.set(
-                  nativeThreadId,
-                  new Map(
-                    tasks.map((task) => {
-                      const previous = current.get(nativeThreadId)?.get(task.taskId);
-                      return [task.taskId, { ...previous, ...task }] as const;
-                    }),
-                  ),
-                );
+                updated.set(nativeThreadId, roster);
               }
               return updated;
             });
@@ -6609,17 +6631,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 tasks.map((task) => task.taskId),
               );
             }
-            const listed = new Set(tasks.map((task) => task.taskId));
-            yield* Ref.update(awaitedBackgroundTasksByNativeThread, (current) => {
-              const awaited = current.get(nativeThreadId);
-              if (awaited === undefined) return current;
-              const kept = new Set([...awaited].filter((taskId) => listed.has(taskId)));
-              if (kept.size === awaited.size) return current;
-              const updated = new Map(current);
-              if (kept.size === 0) updated.delete(nativeThreadId);
-              else updated.set(nativeThreadId, kept);
-              return updated;
-            });
           });
 
         const upsertPendingBackgroundTask =
@@ -6637,7 +6648,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             yield* markWakeEligibleOpaqueBackgroundTasks(nativeThreadId, [task.taskId]);
           });
 
-        const clearPendingBackgroundTask = (nativeThreadId: string, taskId: string) =>
+        const clearPendingBackgroundTask = (
+          nativeThreadId: string,
+          taskId: string,
+          retainAwaited = false,
+        ) =>
           Ref.modify(pendingBackgroundTasksByNativeThread, (current) => {
             const roster = rosterForNativeThread(current, nativeThreadId);
             if (!roster.has(taskId)) {
@@ -6654,11 +6669,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return [true, updated] as const;
           }).pipe(
             Effect.tap(() =>
-              clearTaskIdFromNativeThreadSet(
-                awaitedBackgroundTasksByNativeThread,
-                nativeThreadId,
-                taskId,
-              ),
+              retainAwaited
+                ? Effect.void
+                : clearTaskIdFromNativeThreadSet(
+                    awaitedBackgroundTasksByNativeThread,
+                    nativeThreadId,
+                    taskId,
+                  ),
             ),
           );
 
@@ -9598,6 +9615,58 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           });
         });
 
+        const promptAwaitedWake = Effect.fn("ClaudeAdapterV2.promptAwaitedWake")(function* (
+          context: ActiveClaudeTurnContext,
+        ) {
+          const live = yield* Ref.get(queryContext);
+          if (
+            live === null ||
+            live.stopping ||
+            (yield* Ref.get(activeTurn)) !== context ||
+            context.promptUuid !== null ||
+            context.awaitedWakeNotifications.size === 0 ||
+            context.assistant.emittedNativeItemIds.size > 0
+          )
+            return false;
+          const uuid = yield* random.uuidV4().pipe(
+            Effect.filterOrFail(isClaudePromptUuid),
+            Effect.mapError(
+              (cause) =>
+                new ClaudeAgentSdkQueryRunnerError({
+                  method: "offer",
+                  cause,
+                }),
+            ),
+          );
+          const detail = yield* encodeClaudeWakeNotifications(
+            [...context.awaitedWakeNotifications.values()].map((message) => ({
+              task_id: message.task_id,
+              status: message.status,
+              summary: message.summary,
+              output_file: message.output_file,
+            })),
+          ).pipe(
+            Effect.mapError(
+              (cause) => new ClaudeAgentSdkQueryRunnerError({ method: "offer", cause }),
+            ),
+          );
+          const prompted: ActiveClaudeTurnContext = {
+            ...context,
+            input: {
+              ...context.input,
+              message: { ...context.input.message, creationSource: "server", text: detail },
+            },
+            promptUuid: uuid,
+            promptEcho: "pending",
+            promptStarted: false,
+          };
+          live.lastTurn = prompted;
+          yield* Ref.set(activeTurn, prompted);
+          yield* startUserTurnForWakeReports(live.nativeThreadId);
+          yield* live.query.offer(makeClaudeUserMessage({ text: detail, uuid }));
+          return true;
+        });
+
         const bufferWakeMessage = Effect.fnUntraced(function* (wakeInput: {
           readonly nativeThreadId: string;
           readonly message: SDKMessage;
@@ -9611,6 +9680,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               wakeInput.nativeThreadId,
               message.task_id,
             ));
+          const isAwaitedTaskNotification =
+            isPendingTaskNotification &&
+            taskIdSetForNativeThread(
+              yield* Ref.get(awaitedBackgroundTasksByNativeThread),
+              wakeInput.nativeThreadId,
+            ).has(message.task_id);
           const bufferedMessages =
             (yield* Ref.get(wakeBuffers)).get(wakeInput.nativeThreadId)?.messages ?? [];
           const isNestedSubagentNotification =
@@ -9793,6 +9868,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             (message.type === "assistant" || message.type === "user") &&
             parentToolUseIdFromSdkMessage(message) === null;
           if (
+            !isAwaitedTaskNotification &&
             !isPendingSubagentNotification &&
             !isResumedSubagentTaskStarted &&
             !isNativeOpaqueWakeFrame &&
@@ -10155,6 +10231,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const removed = yield* clearPendingBackgroundTask(
               input.nativeThreadId,
               message.task_id,
+              input.activeContext === null,
             );
             yield* clearTaskIdFromNativeThreadSet(
               wakeEligibleBackgroundTasksByNativeThread,
@@ -11180,6 +11257,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           if (message.type === "system" && message.subtype === "task_notification") {
+            if (
+              isClaudeProviderContinuationTurn(context.input) &&
+              taskIdSetForNativeThread(
+                yield* Ref.get(awaitedBackgroundTasksByNativeThread),
+                liveQuery.nativeThreadId,
+              ).has(message.task_id)
+            )
+              context.awaitedWakeNotifications.set(message.task_id, message);
             const isRegistered = (yield* Ref.get(sessionSubagentsByTaskId)).has(message.task_id);
             // A task whose start is still held for the next wake drain has no
             // node to finish yet; hold its outcome behind that start, or the
@@ -11516,6 +11601,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
             return;
           }
+
+          if (
+            isClaudeProviderContinuationTurn(context.input) &&
+            isClaudeTaskNotificationOriginResult(message) &&
+            message.subtype === "success" &&
+            !message.is_error &&
+            message.num_turns === 0 &&
+            message.result.length === 0 &&
+            (yield* promptAwaitedWake(context))
+          )
+            return;
 
           if (
             isClaudeTaskNotificationOriginResult(message) &&
@@ -11942,6 +12038,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               toolUseID: callbackOptions.toolUseID,
             } satisfies PermissionResult;
           }
+          const approvalRequired =
+            callbackOptions.matchedAskRule !== undefined ||
+            requiresClaudeApproval(
+              context,
+              (yield* Ref.get(queryContext))?.permissionMode ?? context.queryPolicy.permissionMode,
+            );
 
           const nativeRequestId = callbackOptions.toolUseID;
           const nativeToolInput = claudeNativeToolInputFromRecord(toolInput);
@@ -11969,7 +12071,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           if (
             heldForEcho &&
             toolName !== "ExitPlanMode" &&
-            (toolName === "AskUserQuestion" || requiresClaudeApproval(context))
+            (toolName === "AskUserQuestion" || approvalRequired)
           ) {
             // The SDK blocks prompt echoes on permission answers; release held output except for ExitPlanMode.
             yield* releaseHeldRootFrames(context);
@@ -12086,14 +12188,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             } satisfies PermissionResult;
           }
 
-          if (!requiresClaudeApproval(context)) {
-            return {
-              behavior: "allow",
-              updatedInput: toolInput,
-              toolUseID: callbackOptions.toolUseID,
-            } satisfies PermissionResult;
-          }
-
           const activePermissionMode =
             (yield* Ref.get(queryContext))?.permissionMode ?? context.queryPolicy.permissionMode;
           const safetyReason = NodeUtil.stripVTControlCharacters(
@@ -12111,6 +12205,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return {
               behavior: "deny",
               message: `Claude Code's removal safety check denied this command; the user did not reject it. The command did not run. Do not bypass the check by splitting the removal, putting it in a script, or using another tool or shell. If the warning below supplies a safe rewrite, use it and let the same check evaluate it. Otherwise continue the rest of the task without the removal and tell the user what you needed to delete and why. Warning: ${safetyReason}`,
+              toolUseID: callbackOptions.toolUseID,
+            } satisfies PermissionResult;
+          }
+
+          if (!approvalRequired) {
+            return {
+              behavior: "allow",
+              updatedInput: toolInput,
               toolUseID: callbackOptions.toolUseID,
             } satisfies PermissionResult;
           }
@@ -12835,6 +12937,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             modelCatalog = yield* loadModelCatalog;
             const startedAt = yield* DateTime.now;
             const nativeThreadId = yield* getNativeThreadId(turnInput.providerThread);
+            const awaitedIds = taskIdSetForNativeThread(
+              yield* Ref.get(awaitedBackgroundTasksByNativeThread),
+              nativeThreadId,
+            );
+            const awaitedWakeNotifications = new Map(
+              ((yield* Ref.get(wakeBuffers)).get(nativeThreadId)?.messages ?? []).flatMap(
+                (message) =>
+                  message.type === "system" &&
+                  message.subtype === "task_notification" &&
+                  awaitedIds.has(message.task_id)
+                    ? [[message.task_id, message] as const]
+                    : [],
+              ),
+            );
             const nativeTurnId = `turn:${turnInput.attemptId}`;
             // Use fresh uuids: native sessions can outlive this database, and Claude skips previously recorded prompts.
             const promptUuid = isClaudeProviderContinuationTurn(turnInput)
@@ -13032,6 +13148,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   : "pending",
               promptStarted: false,
               nativeWakeStarted: false,
+              awaitedWakeNotifications,
               gatedFramesBeforeEcho: 0,
               heldRootFrames: [],
               pendingSteers: new Map(),
@@ -13223,7 +13340,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   if (leavesLaterWake) yield* offerBufferedWake(nativeThreadId);
                   return;
                 }
-                if (wakeAbsorbed || (hasOpaqueTaskNotification && !context.nativeWakeStarted)) {
+                if (
+                  wakeAbsorbed ||
+                  (hasOpaqueTaskNotification &&
+                    !context.nativeWakeStarted &&
+                    context.awaitedWakeNotifications.size === 0)
+                ) {
                   const completedAt = yield* DateTime.now;
                   yield* finalizeActiveTurn({ context, status: "completed", completedAt });
                   if (leavesLaterWake) yield* offerBufferedWake(nativeThreadId);
@@ -13247,6 +13369,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                               nativeThreadId,
                             },
                           );
+                          if (yield* promptAwaitedWake(context)) return;
                           const completedAt = yield* DateTime.now;
                           yield* finalizeActiveTurn({ context, status: "completed", completedAt });
                         }),

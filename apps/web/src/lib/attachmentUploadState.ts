@@ -27,6 +27,7 @@ export function attachmentUploadBlockReason(input: {
   readonly imageIds: ReadonlyArray<string>;
   readonly uploadsByImageId: Readonly<Record<string, AttachmentUploadState>>;
   readonly environmentId: EnvironmentId;
+  readonly allowPending?: boolean;
 }): string | null {
   let pending = 0;
 
@@ -39,7 +40,7 @@ export function attachmentUploadBlockReason(input: {
     }
   }
 
-  if (pending > 0) {
+  if (pending > 0 && !input.allowPending) {
     return pending === 1 ? "Attachment still uploading" : "Attachments still uploading";
   }
   return null;

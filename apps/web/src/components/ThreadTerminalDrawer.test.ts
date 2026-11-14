@@ -1,3 +1,4 @@
+import { terminalContextMenuItems } from "./ThreadTerminalDrawer";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   applyTerminalAttachStreamEvent,
@@ -10,14 +11,55 @@ import {
 import {
   shouldHandleTerminalExit,
   synchronizeTerminalOutput,
+  terminalPathOpenTarget,
   synchronizeTerminalSession,
 } from "./ThreadTerminalDrawer";
+
+describe("terminal selection menus", () => {
+  it("labels the copy action for the link under the pointer", () => {
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "https://t3.codes" }).map(
+        ({ id, label }) => [id, label],
+      ),
+    ).toContainEqual(["copy-link", "Copy link"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "/workspace/project" }).map(
+        ({ id, label }) => [id, label],
+      ),
+    ).toContainEqual(["copy-link", "Copy path"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: "https://t3.codes" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual(["add-to-chat", "copy", "copy-link", "paste", "select-all", "scroll-to-bottom"]);
+    expect(
+      terminalContextMenuItems({ hasSelection: false, link: null }).map(({ id }) => id),
+    ).toEqual(["add-to-chat", "copy", "paste", "select-all", "scroll-to-bottom"]);
+  });
+});
 
 describe("terminal selection actions", () => {
   it("handles an exit that lands while the terminal surface is still loading", () => {
     expect(shouldHandleTerminalExit("exited", "running", false, 1)).toBe(true);
     expect(shouldHandleTerminalExit("exited", "exited", false, 1)).toBe(false);
     expect(shouldHandleTerminalExit("closed", "running", true, 1)).toBe(false);
+  });
+});
+
+describe("terminal path links", () => {
+  it.each(["remote-links", "remote-unavailable"] as const)(
+    "keeps paths in T3 Code instead of launching an editor on a %s environment",
+    (mode) => {
+      expect(terminalPathOpenTarget(mode)).toBe("app");
+    },
+  );
+
+  it("preserves the preferred editor for a local environment", () => {
+    expect(terminalPathOpenTarget("local-exec")).toBe("environment-editor");
+  });
+
+  it("stays in T3 Code while the environment location is unresolved", () => {
+    expect(terminalPathOpenTarget("local-exec", false)).toBe("app");
   });
 });
 

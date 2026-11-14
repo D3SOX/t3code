@@ -7642,6 +7642,9 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         DateTime.toEpochMillis(now),
       );
       assert.isNull(shell?.latestRunCompletedAt);
+      assert.equal(shell?.latestRunUserMessageId, run.userMessageId);
+
+      const prWatchMessageId = MessageId.make("message:pr-watch:shell-test");
 
       const requestId = RuntimeRequestId.make("request:projection-shell-question");
       for (const [responseCapability, blocking] of [
@@ -7694,14 +7697,66 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         nodeId: rootNodeId,
         driver,
         occurredAt: now,
-        payload: { ...run, status: "waiting" },
+        payload: { ...run, userMessageId: prWatchMessageId, status: "waiting" },
       });
 
       shell = (yield* projectionStore.getShellSnapshot()).threads.find(
         (thread) => thread.id === threadId,
       );
       assert.equal(shell?.status, "waiting");
+      assert.equal(shell?.latestRunUserMessageId, prWatchMessageId);
+      assert.equal(
+        ProjectionStore.threadShellFromProjection(
+          yield* projectionStore.getThreadProjection(threadId),
+        ).latestRunUserMessageId,
+        prWatchMessageId,
+      );
       assert.isNull(shell?.activeRunId);
+      yield* projectionStore.apply({
+        id: EventId.make("event:projection-shell-question:resolved"),
+        type: "runtime-request.updated",
+        threadId,
+        nodeId: rootNodeId,
+        driver,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId: rootNodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "resolved",
+          responseCapability: {
+            type: "live",
+            providerSessionId: ProviderSessionId.make("session:question"),
+          },
+          createdAt: now,
+          resolvedAt: now,
+        },
+      });
+      for (const completionSilent of [true, false]) {
+        yield* projectionStore.apply({
+          id: EventId.make(`event:shell:completion-silent:${completionSilent}`),
+          type: "run.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: { ...run, status: "completed", completedAt: now, completionSilent },
+        });
+        const projection = yield* projectionStore.getThreadProjection(threadId);
+        const sqlShell = (yield* projectionStore.getThreadShell(threadId))!;
+        const memoryShell = ProjectionStore.threadShellFromProjection(projection);
+        assert.equal(sqlShell.latestRunCompletionSilent, completionSilent);
+        assert.equal(memoryShell.latestRunCompletionSilent, completionSilent);
+        assert.equal(
+          projectThreadAwarenessV2({
+            environmentId: EnvironmentId.make("test"),
+            project: { title: "test" },
+            thread: sqlShell,
+          })?.phase ?? null,
+          completionSilent ? null : "completed",
+        );
+      }
       const later = DateTime.add(now, { hours: 1 });
       for (const status of ["queued", "cancelled"] as const) {
         yield* projectionStore.apply({

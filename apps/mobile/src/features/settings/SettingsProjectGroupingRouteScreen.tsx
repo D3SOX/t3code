@@ -11,6 +11,7 @@ import {
 } from "../../state/project-grouping";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { NewThreadSettingsSection, WorkingSectionSettings } from "./ThreadSettingsSections";
 
@@ -66,6 +67,19 @@ export function SettingsProjectGroupingRouteScreen() {
               onPress={() => savePreferences(mobileProjectGroupingModePatch(option.mode))}
             />
           ))}
+        </SettingsSection>
+        <SettingsSection title="Confirmations">
+          <SettingsSwitchRow
+            icon="pin"
+            label="Confirm thread unpinning"
+            subtitle="Ask before unpinning a thread from the pinned section."
+            value={
+              !AsyncResult.isSuccess(preferencesResult) ||
+              !preferencesResult.value.skipThreadUnpinConfirmation
+            }
+            disabled={!preferencesReady}
+            onValueChange={(value) => savePreferences({ skipThreadUnpinConfirmation: !value })}
+          />
         </SettingsSection>
         <WorkingSectionSettings />
         <NewThreadSettingsSection />

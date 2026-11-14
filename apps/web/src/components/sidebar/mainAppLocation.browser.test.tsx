@@ -1,9 +1,10 @@
 import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
-import type { AnyRouter } from "@tanstack/react-router";
+import { createBrowserHistory, createHashHistory, type AnyRouter } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../test/render";
+import { createAppHistory } from "../../appHistory";
 import {
   assistantCitationFromLocation,
   assistantCitationNavigation,
@@ -52,9 +53,64 @@ async function settled(router: AnyRouter, navigation: Promise<void>) {
 }
 
 describe("main app return location", () => {
+  it.each([
+    ["web", createBrowserHistory],
+    ["desktop", createHashHistory],
+  ] as const)("keeps modals out of native %s history", async (_, createHistory) => {
+    const frame = document.createElement("iframe");
+    using _frame = { [Symbol.dispose]: () => frame.remove() };
+    frame.src = "/favicon-16x16.png";
+    document.body.append(frame);
+    await vi.waitFor(() => {
+      expect(frame.contentDocument?.URL).toBe(frame.src);
+      expect(frame.contentDocument?.readyState).toBe("complete");
+    });
+    const browserWindow = frame.contentWindow!;
+    const browser = createHistory({ window: browserWindow });
+    using _history = { [Symbol.dispose]: () => browser.destroy() };
+    browser.replace("/environment-one/previous-thread");
+    browser.flush();
+    browser.push(THREAD_PATH);
+    browser.flush();
+    browser.push("/environment-one/next-thread");
+    browser.flush();
+    browserWindow.history.back();
+    await vi.waitFor(() => expect(browser.location.href).toBe(THREAD_PATH));
+
+    await using screen = await render(<ReturnControls />, { router: THREAD_PATH });
+    const router = screen.router!;
+    router.update({ history: createAppHistory(browser) });
+    using _tracking = { [Symbol.dispose]: startMainAppLocationTracking(router) };
+    const length = browserWindow.history.length;
+    const href = browserWindow.location.href;
+
+    await settled(router, router.navigate({ href: "/usage" }));
+    await settled(router, router.navigate({ href: "/settings/general" }));
+    await settled(router, router.navigate({ href: "/settings/providers" }));
+    await userEvent.click(screen.getByRole("button", { name: "Close modal" }));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(THREAD_PATH));
+
+    expect(browserWindow.history.length).toBe(length);
+    expect(browserWindow.location.href).toBe(href);
+
+    browserWindow.history.forward();
+    await vi.waitFor(() =>
+      expect(router.state.location.pathname).toBe("/environment-one/next-thread"),
+    );
+    browserWindow.history.back();
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(THREAD_PATH));
+    browserWindow.history.back();
+    await vi.waitFor(() =>
+      expect(router.state.location.pathname).toBe("/environment-one/previous-thread"),
+    );
+    browserWindow.history.forward();
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(THREAD_PATH));
+  });
+
   it("returns to the thread without re-opening the quote source it was opened at", async () => {
     await using screen = await render(<ReturnControls />, { router: THREAD_PATH });
     const router = screen.router!;
+    router.update({ history: createAppHistory(router.history) });
     using _tracking = { [Symbol.dispose]: startMainAppLocationTracking(router) };
 
     const returnLocation = async (from: string, control: string) => {

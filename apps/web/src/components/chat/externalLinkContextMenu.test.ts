@@ -1,8 +1,51 @@
+import { vi } from "vite-plus/test";
+function createHarness(
+  selection:
+    | "open-in-preview"
+    | "open-external"
+    | "copy-link"
+    | "link-to-thread"
+    | "unlink-from-thread"
+    | null,
+) {
+  const showContextMenu = vi.fn().mockResolvedValue(selection);
+  const openInPreview = vi.fn().mockResolvedValue(undefined);
+  const openExternal = vi.fn().mockResolvedValue(undefined);
+  const copyLink = vi.fn().mockResolvedValue(undefined);
+  const updateThreadLink = vi.fn().mockResolvedValue(undefined);
+  const reportFailure = vi.fn();
+
+  return {
+    showContextMenu,
+    openInPreview,
+    openExternal,
+    copyLink,
+    updateThreadLink,
+    reportFailure,
+  };
+}
+import { showExternalLinkContextMenu } from "./externalLinkContextMenu";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 
 describe("external chat link context menu", () => {
+  it("can name the in-app pull request destination explicitly", async () => {
+    const harness = createHarness(null);
+
+    await showExternalLinkContextMenu({
+      href: "https://github.com/pingdotgg/t3code/pull/42",
+      inAppLabel: "Open in T3 Code",
+      position: { x: 4, y: 8 },
+      ...harness,
+    });
+
+    expect(harness.showContextMenu).toHaveBeenCalledWith(
+      expect.arrayContaining([{ id: "open-in-preview", label: "Open in T3 Code" }]),
+      { x: 4, y: 8 },
+    );
+  });
+
   it.each([
     [
       "https://example.com/docs?topic=security#links",

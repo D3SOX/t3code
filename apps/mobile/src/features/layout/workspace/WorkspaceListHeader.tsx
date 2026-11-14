@@ -1,3 +1,5 @@
+import { renderEnvironmentHeaderBackground } from "../../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../../state/environmentIdentification";
 import { useRef } from "react";
 import type { SearchBarCommands } from "react-native-screens";
 
@@ -19,6 +21,7 @@ function SidebarColumnHeader(
     readonly sidebar: NonNullable<WorkspaceListHeaderProps["sidebar"]>;
   },
 ) {
+  const { artworkStage } = useEnvironmentIdentification();
   const { search, sidebar } = props;
   const searchBarRef = useRef<SearchBarCommands>(null);
   useHardwareKeyboardCommand("focusSearch", () => {
@@ -44,7 +47,7 @@ function SidebarColumnHeader(
 
   return (
     <NativeStackScreenOptions
-      optionsVersion={[items, sidebar.width]}
+      optionsVersion={[items, sidebar.width, artworkStage]}
       options={{
         ...getConnectionAwareBrandHeaderOptions({
           headerWidth: sidebar.width,
@@ -52,6 +55,8 @@ function SidebarColumnHeader(
           onOpenEnvironments: props.onOpenEnvironments,
           fallbackTitleStyle: { fontSize: 18, fontWeight: "800" },
         }),
+        headerBackground: artworkStage ? renderEnvironmentHeaderBackground : undefined,
+        headerTintColor: artworkStage ? "white" : undefined,
         headerSearchBarOptions: {
           ref: searchBarRef,
           autoCapitalize: "none",

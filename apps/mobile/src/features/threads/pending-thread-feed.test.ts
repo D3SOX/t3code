@@ -26,6 +26,26 @@ const pending = (id: string): QueuedThreadMessage => ({
 });
 
 describe("pending timeline messages", () => {
+  it.each(["queue", "next-tool"] as const)(
+    "keeps %s sends out of the chat while awaiting the server queue",
+    (dispatchMode) => {
+      const queued = { ...pending("follow-up"), dispatchMode };
+      expect(appendPendingThreadMessages([], [], [queued])).toEqual([]);
+    },
+  );
+
+  it.each([undefined, "auto", "steer", "restart"] as const)(
+    "previews immediate %s sends while awaiting delivery",
+    (dispatchMode) => {
+      const message = {
+        ...pending("immediate"),
+        ...(dispatchMode === undefined ? {} : { dispatchMode }),
+      };
+      expect(appendPendingThreadMessages([], [], [message]).map((entry) => entry.id)).toEqual([
+        message.messageId,
+      ]);
+    },
+  );
   it("keeps unchanged row identities while text streams and updates adjacent grouping", () => {
     const group = createThreadFeedGrouping();
     const [first, second, third] = appendPendingThreadMessages(
@@ -119,7 +139,6 @@ describe("pending timeline messages", () => {
       }
     },
   );
-
   it("marks the synthetic creation prompt pending without duplicating it", () => {
     const queued = {
       ...pending("creation"),

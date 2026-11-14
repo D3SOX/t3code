@@ -98,6 +98,7 @@ const QueueTool = Tool.make("t3_queue", {
     text: Schema.optional(Schema.String.check(Schema.isMaxLength(100000))),
     beforeRunId: Schema.optional(Schema.NullOr(RunId)),
     targetRunId: Schema.optional(RunId),
+    afterNextTool: Schema.optional(Schema.Boolean),
     cursor: Schema.optional(NonNegativeInt),
     limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
   }),

@@ -735,10 +735,16 @@ export const OrchestrationV2Run = Schema.Struct({
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   queueHeld: Schema.optional(Schema.Boolean),
   steerWhenReadyRunId: Schema.optional(RunId),
+  /** An open composer edit pauses all queued work until it is saved or cancelled. */
+  queueEditing: Schema.optional(Schema.Boolean),
+  /** The queue head steers the active run after its next completed tool. */
+  queueAfterNextTool: Schema.optional(Schema.Boolean),
   requestedAt: Schema.DateTimeUtc,
   startedAt: Schema.NullOr(Schema.DateTimeUtc),
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   checkpointId: Schema.NullOr(CheckpointId),
+  /** An empty final response settles the run without Done or completion alerts. */
+  completionSilent: Schema.optional(Schema.Boolean),
   contextHandoffId: Schema.NullOr(ContextHandoffId),
   restartContinuationOfRunId: Schema.optional(RunId),
   manualContinuationOfRunId: Schema.optional(RunId),
@@ -1319,7 +1325,7 @@ const PullRequestWakeSection = Schema.Struct({
 });
 const MonitorPullRequestStamp = Schema.Struct({
   ...ThreadPullRequestKey.fields,
-  watchStartedAt: IsoDateTime,
+  watchStartedAt: Schema.optional(IsoDateTime),
   /** Null when the wake is not about one head, so a newer push does not outdate it. */
   headSha: Schema.NullOr(TrimmedNonEmptyString),
   watchEnded: Schema.optional(Schema.Boolean),
@@ -2211,6 +2217,9 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   latestRunId: Schema.NullOr(RunId),
+  /** Origin message of the latest run, including server-generated PR-watch wakes. */
+  latestRunUserMessageId: Schema.optional(Schema.NullOr(MessageId)),
+  latestRunCompletionSilent: Schema.optional(Schema.Boolean),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3386,7 +3395,10 @@ export const OrchestrationV2Command = Schema.Union([
       }),
       Schema.Struct({ type: Schema.Literal("steer_active"), targetRunId: RunId }),
       Schema.Struct({ type: Schema.Literal("restart_active"), targetRunId: RunId }),
-      Schema.Struct({ type: Schema.Literal("queue_after_active") }),
+      Schema.Struct({
+        type: Schema.Literal("queue_after_active"),
+        afterNextTool: Schema.optional(Schema.Boolean),
+      }),
       Schema.Struct({ type: Schema.Literal("start_immediately") }),
     ]),
   }),
@@ -3442,6 +3454,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     queuedRunId: RunId,
+    afterNextTool: Schema.optional(Schema.Boolean),
     targetRunId: RunId,
   }),
   Schema.Struct({
@@ -3470,6 +3483,8 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
+    /** Present = begin/cancel editing without replacing the message; absent = save. */
+    editing: Schema.optional(Schema.Boolean),
     context: Schema.optional(OrchestrationMessageContext),
     commandId: CommandId,
     threadId: ThreadId,
