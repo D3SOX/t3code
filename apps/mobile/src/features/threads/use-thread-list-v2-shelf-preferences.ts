@@ -32,6 +32,8 @@ export function useThreadListV2ShelfPreferences() {
   const workingShelfEnabled = loaded && preferencesResult.value.workingShelfEnabled !== false;
   const workingShelfExpanded =
     loaded && preferencesResult.value.threadListWorkingShelfExpanded === true;
+  const watchingShelfExpanded =
+    loaded && preferencesResult.value.threadListWatchingShelfExpanded === true;
 
   // Transforms read optimistic state so same-frame presses toggle twice.
   const toggleSnoozedShelf = () => {
@@ -58,6 +60,14 @@ export function useThreadListV2ShelfPreferences() {
       }),
     });
   };
+  const toggleWatchingShelf = () => {
+    if (!loaded) return;
+    savePreferences({
+      transform: (current) => ({
+        threadListWatchingShelfExpanded: current.threadListWatchingShelfExpanded !== true,
+      }),
+    });
+  };
   return {
     loaded,
     pinnedShelfExpanded,
@@ -68,8 +78,10 @@ export function useThreadListV2ShelfPreferences() {
     snoozedShelfExpanded,
     workingShelfEnabled,
     workingShelfExpanded,
+    watchingShelfExpanded,
     toggleSettledShelf,
     toggleSnoozedShelf,
     toggleWorkingShelf,
+    toggleWatchingShelf,
   } as const;
 }

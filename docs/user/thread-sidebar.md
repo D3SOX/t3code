@@ -154,7 +154,7 @@ open.
 
 Threads that are working or waiting on work they will resume from move into a collapsed
 **Working** section below the active list.
-That includes subagents, watched pull requests with checks still running, and background commands or monitors the agent
+That includes subagents and background commands or monitors the agent
 says it is waiting on. A dev server or other process an agent leaves running does not keep a thread
 there. A thread returns to the top of the active list when it finishes, fails, or needs an approval or
 answer. The Working section lists the thread you last sent work to first. Pinned threads stay in
@@ -166,6 +166,11 @@ choice.
 
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.
+
+Threads waiting on watched pull requests have a separate **Watching PRs** section, even after all
+checks finish. Expand it to find those threads without mixing them into Active. The selected thread
+stays visible when the section is collapsed. Each device remembers whether it is expanded.
+Watching PRs stays available when Working is turned off.
 
 ### Group threads by project (beta)
 

@@ -2010,6 +2010,37 @@ describe("Working section beta", () => {
     expect(off.workingCount).toBe(0);
   });
 
+  it("keeps watched PRs in their own shelf with a visible selected row when collapsed", () => {
+    const watched = ["pr-one", "pr-two"].map((id) =>
+      makeThread({
+        id: ThreadId.make(id),
+        title: id,
+        runtime: { ...running, status: "completed" },
+        pendingBackgroundTasks: [
+          { taskId: `pull-request-watch:github.com/acme/app#${id}`, kind: "monitor" },
+        ],
+      }),
+    );
+    const collapsed = build({ threads: watched, selectedThreadKey: `${environmentId}:pr-two` });
+    expect(collapsed.watchingCount).toBe(2);
+    expect(collapsed.workingCount).toBe(0);
+    expect(ids(collapsed)).toEqual(["pr-two"]);
+    const entries = buildThreadListV2ListItems({
+      ...collapsed,
+      pendingTasks: [],
+      watchingShelfExpanded: false,
+    });
+    expect(entries.map((item) => item.type)).toEqual(["v2-watching-shelf", "v2-thread"]);
+    expect(entries[0]).toMatchObject({ count: 2, expanded: false });
+    expect(ids(build({ threads: watched, watchingShelfExpanded: true }))).toEqual([
+      "pr-one",
+      "pr-two",
+    ]);
+    expect(
+      getThreadListV2OrderedSection({ threads: watched, section: "active", now: NOW }),
+    ).toEqual([]);
+  });
+
   it("keeps an inactive row in Working during the shared grace and returns it on expiry", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));

@@ -1323,6 +1323,8 @@ describe("Working shelf (beta)", () => {
       row("a2", "active"),
       marker("working-header"),
       row("w1", "working"),
+      marker("watching-header"),
+      row("pr1", "watching"),
       marker("settled-header"),
       row("s1", "settled"),
     ];
@@ -1335,6 +1337,8 @@ describe("Working shelf (beta)", () => {
         activeOrder: ["a1", "a2", "p1"],
       });
       expect(resolveSidebarDropVerb("active", "working")).toBeNull();
+      expect(resolveSidebarDropTarget(items, "a1", "pr1")).toBeNull();
+      expect(resolveSidebarDropVerb("active", "watching")).toBeNull();
     });
 
     it.each([

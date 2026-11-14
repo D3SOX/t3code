@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   createInboxReturnTracker,
   isThreadWorking,
+  isThreadWatchingPullRequest,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "./threadInbox.ts";
@@ -59,6 +60,73 @@ describe("background commands", () => {
         runtime: { ...waitingForTests.runtime, status: "failed" },
       }),
     ).toBe(false);
+  });
+});
+
+describe("PR watch placement", () => {
+  const running = thread("pr", true);
+  const watching = {
+    ...running,
+    runtime: { ...running.runtime!, status: "completed" as const },
+    pendingBackgroundTasks: [
+      { taskId: "pull-request-watch:github.com/acme/app#1", kind: "monitor" as const },
+    ],
+  };
+
+  it.each([
+    ["finished checks", watching, true],
+    [
+      "pending checks",
+      {
+        ...watching,
+        runtime: { ...watching.runtime, status: "idle" as const },
+        pendingBackgroundTasks: [{ ...watching.pendingBackgroundTasks[0]!, awaited: true }],
+      },
+      true,
+    ],
+    [
+      "child still running",
+      {
+        ...watching,
+        pendingBackgroundTasks: [
+          ...watching.pendingBackgroundTasks,
+          { taskId: "child", kind: "subagent" as const },
+        ],
+      },
+      false,
+    ],
+    ["agent resumed", { ...watching, runtime: running.runtime }, false],
+    ["approval", { ...watching, hasPendingApprovals: true }, false],
+    ["question", { ...watching, hasPendingUserInput: true }, false],
+    ["child question", { ...watching, pendingSubagentRequest: "user_input" as const }, false],
+    ["failed", { ...watching, runtime: { ...watching.runtime, status: "failed" as const } }, false],
+    ["watch stopped", { ...watching, pendingBackgroundTasks: [] }, false],
+    [
+      "other monitor",
+      {
+        ...watching,
+        pendingBackgroundTasks: [{ taskId: "monitor:build", kind: "monitor" as const }],
+      },
+      false,
+    ],
+    [
+      "background command",
+      {
+        ...watching,
+        pendingBackgroundTasks: [
+          ...watching.pendingBackgroundTasks,
+          { taskId: "tests", kind: "command" as const },
+        ],
+      },
+      false,
+    ],
+    [
+      "plan prompt",
+      { ...watching, interactionMode: "plan" as const, hasActionableProposedPlan: true },
+      false,
+    ],
+  ] as const)("classifies %s", (_label, value, expected) => {
+    expect(isThreadWatchingPullRequest(value)).toBe(expected);
   });
 });
 

@@ -1,4 +1,8 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
+import {
+  isPullRequestWatchTask,
+  backgroundWorkHoldsCompletion,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
 import { sortActiveThreadsByOrderKey, toSortableTimestamp } from "./threadSort.ts";
 
@@ -55,6 +59,24 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
     run.status !== "waiting" &&
     thread.runtime?.activeRunId !== run.runId;
   return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
+}
+
+export function isThreadWatchingPullRequest(thread: WorkingThreadInput): boolean {
+  const tasks = thread.pendingBackgroundTasks;
+  if (tasks?.some(isPullRequestWatchTask) !== true) return false;
+  if (
+    thread.hasPendingApprovals ||
+    thread.hasPendingUserInput ||
+    thread.pendingSubagentRequest != null ||
+    threadRuntimeIsActive(thread.runtime) ||
+    thread.runtime?.status === "failed" ||
+    thread.runtime?.lastError != null ||
+    hasBackgroundCommand(thread) ||
+    backgroundWorkHoldsCompletion(tasks.filter((task) => !isPullRequestWatchTask(task))) ||
+    (thread.interactionMode === "plan" && thread.hasActionableProposedPlan)
+  )
+    return false;
+  return true;
 }
 
 /**
