@@ -42,7 +42,8 @@ import {
 } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { isImageAttachment, type ChatMessage } from "../../types";
+import { isImageAttachment, type ChatImageAttachment, type ChatMessage } from "../../types";
+import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { cn } from "~/lib/utils";
 import { ComposerBanner } from "./ComposerBanner";
 import { Button, InlineButton } from "../ui/button";
@@ -52,11 +53,6 @@ export interface EditQueuedRunRequest {
   readonly messageId: MessageId;
   readonly text: string;
   readonly attachments: ReadonlyArray<ContractChatAttachment>;
-}
-interface QueuedRowThumbnail {
-  readonly key: string;
-  readonly name: string;
-  readonly url: string | null;
 }
 const QUEUED_RUN_DRAG_TYPE = "application/x-t3code-queued-run";
 export interface QueuedRunsControlHandle {
@@ -98,6 +94,7 @@ export function QueuedRunsControl({
   readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
   readonly onRemoveQueuedRun: (request: EditQueuedRunRequest) => Promise<void>;
   readonly onCancelEdit: () => void;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
 }) {
   const projection = useQuietThreadProjection(
     scopeThreadRef(props.environmentId, props.threadId),
@@ -156,13 +153,10 @@ export function QueuedRunsControl({
       editable: context?.guest === undefined,
       guestName: context?.guest?.name,
       attachments,
-      thumbnails: attachments
-        .filter((attachment) => attachment.type === "image")
-        .map<QueuedRowThumbnail>((attachment) => ({
-          key: attachment.id,
-          name: attachment.name,
-          url: queuedImageUrlById.get(attachment.id) ?? null,
-        })),
+      thumbnails: attachments.filter(isImageAttachment).map<ChatImageAttachment>((attachment) => {
+        const previewUrl = queuedImageUrlById.get(attachment.id);
+        return { ...attachment, type: "image", ...(previewUrl ? { previewUrl } : {}) };
+      }),
       pending: false,
     })),
     ...optimisticQueued.map((message) => ({
@@ -177,13 +171,7 @@ export function QueuedRunsControl({
       editable: true,
       guestName: undefined,
       attachments: [] as ReadonlyArray<ContractChatAttachment>,
-      thumbnails: (message.attachments ?? [])
-        .filter(isImageAttachment)
-        .map<QueuedRowThumbnail>((attachment) => ({
-          key: attachment.id,
-          name: attachment.name,
-          url: attachment.previewUrl ?? null,
-        })),
+      thumbnails: (message.attachments ?? []).filter(isImageAttachment),
       pending: true,
     })),
   ];
@@ -432,6 +420,7 @@ export function QueuedRunsControl({
                         isEditing={isEditing}
                         timestampFormat={props.timestampFormat}
                         onOpenThread={props.onOpenThread}
+                        onImageExpand={props.onImageExpand}
                       >
                         {null}
                       </QueuedMessage>
@@ -440,23 +429,13 @@ export function QueuedRunsControl({
                         {item.thumbnails.length > 0 ? (
                           <span className="flex shrink-0 items-center gap-0.5">
                             {item.thumbnails.map((thumbnail) => (
-                              <span
-                                key={thumbnail.key}
-                                className="size-4 overflow-hidden rounded border border-border/70 bg-background"
-                              >
-                                {thumbnail.url ? (
-                                  <img
-                                    src={thumbnail.url}
-                                    alt={thumbnail.name}
-                                    className="size-full object-cover"
-                                  />
-                                ) : (
-                                  <span
-                                    aria-label={thumbnail.name}
-                                    className="block size-full bg-muted/60"
-                                  />
-                                )}
-                              </span>
+                              <QueuedThumbnail
+                                key={thumbnail.id}
+                                thumbnail={thumbnail}
+                                thumbnails={item.thumbnails}
+                                className="size-4 rounded"
+                                onImageExpand={props.onImageExpand}
+                              />
                             ))}
                           </span>
                         ) : null}
@@ -600,10 +579,11 @@ function QueuedMessage(props: {
   readonly environmentId: EnvironmentId;
   readonly message: QueuedRunMessage | undefined;
   readonly previewText: string;
-  readonly thumbnails: ReadonlyArray<QueuedRowThumbnail>;
+  readonly thumbnails: ReadonlyArray<ChatImageAttachment>;
   readonly isEditing: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onOpenThread: (threadId: ThreadId, environmentId?: EnvironmentId) => void;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
   readonly children: ReactNode;
 }) {
   const presentation = props.message ? resolveUserMessagePresentation(props.message) : null;
@@ -676,20 +656,13 @@ function QueuedMessage(props: {
             {props.thumbnails.length > 0 ? (
               <span className="flex flex-wrap items-center gap-1">
                 {props.thumbnails.map((thumbnail) => (
-                  <span
-                    key={thumbnail.key}
-                    className="size-8 overflow-hidden rounded-md border border-border/70 bg-background"
-                  >
-                    {thumbnail.url ? (
-                      <img
-                        src={thumbnail.url}
-                        alt={thumbnail.name}
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      <span aria-label={thumbnail.name} className="block size-full bg-muted/60" />
-                    )}
-                  </span>
+                  <QueuedThumbnail
+                    key={thumbnail.id}
+                    thumbnail={thumbnail}
+                    thumbnails={props.thumbnails}
+                    className="size-8 rounded-md"
+                    onImageExpand={props.onImageExpand}
+                  />
                 ))}
               </span>
             ) : null}
@@ -736,5 +709,37 @@ function QueuedMessage(props: {
         {props.children}
       </div>
     </div>
+  );
+}
+
+function QueuedThumbnail(props: {
+  readonly thumbnail: ChatImageAttachment;
+  readonly thumbnails: ReadonlyArray<ChatImageAttachment>;
+  readonly className: string;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+}) {
+  const { thumbnail } = props;
+  return (
+    <button
+      type="button"
+      aria-label={`Preview ${thumbnail.name}`}
+      disabled={!thumbnail.previewUrl}
+      className={cn(
+        "shrink-0 overflow-hidden border border-border/70 bg-background enabled:cursor-zoom-in",
+        props.className,
+      )}
+      // Keeps the composer focused.
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={() => {
+        const preview = buildExpandedImagePreview(props.thumbnails, thumbnail.id);
+        if (preview) props.onImageExpand(preview);
+      }}
+    >
+      {thumbnail.previewUrl ? (
+        <img src={thumbnail.previewUrl} alt={thumbnail.name} className="size-full object-cover" />
+      ) : (
+        <span className="block size-full bg-muted/60" />
+      )}
+    </button>
   );
 }
