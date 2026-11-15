@@ -202,6 +202,7 @@ import {
 } from "~/lib/composerContextRecords";
 import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachments";
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
+import { droppedThreadContextRecord } from "./threadContextDrop.logic";
 import { readThreadShell } from "~/state/entities";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -269,7 +270,7 @@ import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelS
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import { isVideoAttachment, type SessionPhase, type Thread, type ThreadShell } from "../../types";
 import { type ComposerPromptHistoryPosition } from "./composerPromptHistory";
-import type { PendingUserInputDraftAnswer } from "@t3tools/client-runtime/state/pending-user-input";
+import { usePendingUserInputDraft } from "./usePendingThreadRequests";
 import type {
   LatestProposedPlanState,
   PendingApproval,
@@ -432,23 +433,7 @@ export interface ChatComposerProps {
   pendingApprovals: PendingApproval[];
   onHeldRequestIdsChange: (requestIds: ReadonlySet<string>) => void;
   pendingUserInputs: PendingUserInput[];
-  activePendingProgress: {
-    questionIndex: number;
-    isLastQuestion: boolean;
-    canAdvance: boolean;
-    customAnswer: string;
-    activeQuestion: {
-      id: string;
-      options: ReadonlyArray<unknown>;
-      initialAnswer?: string | undefined;
-      multiSelect?: boolean | undefined;
-      allowCustomAnswer?: boolean | undefined;
-    } | null;
-  } | null;
-  activePendingResolvedAnswers: Record<string, unknown> | null;
   activePendingIsResponding: boolean;
-  activePendingDraftAnswers: Record<string, PendingUserInputDraftAnswer>;
-  activePendingQuestionIndex: number;
   respondingRequestIds: RuntimeRequestId[];
   showPlanFollowUpPrompt: boolean;
   activeProposedPlan: LatestProposedPlanState | null;
@@ -576,11 +561,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pendingApprovals,
     onHeldRequestIdsChange,
     pendingUserInputs: incomingPendingUserInputs,
-    activePendingProgress: incomingPendingProgress,
-    activePendingResolvedAnswers,
     activePendingIsResponding: incomingPendingIsResponding,
-    activePendingDraftAnswers,
-    activePendingQuestionIndex,
     respondingRequestIds,
     showPlanFollowUpPrompt,
     activeProposedPlan,
@@ -647,6 +628,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     contextWindowLiveUsage,
     contextWindowProviderThread,
   );
+  const {
+    activePendingProgress: incomingPendingProgress,
+    activePendingResolvedAnswers,
+    activePendingDraftAnswers,
+    activePendingQuestionIndex,
+  } = usePendingUserInputDraft({
+    environmentId,
+    activeThreadId,
+    activePendingUserInput: incomingPendingUserInputs[0] ?? null,
+    supportsQuestionAttachments,
+  });
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
   const {
@@ -971,13 +963,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : undefined;
   const resolvedCompactDisabledReason =
     compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
+  // Called before the derivation below: a hook between it and its uses stops React Compiler
+  // from caching the mode options, and the footer then re-renders on every keystroke.
+  const managedPolicy = useManagedPolicy(environmentId);
   const { modes: compatibleRuntimeModes, mode: compatibleRuntimeMode } =
     resolveCompatibleRuntimeMode(
       runtimeMode,
       selectedProviderEntry?.snapshot.supportedRuntimeModes,
     );
   // Modes above an administrator's ceiling stay listed, disabled with the reason.
-  const managedPolicy = useManagedPolicy(environmentId);
   const compatibleRuntimeModeOptions = resolveRuntimeModeOptions(
     compatibleRuntimeModes,
     managedPolicy,
@@ -2436,6 +2430,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerMenuItemsRef,
       activeComposerMenuItemRef,
       setComposerDraftPrompt,
+      setComposerDraftThreadContexts,
+      setComposerDraftEnvironmentContexts,
       setComposerCursor,
       setComposerTrigger,
       setComposerHighlightedItemId,
@@ -2980,8 +2976,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return [];
       }
-      const shell = readThreadShell(ref);
-      return shell ? [threadContextRecord(ref, shell.title)] : [];
+      const record = droppedThreadContextRecord(ref, readThreadShell(ref));
+      return record ? [record] : [];
     });
     if (records.length === 0) return;
     if (questionAttachmentTarget !== null) {

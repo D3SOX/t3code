@@ -235,7 +235,7 @@ interface ComposerSendInput {
   readonly readPendingEnvironmentChange: DraftEnvironmentRouting["readPendingEnvironmentChange"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
-  readonly activePendingProgress: PendingThreadRequests["activePendingProgress"];
+  readonly activePendingUserInput: PendingThreadRequests["activePendingUserInput"];
   readonly onAdvanceActivePendingUserInput: PendingThreadRequests["onAdvanceActivePendingUserInput"];
   readonly onRespondToApproval: PendingThreadRequests["onRespondToApproval"];
   readonly beginLocalDispatch: LocalDispatchState["beginLocalDispatch"];
@@ -332,7 +332,7 @@ export function useComposerSend(input: ComposerSendInput) {
     readPendingEnvironmentChange,
     pendingApprovals,
     respondingRequestIds,
-    activePendingProgress,
+    activePendingUserInput,
     onAdvanceActivePendingUserInput,
     onRespondToApproval: onRespondToApprovalStable,
     beginLocalDispatch,
@@ -449,7 +449,7 @@ export function useComposerSend(input: ComposerSendInput) {
         ? parseSideChatCommand(promptAtSend)
         : null;
     const answeringQuestion =
-      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
+      Boolean(activePendingUserInput) && sendCtx?.answeringPendingUserInput !== false;
     const startsSideChat =
       onSideChat !== undefined && sideChatCommand !== null && sideChatDisabledReason === null;
     // An answer responds to the open request rather than starting a turn, so the new-message
@@ -1091,11 +1091,15 @@ export function useComposerSend(input: ComposerSendInput) {
           }),
         );
       }
-      promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
+      // The prompt ref and cursor belong to the thread on screen, which may no longer be this one.
+      if (currentRouteThreadKeyRef.current === routeThreadKey) {
+        promptRef.current = "";
+        composerRef.current?.resetCursorState();
+      }
     };
     if (!redirectsApproval) acceptDraft();
+    let sendInterrupted = false;
     return localSubmissions
       .enqueue(async () => {
         sendInFlightRef.current = true;
@@ -1563,41 +1567,42 @@ export function useComposerSend(input: ComposerSendInput) {
             );
             clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
           }
-          if (!isAtomCommandInterrupted(failure)) {
-            const error = squashAtomCommandFailure(failure);
-            setThreadError(
-              threadIdForSend,
-              error instanceof Error ? error.message : "Failed to send message.",
-            );
-            if (
-              draftId &&
-              (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey)
-            ) {
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title:
-                    submissionIntent === "background"
-                      ? "Background task failed"
-                      : "Could not start thread",
-                  description: error instanceof Error ? error.message : "Failed to send message.",
-                  actionProps: {
-                    children: "Open draft",
-                    onClick: () => {
-                      void navigate({
-                        to: "/draft/$draftId",
-                        params: {
-                          draftId,
-                        },
-                      });
-                    },
+          const interrupted = isAtomCommandInterrupted(failure);
+          const error = squashAtomCommandFailure(failure);
+          const message = error instanceof Error ? error.message : "Failed to send message.";
+          if (!interrupted) setThreadError(threadIdForSend, message);
+          if (
+            draftId &&
+            (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey)
+          ) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: interrupted
+                  ? "Message may not have been sent"
+                  : submissionIntent === "background"
+                    ? "Background task failed"
+                    : "Could not start thread",
+                description: interrupted ? "Your message was restored to its draft." : message,
+                actionProps: {
+                  children: "Open draft",
+                  onClick: () => {
+                    void navigate({
+                      to: "/draft/$draftId",
+                      params: {
+                        draftId,
+                      },
+                    });
                   },
-                }),
-              );
-            }
+                },
+              }),
+            );
           }
         }
-        if (failure !== null) throw squashAtomCommandFailure(failure);
+        if (failure !== null) {
+          sendInterrupted = isAtomCommandInterrupted(failure);
+          throw squashAtomCommandFailure(failure);
+        }
         sendInFlightRef.current = false;
         if (!turnStartSucceeded) {
           setDockedDraftHeroThreadKey((currentThreadKey) =>
@@ -1624,21 +1629,29 @@ export function useComposerSend(input: ComposerSendInput) {
         }
         const currentDraft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
         if (composerDraftHasUserContent(currentDraft)) {
+          const hasText = messageTextForSend.trim().length > 0;
+          // An image-only message has nothing to copy, but its failure still needs a notice.
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Message not sent",
-              description: "Your new draft was kept. Copy the failed message to send it again.",
+              title: sendInterrupted ? "Message may not have been sent" : "Message not sent",
+              description: hasText
+                ? "Your new draft was kept. Copy the failed message to send it again."
+                : "Your new draft was kept.",
               timeout: 0,
               data: { hideCopyButton: true },
-              actionProps: {
-                children: "Copy message",
-                onClick: () => {
-                  void writeTextToClipboard(messageTextForSend, "failed message").catch(
-                    () => undefined,
-                  );
-                },
-              },
+              ...(hasText
+                ? {
+                    actionProps: {
+                      children: "Copy message",
+                      onClick: () => {
+                        void writeTextToClipboard(messageTextForSend, "failed message").catch(
+                          () => undefined,
+                        );
+                      },
+                    },
+                  }
+                : {}),
             }),
           );
           setThreadError(
