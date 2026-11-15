@@ -1,171 +1,94 @@
-import { render } from "../../../test/render";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { createMemoryHistory } from "@tanstack/react-router";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { ProjectId } from "@t3tools/contracts";
+import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import type * as Context from "effect/Context";
+import { expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
-const state = vi.hoisted(() => ({
-  onProjectChange: (_value: string) => {},
-  items: [] as Array<{ value: string; label: string }>,
-  setDraftProject: vi.fn(),
-}));
-
-vi.mock("~/composerDraftStore", () => ({
-  composerDraftHasUserContent: () => true,
-  useComposerDraftStore: Object.assign(
-    (select: (store: Record<string, unknown>) => unknown) =>
-      select({
-        setLogicalProjectDraftThreadId: state.setDraftProject,
-        getComposerDraft: () => null,
-        applyStickyState: vi.fn(),
-        setModelSelection: vi.fn(),
-      }),
-    { getState: () => ({ stickyActiveProvider: null }) },
-  ),
-}));
-vi.mock("~/hooks/useSettings", () => ({
-  useClientSettings: (select: (settings: Record<string, unknown>) => unknown) =>
-    select({ sidebarProjectSortOrder: "manual" }),
-}));
-vi.mock("~/hooks/useScratchProject", () => ({
-  useScratchProject: () => ({
-    scratchEnvironmentId: () => null,
-    scratchWorkspaceRootFor: () => null,
-    openScratchProject: vi.fn(),
-  }),
-}));
-vi.mock("~/hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
-vi.mock("~/hooks/useProjectGroupUpdate", () => ({
-  useProjectPin: () => ({ canPinProjectGroup: () => false, toggleProjectGroupPin: vi.fn() }),
-}));
-vi.mock("~/hooks/useStartTriage", () => ({ isTriagePrompt: () => false }));
-vi.mock("~/commandPaletteBus", () => ({ openCommandPalette: vi.fn() }));
-vi.mock("./TriageDraftHero", () => ({ TriageDraftHero: () => null }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
-vi.mock("~/state/server", () => ({ primaryServerKeybindingsAtom: {} }));
-vi.mock("~/keybindings", () => ({ shortcutLabelForCommand: () => null }));
-vi.mock("~/logicalProject", () => ({
-  selectProjectGroupingSettings: () => ({}),
-  deriveLogicalProjectKeyFromSettings: () => "project-a",
-}));
-vi.mock("~/state/entities", () => ({ useProjects: () => [], useVisibleThreadShells: () => [] }));
-vi.mock("~/state/environments", () => ({
-  useEnvironments: () => ({ environments: [] }),
-  useEnvironmentProviders: () => new Map(),
-  usePrimaryEnvironmentId: () => null,
-}));
-vi.mock("~/sidebarProjectGrouping", () => ({
-  buildSidebarProjectSnapshots: () => [
-    {
-      projectKey: "project-a",
-      displayName: "Repo A",
-      environmentId: "environment-1",
-      id: "project-a",
-      groupedProjectCount: 1,
-      memberProjects: [{ environmentId: "environment-1", id: "project-a" }],
-      memberProjectRefs: [{ environmentId: "environment-1", projectId: "project-a" }],
-    },
-    {
-      projectKey: "project-b",
-      displayName: "Repo B",
-      environmentId: "environment-1",
-      id: "project-b",
-      groupedProjectCount: 1,
-      memberProjects: [{ environmentId: "environment-1", id: "project-b" }],
-      memberProjectRefs: [{ environmentId: "environment-1", projectId: "project-b" }],
-    },
-  ],
-  projectGroupsSpanEnvironments: () => false,
-  buildSidebarProjectPickerEntries: ({ groups }: { groups: Array<Record<string, unknown>> }) =>
-    groups.map((group) => ({ group, targetProject: (group.memberProjects as Array<unknown>)[0] })),
-}));
-vi.mock("../Sidebar.logic", () => ({ sortLogicalProjectsForSidebar: (groups: unknown) => groups }));
-vi.mock("../ProjectFavicon", () => ({ ProjectFavicon: () => null }));
-vi.mock("../ProjectPinButton", () => ({
-  ProjectPinButton: () => null,
-  isProjectPinShortcut: () => false,
-}));
-vi.mock("../ProjectEnvironmentBadge", () => ({ ProjectEnvironmentBadge: () => null }));
-vi.mock("../ui/combobox", () => {
-  const Wrapper = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-  return {
-    Combobox: ({
-      children,
-      items,
-      onValueChange,
-    }: {
-      children: React.ReactNode;
-      items: Array<{ value: string; label: string }>;
-      onValueChange: (item: { value: string; label: string }) => void;
-    }) => {
-      state.items = items;
-      state.onProjectChange = (value) => onValueChange(items.find((item) => item.value === value)!);
-      return <>{children}</>;
-    },
-    ComboboxList: ({
-      children,
-    }: {
-      children: (item: { value: string; label: string }) => React.ReactNode;
-    }) => <>{state.items.map(children)}</>,
-    ComboboxItem: ({
-      children,
-      value,
-    }: {
-      children: React.ReactNode;
-      value: { value: string };
-    }) => (
-      <button type="button" onClick={() => state.onProjectChange(value.value)}>
-        {children}
-      </button>
-    ),
-    ComboboxPopup: Wrapper,
-    ComboboxTrigger: Wrapper,
-    ComboboxSearchInput: () => null,
-    ComboboxEmpty: () => null,
-    useComboboxFilter: () => ({ contains: () => true }),
-  };
-});
-vi.mock("../ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipPopup: () => null,
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-vi.mock("../ui/button", () => ({ InlineButton: () => <button type="button" /> }));
-
-import { resolveThreadActionProjectRef } from "~/lib/chatThreadActions";
+import { AppRoot } from "~/AppRoot";
+// The draft route loads ChatView lazily; importing it here keeps its first transform out of the test's timeout.
+import "~/components/ChatView";
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { __setClientSettingsForTests } from "~/hooks/useSettings";
+import { getRouter } from "~/router";
 import { useUiStateStore } from "~/uiStateStore";
-import { DraftHeroHeadline } from "./DraftHeroHeadline";
+import {
+  ENVIRONMENT_ID,
+  PROJECT_ID,
+  installFakeEnvironment,
+  type FakeDriver,
+} from "../../../test/fakeEnvironment";
+import { render } from "../../../test/render";
 
-describe("new-thread project selection", () => {
-  it("uses the project selected in the composer for the next New thread click", async () => {
-    state.setDraftProject.mockClear();
-    state.onProjectChange = () => {};
-    using _state = {
-      [Symbol.dispose]: () => useUiStateStore.setState({ lastNewThreadProjectRef: null }),
-    };
-    useUiStateStore.setState({
-      lastNewThreadProjectRef: { environmentId: "environment-1", projectId: "project-b" } as never,
-    });
-    await using screen = await render(
-      <DraftHeroHeadline
-        draftId={"draft-1" as never}
-        activeProjectRef={{ environmentId: "environment-1", projectId: "project-b" } as never}
-        activeProjectTitle="Repo B"
-      />,
-    );
-    await screen.getByRole("button", { name: "Repo A" }).click();
+// The socket is the only fake layer; see test/appScenarios.renders.tsx.
+vi.mock(
+  "../../../../../packages/client-runtime/src/connection/driver.ts",
+  async (importOriginal) => {
+    const [actual, { fakeDriver }, Layer] = await Promise.all([
+      importOriginal<{ readonly ConnectionDriver: Context.Key<unknown, FakeDriver> }>(),
+      import("../../../test/fakeEnvironment"),
+      import("effect/Layer"),
+    ]);
+    return { ...actual, layer: Layer.succeed(actual.ConnectionDriver, fakeDriver) };
+  },
+);
 
-    expect(state.setDraftProject).toHaveBeenCalledWith(
-      "project-a",
-      { environmentId: "environment-1", projectId: "project-a" },
-      "draft-1",
-    );
-    const preferredProjectRef = useUiStateStore.getState().lastNewThreadProjectRef;
+vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
+  ...(await original()),
+  trackRpcRequestSent: () => {},
+}));
+
+it("the new-thread project picker follows the manual sidebar project order", async () => {
+  using _environment = installFakeEnvironment([], {
+    extraProjects: [
+      { id: ProjectId.make("project-alpha"), title: "alpha" },
+      { id: ProjectId.make("project-beta"), title: "beta" },
+    ],
+  });
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+    sidebarProjectSortOrder: "manual",
+  });
+  useUiStateStore.setState({
+    projectOrder: [
+      `${ENVIRONMENT_ID}:/workspace/beta`,
+      `${ENVIRONMENT_ID}:/workspace/render`,
+      `${ENVIRONMENT_ID}:/workspace/alpha`,
+    ],
+  });
+  using _order = { [Symbol.dispose]: () => useUiStateStore.setState({ projectOrder: [] }) };
+  const draftId = DraftId.make("draft-manual-order");
+  useComposerDraftStore
+    .getState()
+    .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId);
+
+  const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, {
+    // AppRoot brings its own router.
+    router: false,
+  });
+  // The shell snapshot has arrived once the sidebar lists the project.
+  await expect.element(page.getByText("render", { exact: true }).first()).toBeVisible();
+  const trigger = document.querySelector<HTMLElement>("[data-draft-project-trigger]");
+  if (!trigger) throw new Error("The draft project picker did not render.");
+  await userEvent.click(page.elementLocator(trigger));
+  await expect.element(page.getByRole("option", { name: "beta" })).toBeVisible();
+
+  // The draft's own project leads; the rest keep the sidebar's order.
+  await vi.waitFor(() => {
     expect(
-      resolveThreadActionProjectRef({
-        activeDraftThread: null,
-        activeThread: { environmentId: "environment-1", projectId: "project-a" } as never,
-        preferredProjectRef,
-        defaultProjectRef: null,
-        handleNewThread: async () => {},
-      }),
-    ).toEqual({ environmentId: "environment-1", projectId: "project-a" });
+      page
+        .getByRole("option")
+        .elements()
+        .map((option) => option.textContent),
+    ).toEqual([
+      expect.stringMatching(/render$/),
+      expect.stringMatching(/beta$/),
+      expect.stringMatching(/alpha$/),
+      "Add project",
+    ]);
   });
 });

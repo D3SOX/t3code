@@ -21,7 +21,7 @@ vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importO
 
 vi.mock(import("../../state/entities"), async (importOriginal) => ({
   ...(await importOriginal()),
-  useThreadProjection: (() => state.projection) as never,
+  useQuietThreadProjection: (() => state.projection) as never,
   // The linked environment is connected, but its thread is not in the loaded shell.
   useQuietThreadShell: ((target: { readonly environmentId: string } | null) =>
     target === null || target.environmentId === "environment:linked"
@@ -73,6 +73,7 @@ const baseProps = {
   onRemoveQueuedRun: async () => undefined,
   timestampFormat: "locale",
   onOpenThread: () => undefined,
+  onImageExpand: () => undefined,
 } satisfies ComponentProps<typeof QueuedRunsControl>;
 
 async function renderQueue(props: Partial<ComponentProps<typeof QueuedRunsControl>> = {}) {
@@ -218,4 +219,55 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
 
   await expect.element(page.getByText("Sent by T3 Code")).toBeVisible();
   await expect.element(page.getByText("Continue where you left off.")).toBeVisible();
+});
+
+it.each([false, true])("opens queued images in the image viewer, pending=%s", async (pending) => {
+  setup();
+  const attachments = ["first.png", "second.png"].map((name) => ({
+    type: "image" as const,
+    id: name,
+    name,
+    mimeType: "image/png",
+    sizeBytes: 128,
+  }));
+  state.projection = { projection: { messages: [] } };
+  state.workflow = {
+    activeRun: null,
+    queuedRuns: pending
+      ? []
+      : [
+          {
+            run: { id: "run:queued", userMessageId: "message:queued" },
+            text: "Later",
+            attachments,
+          },
+        ],
+  };
+  const onImageExpand = vi.fn();
+  await using _screen = await renderQueue({
+    onImageExpand,
+    optimisticMessages: pending
+      ? [
+          {
+            id: MessageId.make("message:pending"),
+            inputIntent: "queued_turn",
+            text: "Later",
+            attachments: attachments.map((attachment) => ({
+              ...attachment,
+              previewUrl: `https://assets.test/${attachment.id}`,
+            })),
+          },
+        ]
+      : [],
+  });
+  await page.getByRole("button", { name: "Preview second.png" }).click();
+  expect(onImageExpand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      index: 1,
+      images: [
+        expect.objectContaining({ src: "https://assets.test/first.png" }),
+        expect.objectContaining({ src: "https://assets.test/second.png" }),
+      ],
+    }),
+  );
 });

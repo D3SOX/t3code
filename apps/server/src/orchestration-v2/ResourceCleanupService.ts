@@ -33,7 +33,7 @@ export class ResourceCleanupService extends Context.Reference<{
   readonly cleanupDevices: (threadId: ThreadId) => Effect.Effect<void, ResourceCleanupError>;
   readonly cleanupAttachments: (
     attachmentIds: ReadonlyArray<string>,
-    threadId: string,
+    threadId: string | null,
   ) => Effect.Effect<void, ResourceCleanupError>;
 }>("t3/orchestration-v2/ResourceCleanupService", {
   defaultValue: () => ({
@@ -107,9 +107,10 @@ export const layer = Layer.effect(
       }),
       cleanupAttachments: Effect.fn("ResourceCleanupService.cleanupAttachments")(function (
         attachmentIds: ReadonlyArray<string>,
-        threadId: string,
+        threadId: string | null,
       ) {
-        const directory = imageSnapshotsDirectory(config.attachmentsDir, threadId, path);
+        const directory =
+          threadId === null ? null : imageSnapshotsDirectory(config.attachmentsDir, threadId, path);
         return Effect.forEach(
           attachmentIds,
           (attachmentId) => {
@@ -140,14 +141,16 @@ export const layer = Layer.effect(
           Effect.andThen(
             directory === null
               ? Effect.void
-              : fileSystem
-                  .remove(directory, { recursive: true, force: true })
-                  .pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new ResourceCleanupError({ operation: "attachment", threadId, cause }),
-                    ),
+              : fileSystem.remove(directory, { recursive: true, force: true }).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ResourceCleanupError({
+                        operation: "attachment",
+                        ...(threadId === null ? {} : { threadId }),
+                        cause,
+                      }),
                   ),
+                ),
           ),
         );
       }),

@@ -45,7 +45,7 @@ export function restoreRemovedQueuedMessage(
   const records = [...(draft.context?.records ?? []), ...(input.context?.records ?? [])];
   if (records.length > 0) setComposerDraftContext(threadKey, { version: 1, records });
   appendComposerDraftAttachments(threadKey, input.attachments, {
-    allowOverflow: true,
+    restore: true,
     appendReference: false,
   });
 }
