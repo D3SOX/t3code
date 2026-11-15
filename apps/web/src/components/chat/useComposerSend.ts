@@ -116,8 +116,8 @@ import { usePlanFollowUpSend } from "./useProposedPlanSend";
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import {
-  awaitAttachmentUploads,
   getUploadedAttachments,
+  refreshExpiredAttachmentUploads,
   readAttachmentUpload,
   releaseDraftAttachments,
   retryAttachmentUpload,
@@ -1125,9 +1125,11 @@ export function useComposerSend(input: ComposerSendInput) {
               draftTarget: composerDraftTarget,
             });
           }
-          await awaitAttachmentUploads(
-            composerAttachmentsSnapshot.map((attachment) => attachment.id),
-          );
+          await refreshExpiredAttachmentUploads({
+            environmentId,
+            images: composerAttachmentsSnapshot,
+            draftTarget: composerDraftTarget,
+          });
           const attachmentCapabilitiesAfterUpload = readLiveAttachmentCapabilities();
           if (attachmentCapabilitiesAfterUpload.fileBlockReason !== null) {
             throw new Error(attachmentCapabilitiesAfterUpload.fileBlockReason);
@@ -1323,6 +1325,7 @@ export function useComposerSend(input: ComposerSendInput) {
           environmentId,
           attachments: composerAttachmentsSnapshot,
           usesAttachmentUploads: turnUsesAttachmentUploads,
+          draftTarget: composerDraftTarget,
         });
         if (multipleModelSelections !== null) {
           await sendToMultipleModels({
@@ -1338,6 +1341,8 @@ export function useComposerSend(input: ComposerSendInput) {
             readFileBlockReason: () => readLiveAttachmentCapabilities().fileBlockReason,
             buildOutgoingMessageContext,
             isCurrentSend: () => composerSendGenerationRef.current === sendGeneration,
+            // The draft was taken when the send was accepted, so later edits are a new draft.
+            draftChangedDuringPreparation: () => false,
           });
           return;
         }
