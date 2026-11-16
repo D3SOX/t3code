@@ -131,6 +131,8 @@ export const ThreadPullRequestWatch = Schema.Struct({
   rebaseRequired: Schema.optional(Schema.Boolean),
   /** Last removal seen; null after an empty read, absent before the first read. */
   mergeQueueRemovalId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** Review bot checks on that commit the agent was told finished, as `name:status`. */
+  finishedReviews: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Consecutive comment-only wakes; limited to prevent bot loops. */
   wakes: NonNegativeInt,
   /**

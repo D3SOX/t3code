@@ -66,6 +66,7 @@ export type PullRequestWatchChange =
       readonly failed: ReadonlyArray<PullRequestCheck>;
     }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
+  | { readonly kind: "reviews-finished"; readonly checks: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "no-checks"; readonly minutes: number }
   | { readonly kind: "conflicting" }
   | { readonly kind: "needs-rebase" }
@@ -86,6 +87,12 @@ const isFailedCheck = (check: PullRequestCheck) =>
 // A GitHub Actions job's URL extends its workflow run's URL; their names need not match.
 const workflowRunOf = (url: string | null) => url?.match(/^.*\/actions\/runs\/\d+/)?.[0] ?? null;
 const approvalKey = (check: PullRequestCheck) => workflowRunOf(check.url) ?? check.name;
+// Review bots (CodeRabbit, Greptile, cubic) finish a check even when they post no review.
+const isFinishedReview = (check: PullRequestCheck) =>
+  workflowRunOf(check.url) === null &&
+  /review|coderabbit/i.test(check.name) &&
+  (check.status === "success" || check.status === "skipped" || check.status === "neutral");
+const reviewKey = (check: PullRequestCheck) => `${check.name}:${check.status}`;
 
 /** Report failures immediately, then required and remaining CI completion separately. Own replies never wake the agent; unread remarks wait for a later pass. */
 export function evaluatePullRequestWatch(
@@ -300,6 +307,16 @@ export function evaluatePullRequestWatch(
   // Null records an empty baseline; historical IDs are saved without waking the watch.
   const mergeQueueRemovalId = removal?.id ?? watch.mergeQueueRemovalId ?? null;
 
+  // Held while other checks run, so a review adds no wake of its own before CI is done.
+  const reviews = checks.filter(isFinishedReview);
+  const toldReviews = headMoved ? [] : (watch.finishedReviews ?? []);
+  const newReviews = reviews.filter((check) => !toldReviews.includes(reviewKey(check)));
+  const tellReviews =
+    newReviews.length > 0 && !checksBaseline && (changes.length > 0 || !checksPending);
+  if (tellReviews) changes.push({ kind: "reviews-finished", checks: newReviews });
+  const finishedReviews =
+    checksBaseline || tellReviews ? [...toldReviews, ...newReviews.map(reviewKey)] : toldReviews;
+
   const commentsOnly = changes.length > 0 && changes.every((change) => change.kind === "remarks");
   const progress = headMoved || (changes.length > 0 && !commentsOnly);
   const wakes = (progress ? 0 : watch.wakes) + (commentsOnly ? 1 : 0);
@@ -321,6 +338,7 @@ export function evaluatePullRequestWatch(
       conflicting,
       rebaseRequired,
       mergeQueueRemovalId,
+      finishedReviews,
       wakes,
       // Only a read that cannot be trusted to show the checks leaves the baseline to the next one.
       ...(checksBaseline &&
@@ -465,6 +483,15 @@ function changeLines(
           return `  - ${remark.author?.login ?? "someone"}${where}: ${said}${remark.url ? ` ${remark.url}` : ""}`;
         }),
       ];
+    case "reviews-finished":
+      return [
+        `- Review checks finished${context.commit}. A reviewer with nothing to add can finish without posting a review or comment:`,
+        ...listed(
+          change.checks,
+          (check) =>
+            `  - ${check.name} (${check.status})${check.description ? `: ${check.description}` : ""}${check.url ? ` ${check.url}` : ""}`,
+        ),
+      ];
     case "no-checks":
       return [
         `- No checks have reported${context.commit} after ${change.minutes} minutes. None may be configured to run on this change.`,
@@ -486,6 +513,7 @@ const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-awaiting-approval": "checks await approval",
   "checks-completed": "checks finished with failures",
   remarks: "new comments",
+  "reviews-finished": "reviews finished",
   "no-checks": "no checks reported",
   conflicting: "merge conflict",
   "needs-rebase": "rebase required",
@@ -576,7 +604,9 @@ export function pullRequestWatchMessage(
       },
       outcome: failed
         ? "failed"
-        : changes.every((change) => change.kind === "checks-passed")
+        : changes.every(
+              (change) => change.kind === "checks-passed" || change.kind === "reviews-finished",
+            )
           ? "completed"
           : "updated",
       summary: `#${input.number}: ${summary.join(", ")}`,
@@ -668,7 +698,7 @@ export function refreshQueuedPullRequestMessage(
   }
 
   const text = message.text.replace(
-    /^- (?:Checks failed[^\n]*|All \d+ (?:required )?checks? (?:passed|finished)[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
+    /^- (?:Checks failed[^\n]*|Review checks finished[^\n]*|All \d+ (?:required )?checks? (?:passed|finished)[^\n]*|The branch now conflicts[^\n]*)\n?(?:  - [^\n]*\n?)*/gm,
     "",
   );
   if (!/^- \d+ new comments?:$/m.test(text)) return text === message.text ? message : null;

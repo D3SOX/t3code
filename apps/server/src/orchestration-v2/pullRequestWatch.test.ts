@@ -1246,6 +1246,57 @@ describe("evaluatePullRequestWatch", () => {
     assert.isTrue(pending([unreadable], watch({ headSha: "aaaaaaaaaa", checksPending: true })));
   });
 
+  it("tells the agent once per head that a review bot finished, even without a review", () => {
+    const ci = { ...check("test", "success"), required: true };
+    const bot = (name: string, status: PullRequestCheck["status"]) => ({
+      ...check(name, status),
+      url: "https://coderabbit.ai",
+    });
+    const job = { ...check("review", "success"), url: `${run(1)}/job/2` };
+    const read = (from: ThreadPullRequestWatch, checks: ReadonlyArray<PullRequestCheck>) =>
+      evaluatePullRequestWatch(from, detail({ checks }), noRemarks);
+
+    // A review finished while CI runs waits for the next wake instead of adding one.
+    const reviewed = read(watch(), [
+      { ...ci, status: "pending" },
+      bot("CodeRabbit", "skipped"),
+      job,
+    ]);
+    assert.deepEqual(reviewed.changes, []);
+    const gate = read(reviewed.next, [ci, bot("CodeRabbit", "skipped"), check("e2e", "pending")]);
+    assert.deepEqual(gate.changes, [
+      { kind: "checks-passed", count: 1, required: true },
+      { kind: "reviews-finished", checks: [bot("CodeRabbit", "skipped")] },
+    ]);
+
+    // The review that finishes last is the whole wake's news, and is told once.
+    const last = read(gate.next, [
+      ci,
+      bot("CodeRabbit", "skipped"),
+      bot("Greptile Review", "success"),
+    ]);
+    assert.deepEqual(last.changes, [
+      { kind: "checks-passed", count: 3, required: false },
+      { kind: "reviews-finished", checks: [bot("Greptile Review", "success")] },
+    ]);
+    const done = [ci, bot("CodeRabbit", "skipped"), bot("Greptile Review", "success")];
+    assert.deepEqual(read(last.next, done).changes, []);
+    assert.deepEqual(
+      read(watch({ awaitingBaseline: "all" }), [ci, bot("CodeRabbit", "success")]).changes,
+      [],
+    );
+    // A rerun on the same head is news when its outcome changes; a failed one already wakes.
+    const rerun = (status: PullRequestCheck["status"]) =>
+      read(last.next, [ci, bot("CodeRabbit", status), bot("Greptile Review", "success")]).changes;
+    assert.deepEqual(rerun("neutral"), [
+      { kind: "reviews-finished", checks: [bot("CodeRabbit", "neutral")] },
+    ]);
+    assert.deepEqual(
+      rerun("cancelled").map((change) => change.kind),
+      ["checks-failed"],
+    );
+  });
+
   it("waits a while for a new head's checks on every host", () => {
     const pushed = (checksAlwaysReport: boolean) =>
       evaluatePullRequestWatch(
@@ -1313,6 +1364,34 @@ describe("pullRequestWatchMessage", () => {
     assert.include(message.text, "lint (failure) https://ci.example/lint");
     assert.equal(message.notification.outcome, "failed");
     assert.equal(message.notification.summary, "#12: checks finished with failures");
+  });
+
+  it("says a finished review check means the reviewer is done", () => {
+    const report = evaluatePullRequestWatch(
+      watch({ headSha: "aaaaaaaaaa", passed: true, passedChecks: ["test"] }),
+      detail({
+        checks: [
+          { ...check("test", "success"), required: true },
+          { ...check("CodeRabbit", "success"), description: "Review completed" },
+        ],
+      }),
+      noRemarks,
+    );
+    const message = pullRequestWatchMessage({
+      host: "github.com",
+      repository: "o/r",
+      number: 12,
+      url: "https://github.com/o/r/pull/12",
+      baseBranch: "main",
+      headSha: report.next.headSha,
+      report,
+    });
+    assert.include(
+      message.text,
+      "- Review checks finished on aaaaaaa. A reviewer with nothing to add can finish without posting a review or comment:\n  - CodeRabbit (success): Review completed https://ci.example/CodeRabbit",
+    );
+    assert.equal(message.notification.outcome, "completed");
+    assert.equal(message.notification.summary, "#12: checks passed, reviews finished");
   });
 
   it("tells the agent what changed and marks failures for the timeline", () => {
