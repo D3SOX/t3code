@@ -1,4 +1,6 @@
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
+import type { ContextMenuSource } from "@t3tools/contracts";
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { SquarePenIcon, XIcon } from "lucide-react";
@@ -34,7 +36,11 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   isActive: boolean;
   onNavigate: (draftId: DraftId) => void;
   onDiscard: (draftId: DraftId) => void;
-  onContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+  onContextMenu: (
+    draftId: DraftId,
+    position: { x: number; y: number },
+    source: ContextMenuSource,
+  ) => void;
 }) {
   const { composer, draftId, onContextMenu, onDiscard, onNavigate } = props;
   const promptPreview =
@@ -70,7 +76,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      onContextMenu(draftId, { x: rect.left, y: rect.bottom });
+      onContextMenu(draftId, { x: rect.left, y: rect.bottom }, "keyboard");
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onNavigate(draftId);
@@ -78,7 +84,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   };
   const handleContextMenu = (event: ReactMouseEvent) => {
     event.preventDefault();
-    onContextMenu(draftId, { x: event.clientX, y: event.clientY });
+    onContextMenu(draftId, { x: event.clientX, y: event.clientY }, contextMenuSourceOf(event));
   };
   const handleDiscard = (event: ReactMouseEvent) => {
     event.preventDefault();
@@ -148,7 +154,11 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   scopedProjectKeys: ReadonlySet<string> | null;
   routeDraftId: string | null;
   onNavigateToDraft: (draftId: DraftId) => void;
-  onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
+  onDraftContextMenu: (
+    draftId: DraftId,
+    position: { x: number; y: number },
+    source: ContextMenuSource,
+  ) => void;
 }) {
   const [expanded, setExpanded] = useLocalStorage(
     "t3code:sidebar:drafts-expanded",

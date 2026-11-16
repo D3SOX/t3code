@@ -1,5 +1,6 @@
 import { CommandId, type ThreadId } from "@t3tools/contracts";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -95,6 +96,8 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
     const { reconcile, backfill } = yield* make;
+    // Each update waits on its thread's lock, so a busy thread delays only its own worktree.
+    const worktrees = yield* KeyedLock.makeRunner<string>();
     yield* forkParked(
       Effect.all(
         [
@@ -104,9 +107,15 @@ export const layer = Layer.effectDiscard(
             ),
           ),
           Stream.runForEach(broadcaster.streamBranchChanges, (input) =>
-            reconcile(input).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("Failed to reconcile worktree branch", { cwd: input.cwd, cause }),
+            worktrees.run(
+              input.cwd,
+              reconcile(input).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Failed to reconcile worktree branch", {
+                    cwd: input.cwd,
+                    cause,
+                  }),
+                ),
               ),
             ),
           ),

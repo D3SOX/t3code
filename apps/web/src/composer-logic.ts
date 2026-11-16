@@ -16,7 +16,12 @@ import {
   type ComposerPromptSegment,
 } from "./composer-editor-mentions";
 
-import { formatShortcutLabel, resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+import {
+  formatShortcutLabel,
+  resolveShortcutCommand,
+  type ShortcutEventLike,
+  type ShortcutMatchContext,
+} from "./keybindings";
 import { isMacPlatform } from "./lib/utils";
 
 export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
@@ -84,6 +89,8 @@ export function composerRequiresModifier(
 export function composerSubmissionIntentForKey(input: {
   event: ShortcutEventLike & { isComposing?: boolean; keyCode?: number; repeat?: boolean };
   keybindings: ResolvedKeybindingsConfig;
+  /** The when-clause context ChatView's shortcut listeners see, so both resolve Enter alike. */
+  context: Partial<ShortcutMatchContext>;
   platform?: string;
   isSoftwareKeyboardOpen: boolean;
   isDraftThread: boolean;
@@ -99,6 +106,7 @@ export function composerSubmissionIntentForKey(input: {
   const command = resolveShortcutCommand(event, input.keybindings, {
     ...(input.platform === undefined ? {} : { platform: input.platform }),
     context: {
+      ...input.context,
       composerFocus: true,
       draftThreadRoute: input.isDraftThread,
       turnRunning: input.isRunning === true,
@@ -128,7 +136,8 @@ export function composerSubmissionIntentForKey(input: {
 
 /** Resolve hints through the same shortcut rules as the editor, including custom bindings. */
 export function composerSubmissionHints(
-  input: Omit<Parameters<typeof composerSubmissionIntentForKey>[0], "event"> & {
+  input: Omit<Parameters<typeof composerSubmissionIntentForKey>[0], "event" | "context"> & {
+    context?: Partial<ShortcutMatchContext>;
     followUpBehavior: ClientSettings["followUpBehavior"];
     isEditingQueuedMessage?: boolean;
   },
@@ -193,7 +202,12 @@ export function composerSubmissionHints(
         metaKey: shortcut.metaKey || (shortcut.modKey && mac),
         ctrlKey: shortcut.ctrlKey || (shortcut.modKey && !mac),
       };
-      const intent = composerSubmissionIntentForKey({ ...input, platform, event });
+      const intent = composerSubmissionIntentForKey({
+        ...input,
+        context: input.context ?? {},
+        platform,
+        event,
+      });
       if (intent) add(intent, formatShortcutLabel(shortcut, platform));
     }
   }

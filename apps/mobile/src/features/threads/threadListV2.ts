@@ -256,6 +256,8 @@ export function threadHasUnseenCompletion(
   const completedAt = thread.latestRun?.completedAt;
   if (thread.latestRun?.completionSilent) return false;
   if (!completedAt) return false;
+  const status = thread.latestRun?.status;
+  if (status === "interrupted" || status === "cancelled") return false;
   const completedAtMs = Date.parse(completedAt);
   if (Number.isNaN(completedAtMs)) return false;
   if (!thread.lastVisitedAt) return false;

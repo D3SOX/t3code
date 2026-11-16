@@ -7,8 +7,10 @@ import {
   makeQueuedRunEditStore,
   makeQueuedRunsAtom,
 } from "@t3tools/client-runtime/queued-run-edit";
+import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import { useEffect, useRef, useState } from "react";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
+import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ChatAttachment,
@@ -54,6 +56,7 @@ import {
 } from "../../lib/composerContextReferences";
 import { readFileAsDataUrl } from "../../lib/imageCompression";
 import type { TerminalContextDraft } from "../../lib/terminalContext";
+import type { ComposerSubmissionIntent } from "../../composer-logic";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../../state/server";
@@ -229,6 +232,7 @@ export function useQueuedRunEdit(input: {
     setThreadError,
   } = input;
   const editQueuedRunCommand = useEditQueuedRunCommand();
+  const promoteQueuedRun = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const cancelQueuedRunCommand = useAtomCommand(threadEnvironment.cancelQueuedRun, {
     reportFailure: false,
   });
@@ -514,9 +518,39 @@ export function useQueuedRunEdit(input: {
     }));
   });
 
+  // The same move as the queued row's "Send now" while a turn runs.
+  const steerSavedRun = async (edited: EditingQueuedRun) => {
+    const projection = appAtomRegistry.get(
+      environmentThreadDetails.quietThreadAtom({ environmentId, threadId: edited.threadId }),
+    )?.projection;
+    if (!projection) return;
+    const workflow = deriveThreadQueueWorkflowState(projection);
+    const queued = workflow.queuedRuns.find(({ run }) => run.id === edited.runId);
+    if (
+      queued === undefined ||
+      workflow.activeRun === null ||
+      !workflow.canPromoteToSteer ||
+      (queued.run.freshContext === true && !workflow.promoteSkipsCompaction)
+    ) {
+      return;
+    }
+    await promoteQueuedRun({
+      environmentId,
+      input: {
+        threadId: edited.threadId,
+        queuedRunId: edited.runId,
+        targetRunId: workflow.activeRun.id,
+      },
+    });
+  };
+
   const saveEdit = async (
     content: QueuedRunEditContent,
     setThreadError: (threadId: ThreadId, error: string | null) => void,
+    submission?: {
+      readonly dispatchMode: ComposerDispatchMode;
+      readonly submissionIntent: ComposerSubmissionIntent;
+    },
   ) => {
     if (editing === null || isSaving) return;
     const newAttachments = [...content.images, ...content.files];
@@ -591,6 +625,11 @@ export function useQueuedRunEdit(input: {
     clearEditDraft(editing.runId);
     composerRef.current?.resetCursorState();
     focusComposerSoon();
+    // A plain submit means "Update queued message"; only the opposite-action shortcut or
+    // modifier-click asks to steer, as it does for a new follow-up.
+    if (submission?.submissionIntent === "alternate" && submission.dispatchMode === "steer") {
+      await steerSavedRun(editing);
+    }
   };
 
   return {
