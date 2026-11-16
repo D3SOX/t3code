@@ -20,8 +20,13 @@ const state = vi.hoisted(() => ({
   preparedConnectionAtom: null as unknown,
 }));
 
-vi.mock("react", () => ({ useCallback: <A>(callback: A) => callback }));
+vi.mock("react", () => ({
+  useCallback: <A>(callback: A) => callback,
+  useContext: () => null,
+  useEffect: () => undefined,
+}));
 vi.mock("@effect/atom-react", () => ({
+  RegistryContext: {},
   useAtomMount: () => undefined,
   useAtomSubscribe: () => undefined,
   useAtomValue: (atom: unknown) =>

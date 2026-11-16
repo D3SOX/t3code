@@ -27,7 +27,7 @@ import {
 } from "~/components/chat/composerMentionDrag";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-request-links";
-import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "~/lib/openPullRequestLink";
 import { cn } from "~/lib/utils";
 import { useShortcutModifierState } from "~/shortcutModifierState";
 import { useProjects, useServerConfigs, useThreadShell } from "~/state/entities";
@@ -104,6 +104,7 @@ function LinkRowImpl({
   canStartWatch: boolean;
 }) {
   const openPrLink = useOpenPrLink(threadRef);
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu(threadRef);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const menuAnchor = menuPosition
@@ -159,7 +160,9 @@ function LinkRowImpl({
       <a
         href={link.url}
         onClick={(event) => openPrLink(event, link.url, threadRef)}
-        // Outside drops use the URL; the composer uses this context-chip payload.
+        onContextMenu={(event) => openPrLinkContextMenu(event, link.url, threadRef)}
+        // The link's own URL still rides along for drops outside the app; the composer takes
+        // this payload instead and adds the pull request as a context chip.
         onDragStart={
           snapshot === null
             ? undefined

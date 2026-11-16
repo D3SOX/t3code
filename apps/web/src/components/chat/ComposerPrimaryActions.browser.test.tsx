@@ -17,6 +17,9 @@ import { CollapsedComposerStopAction, ComposerPrimaryActions } from "./ComposerP
 
 function setup() {
   return {
+    showPlanFollowUpPrompt: false,
+    promptHasText: false,
+    onImplementPlanInNewThread: vi.fn(),
     compact: true,
     canOperateThread: true,
     pendingAction: null,

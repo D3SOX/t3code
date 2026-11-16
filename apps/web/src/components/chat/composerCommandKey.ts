@@ -16,6 +16,7 @@ import {
   type ComposerTrigger,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
+  shouldHandleComposerMenuKey,
 } from "../../composer-logic";
 import { type PendingUserInput } from "../../session-logic";
 import {
@@ -42,11 +43,14 @@ export function composerCommandKeyHandler(input: {
   readonly keybindings: ChatComposerProps["keybindings"];
   readonly getShortcutContext: ChatComposerProps["getShortcutContext"];
   readonly sendShortcut: ChatComposerProps["settings"]["sendShortcut"];
+  readonly startThreadsInBackground: boolean;
+  readonly onEditLatestQueuedMessage: ChatComposerProps["onEditLatestQueuedMessage"];
   readonly routeKind: ChatComposerProps["routeKind"];
   readonly phase: ChatComposerProps["phase"];
   readonly canSteer: boolean;
   readonly followUpBehavior: ChatComposerProps["settings"]["followUpBehavior"];
   readonly isSoftwareKeyboardOpen: boolean;
+  readonly planModeUiEnabled: boolean;
   readonly isLiteralPendingAnswer: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly promptHistoryEntries: ChatComposerProps["promptHistoryEntries"];
@@ -81,6 +85,7 @@ export function composerCommandKeyHandler(input: {
   readonly setComposerTrigger: (trigger: ComposerTrigger | null) => void;
   readonly setComposerHighlightedItemId: Dispatch<SetStateAction<string | null>>;
   readonly dismissComposerTrigger: (trigger: ComposerTrigger | null) => void;
+  readonly toggleInteractionMode: () => void;
   readonly nudgeComposerMenuHighlight: (key: "ArrowDown" | "ArrowUp") => void;
   readonly onSelectComposerItem: (item: ComposerCommandItem) => void;
   readonly resolveActiveComposerTrigger: () => { trigger: ComposerTrigger | null };
@@ -104,11 +109,14 @@ export function composerCommandKeyHandler(input: {
     keybindings,
     getShortcutContext,
     sendShortcut,
+    startThreadsInBackground,
+    onEditLatestQueuedMessage,
     routeKind,
     phase,
     canSteer,
     followUpBehavior,
     isSoftwareKeyboardOpen,
+    planModeUiEnabled,
     isLiteralPendingAnswer,
     pendingUserInputs,
     promptHistoryEntries,
@@ -131,6 +139,7 @@ export function composerCommandKeyHandler(input: {
     setComposerTrigger,
     setComposerHighlightedItemId,
     dismissComposerTrigger,
+    toggleInteractionMode,
     nudgeComposerMenuHighlight,
     onSelectComposerItem,
     resolveActiveComposerTrigger,
@@ -182,6 +191,12 @@ export function composerCommandKeyHandler(input: {
       return false;
     }
     const editor = composerEditorRef.current;
+    if (
+      direction === "backward" &&
+      promptRef.current.length === 0 &&
+      onEditLatestQueuedMessage(event.repeat)
+    )
+      return true;
     if (!editor?.isCaretOnVisualEdge(direction === "backward" ? "start" : "end")) {
       return false;
     }
@@ -230,10 +245,14 @@ export function composerCommandKeyHandler(input: {
       isDraftThread: routeKind === "draft",
       isRunning: phase === "running" || phase === "connecting",
       sendShortcut,
+      startThreadsInBackground,
       prompt: promptRef.current,
     });
     if (key === "Tab" && event.shiftKey && submissionIntent === null) {
-      return applyListEdit(event, listOutdentForTab);
+      if (applyListEdit(event, listOutdentForTab)) return true;
+      if (!planModeUiEnabled) return false;
+      toggleInteractionMode();
+      return true;
     }
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive =
@@ -249,7 +268,7 @@ export function composerCommandKeyHandler(input: {
       composerMenuOpenRef.current = false;
       return true;
     }
-    if (menuIsActive && (submissionIntent === null || submissionIntent === "foreground")) {
+    if (menuIsActive && shouldHandleComposerMenuKey(event, submissionIntent)) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
       if (key === "ArrowDown" && currentItems.length > 0) {

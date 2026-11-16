@@ -487,7 +487,10 @@ const ComposerListItemExtension = ListItem.extend({
     return {
       ...withoutBlockChords(this.parent?.(), LIST_NESTING_KEYS),
       // Replacing Tiptap's Backspace drops its undoInputRule, which keeps a just-typed "+ " literal.
-      Backspace: () => this.editor.commands.undoInputRule() || backspaceAcrossList(this.editor),
+      Backspace: () =>
+        this.editor.commands.undoInputRule() ||
+        undoListNormalization(this.editor) ||
+        backspaceAcrossList(this.editor),
       Delete: () => deleteAcrossList(this.editor),
     };
   },
@@ -510,7 +513,7 @@ export const ComposerListExtensions = [
   BulletList.extend({
     addProseMirrorPlugins() {
       return [
-        ...(this.parent?.() ?? []),
+        ...(this.parent?.() ?? []).filter((plugin) => plugin.spec.key !== listNormalizationKey),
         listNormalizationPlugin(() => this.editor.view.composing),
       ];
     },
@@ -648,12 +651,31 @@ function parseListPrefix(line: string): { prefix: ListLinePrefix; markerLength: 
   return null;
 }
 
+// Tiptap dispatches typing before its input rule, so normalization can run first.
+const listNormalizationKey = new PluginKey<Transaction | null>("composerListNormalization");
+
+function undoListNormalization(editor: Editor): boolean {
+  const normalized = listNormalizationKey.getState(editor.state);
+  if (!normalized) return false;
+  const tr = editor.state.tr;
+  for (let i = normalized.steps.length - 1; i >= 0; i--) {
+    tr.step(normalized.steps[i]!.invert(normalized.docs[i]!));
+  }
+  editor.view.dispatch(tr.setMeta(listNormalizationKey, "restore"));
+  return true;
+}
+
 /** Only changed top-level paragraphs can acquire a literal list prefix outside an input rule. */
 function listNormalizationPlugin(isComposing: () => boolean) {
   let pending = new Set<number>();
-  const key = new PluginKey("composerListNormalization");
-  return new Plugin({
+  const key = listNormalizationKey;
+  return new Plugin<Transaction | null>({
     key,
+    state: {
+      init: () => null,
+      apply: (tr, previous) =>
+        tr.getMeta(key) === "normalized" ? tr : tr.docChanged || tr.selectionSet ? null : previous,
+    },
     props: {
       handleDOMEvents: {
         // ProseMirror tags the DOM flush after compositionend as composition, so nothing else would normalize.
@@ -668,6 +690,10 @@ function listNormalizationPlugin(isComposing: () => boolean) {
       },
     },
     appendTransaction(transactions, oldState, state) {
+      if (transactions.some((tr) => tr.getMeta(key) === "restore")) {
+        pending.clear();
+        return null;
+      }
       // Tiptap's undoInputRule (Backspace right after a rule) restores the typed text on purpose.
       const undoesInputRule = oldState.plugins.some(
         (plugin) => plugin.spec.isInputRules && plugin.getState(oldState),
@@ -760,7 +786,7 @@ function listNormalizationPlugin(isComposing: () => boolean) {
         joinCompatibleLists(tr, pos);
       }
       pending = new Set([...pending].map((pos) => tr.mapping.map(pos, 1)));
-      return tr.docChanged ? tr : null;
+      return tr.docChanged ? tr.setMeta(key, "normalized") : null;
     },
   });
 }

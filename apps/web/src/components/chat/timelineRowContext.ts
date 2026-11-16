@@ -22,9 +22,9 @@ import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRunt
 import { useEffect, useRef, createContext, type MouseEvent, type ReactNode } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
-import type { PendingApproval } from "../../session-logic";
+import type { TimelineEntry, PendingApproval } from "../../session-logic";
 import { type ChatFileAttachment } from "../../types";
-import { type ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePreview";
+import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { type AssistantCitationTarget } from "./AssistantCitationSource";
 import { type MessagesTimelineRow, type WorkGroupScrollAnchor } from "./MessagesTimeline.logic";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -44,6 +44,7 @@ export interface TurnItemSource {
 }
 
 export interface TimelineRowSharedState {
+  timelineEntries: ReadonlyArray<TimelineEntry>;
   pendingApprovals: ReadonlyMap<RuntimeRequestId, PendingApproval>;
   respondingRequestIds: ReadonlyArray<RuntimeRequestId>;
   canOperateThread: boolean;
@@ -127,15 +128,8 @@ export interface WorkGroupViewState {
   expandedEntries: Set<string>;
 }
 
-/** One image the group's agent viewed; `item` is null until its URL resolves. */
-export interface WorkGroupViewedImage {
-  readonly path: string;
-  readonly item: ExpandedImageItem | null;
-}
-
 export const WorkGroupViewCtx = createContext<{
   state: WorkGroupViewState;
-  viewedImages: ReadonlyArray<WorkGroupViewedImage>;
   onToggleEntry: (collapsed: boolean, entryId: string) => void;
   onContentReady?: ((entryId: string) => void) | undefined;
 } | null>(null);

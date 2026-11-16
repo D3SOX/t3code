@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { WorkspaceEnvironment } from "../../state/workspaceModel";
@@ -26,6 +27,7 @@ export function homeListFilterEnvironments(environments: ReadonlyArray<Workspace
 export interface HomeListFilterMenuProject {
   readonly key: string;
   readonly label: string;
+  readonly project: EnvironmentProject;
 }
 
 export function buildHomeListFilterMenuItems(props: {

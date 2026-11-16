@@ -7,6 +7,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useDeadlinePassed } from "../../lib/clock";
 import { useWorkspaceState } from "../../state/workspace";
+import { useEnvironmentIdentification } from "../../state/environmentIdentification";
 import {
   workspaceConnectionStatusPresentation,
   type WorkspaceConnectionStatusPresentation,
@@ -103,6 +104,7 @@ export function WorkspaceConnectionTitle(props: {
   const status = use(ConnectionStatusContext);
   const size = props.size ?? "navbar";
   const { scale } = useAndroidControlSizing();
+  const { artworkStage } = useEnvironmentIdentification();
 
   if (status === null) {
     return props.grow ? (
@@ -131,21 +133,27 @@ export function WorkspaceConnectionTitle(props: {
       >
         {status.showsProgress ? (
           <AppActivityIndicator
-            colorClassName={"accent-icon-muted"}
+            colorClassName={artworkStage ? undefined : "accent-icon-muted"}
+            color={artworkStage ? "white" : undefined}
             size={Platform.OS === "android" ? Math.round(20 * scale) : "small"}
           />
         ) : (
           <SymbolView
             name="wifi.slash"
             size={Math.round((size === "pageTitle" ? 17 : 15) * scale)}
-            tintColorClassName={"accent-icon-muted"}
+            tintColorClassName={artworkStage ? undefined : "accent-icon-muted"}
+            tintColor={artworkStage ? "white" : undefined}
             type="monochrome"
           />
         )}
         <Text
           className="font-t3-bold text-foreground-muted"
           numberOfLines={1}
-          style={{ flexShrink: 1, fontSize: (size === "pageTitle" ? 20 : 16) * scale }}
+          style={{
+            flexShrink: 1,
+            fontSize: (size === "pageTitle" ? 20 : 16) * scale,
+            ...(artworkStage ? { color: "white" } : {}),
+          }}
         >
           {status.label}
         </Text>

@@ -41,7 +41,15 @@ describe("V2 client presentation", () => {
     const active = presentThreadShell(environmentId, running);
     expect(active.hasPendingUserInput).toBe(true);
     expect(isThreadWorking(active)).toBe(false);
+    expect(active.runtime?.status).toBe("running");
     expect(canSnooze(active, { now: "2026-06-20T00:05:00.000Z" })).toBe(true);
+
+    const answered = presentThreadShell(environmentId, {
+      ...running,
+      pendingRuntimeRequest: null,
+    });
+    expect(answered.hasPendingUserInput).toBe(false);
+    expect(isThreadWorking(answered)).toBe(true);
 
     const completed = presentThreadShell(environmentId, {
       ...running,

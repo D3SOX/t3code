@@ -314,6 +314,30 @@ describe("file embeds in native thread and file Markdown", () => {
     expect(resolveMarkdownMediaPreview("./sound.mp3", input)?.kind).toBe("audio");
   });
 
+  it("renders captioned and paired images as separate native media blocks", async () => {
+    const source =
+      '**Dark** ![Dark](./dark.png "Preview")\n\n**Light and narrow** ![Light](./light.png) ![Narrow][portrait]\n\n[portrait]: ./narrow.png';
+    const rendered = markdownForNativeRendering(source, ENRICHED_INLINE_FILE_LINK_REGEX);
+    expect(rendered).toBe(
+      '**Dark**\n\n![Dark](./dark.png "Preview")\n\n**Light and narrow**\n\n![Light](./light.png)\n\n![Narrow][portrait]\n\n[portrait]: ./narrow.png',
+    );
+    const imageBlocks = (await parseMarkdown(rendered)).children?.filter(
+      (block) =>
+        block.type === "Paragraph" &&
+        block.children?.length === 1 &&
+        block.children[0]?.type === "Image",
+    );
+    expect(imageBlocks).toHaveLength(3);
+    for (const source of [
+      "`![icon](./icon.png)`",
+      "```md\nCaption ![icon](./icon.png)\n```",
+      "[![thumbnail](./image.png)](https://example.com)",
+      "| Icon |\n| --- |\n| ![icon](./icon.png) |",
+    ]) {
+      expect(markdownForNativeRendering(source, ENRICHED_INLINE_FILE_LINK_REGEX)).toBe(source);
+    }
+  });
+
   it("uses audio filenames in file previews and draft workspaces", () => {
     const draft = { ...input, threadId: undefined, workspaceRoot: "/repo/docs" };
     const converted = markdownWithFileEmbeds("![sound](./sound.mp3)", (href) =>

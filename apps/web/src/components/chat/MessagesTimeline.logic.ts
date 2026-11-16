@@ -22,11 +22,11 @@ import {
   liveActivityToolStatus,
   normalizeCompactToolLabel,
   resolveWorkEntryToolPresentation,
+  workEntryViewedImagePath,
   summarizeToolGroup,
   toolGroupAction,
   toolGroupSummaryKind,
   contextCompactionTokenCounts,
-  workEntriesViewedImagePaths,
   type ToolGroupSummaryKind,
   liveThoughtLine,
   workEntryHiddenByToolCallVisibility,
@@ -519,6 +519,14 @@ type MessagesTimelineRowContent =
       displayLabel?: string;
     }
   | {
+      kind: "viewed-image";
+      id: string;
+      createdAt: string;
+      entry: WorkLogEntry;
+      imagePath: string;
+      active: boolean;
+    }
+  | {
       kind: "work-live";
       id: string;
       createdAt: string;
@@ -558,13 +566,6 @@ type MessagesTimelineRowContent =
       toolSurface?: WorkLogEntry["toolSurface"];
       toolIcon?: WorkLogEntry["toolIcon"];
       hasFailure: boolean;
-    }
-  | {
-      /** Images the agent opened in the tool group above, kept visible while the group is collapsed. */
-      kind: "viewed-images";
-      id: string;
-      createdAt: string;
-      paths: ReadonlyArray<string>;
     }
   | {
       kind: "turn-fold";
@@ -683,17 +684,6 @@ function expandedWorkGroupRow(
     groupedEntries,
     isExpandedToolGroup: true,
   };
-}
-
-function viewedImagesRows(
-  groupId: string,
-  createdAt: string,
-  groupedEntries: ReadonlyArray<WorkLogEntry>,
-): Array<Extract<MessagesTimelineRow, { kind: "viewed-images" }>> {
-  const paths = workEntriesViewedImagePaths(groupedEntries);
-  return paths.length === 0
-    ? []
-    : [{ kind: "viewed-images", id: `${groupId}:viewed-images`, createdAt, paths }];
 }
 
 export function resolveAssistantMessageCopyState({
@@ -1167,6 +1157,7 @@ function deriveTurnFolds(input: {
       if (entry.id === group.terminalEntry?.id) {
         continue;
       }
+      if (entry.kind === "work" && workEntryViewedImagePath(entry.entry) !== null) continue;
       const isCompaction = timelineEntryIsCompaction(entry);
       const isFoldableTrailingActivity =
         entry.kind === "work" &&
@@ -1288,6 +1279,11 @@ function attachTrailingToolGroupsToAssistant(
         break;
       }
       if (candidate.kind === "work-toggle" && candidate.runId === runId) {
+        hasTrailingToolGroup = true;
+        lastTrailingWorkIndex = index;
+        continue;
+      }
+      if (candidate.kind === "viewed-image" && candidate.entry.runId === runId) {
         hasTrailingToolGroup = true;
         lastTrailingWorkIndex = index;
         continue;
@@ -1684,6 +1680,7 @@ export function deriveMessagesTimelineRows(input: {
       const entry = timelineEntries[index]!;
       if (
         entry.kind !== "work" ||
+        workEntryViewedImagePath(entry.entry) !== null ||
         entry.entry.tone === "error" ||
         entry.entry.sourceActivityKind === "runtime.error" ||
         entry.entry.itemType === "system_notice" ||
@@ -1861,13 +1858,6 @@ export function deriveMessagesTimelineRows(input: {
         ),
       );
     }
-    nextRows.push(
-      ...viewedImagesRows(
-        activeWorkRow.groupId,
-        activeWorkRow.createdAt,
-        activeWorkRow.groupedEntries,
-      ),
-    );
   };
 
   for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -1986,6 +1976,20 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "work") {
+      const imagePath = workEntryViewedImagePath(timelineEntry.entry);
+      if (imagePath !== null) {
+        const active = workEntryIsInActiveRun(timelineEntry.entry);
+        nextRows.push({
+          kind: "viewed-image",
+          id: timelineEntry.id,
+          createdAt: timelineEntry.createdAt,
+          entry: timelineEntry.entry,
+          imagePath,
+          active,
+        });
+        hasActivityRow ||= active;
+        continue;
+      }
       if (
         isPendingApproval(timelineEntry.entry) ||
         (timelineEntry.entry.runId != null && itemizedRunIds.has(timelineEntry.entry.runId)) ||
@@ -2014,6 +2018,7 @@ export function deriveMessagesTimelineRows(input: {
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
+          workEntryViewedImagePath(nextEntry.entry) !== null ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           (nextEntry.entry.itemType === "error" &&
             nextEntry.entry.toolLifecycleStatus === "failed") ||
@@ -2126,13 +2131,6 @@ export function deriveMessagesTimelineRows(input: {
             );
           }
         }
-        nextRows.push(
-          ...viewedImagesRows(
-            workGroupId(timelineEntry.id),
-            timelineEntry.createdAt,
-            visibleGroupedEntries,
-          ),
-        );
       }
       index = cursor - 1;
       continue;
@@ -2337,7 +2335,6 @@ export function deriveMessagesTimelineRows(input: {
       if (expanded) {
         nextRows.push(expandedWorkGroupRow(groupId, failedGroupAnchor.createdAt, groupedEntries));
       }
-      nextRows.push(...viewedImagesRows(groupId, failedGroupAnchor.createdAt, groupedEntries));
     } else {
       const waitingOn =
         unsettledRunId === null
@@ -2757,15 +2754,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
 
-    case "viewed-images": {
-      const bv = b as typeof a;
-      return (
-        a.createdAt === bv.createdAt &&
-        a.paths.length === bv.paths.length &&
-        a.paths.every((path, index) => path === bv.paths[index])
-      );
-    }
-
     case "html-render": {
       // Tool updates rebuild entries; preserve frames for unchanged pages.
       const bh = b as typeof a;
@@ -2799,6 +2787,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.isExpandedToolGroup === bw.isExpandedToolGroup &&
         a.displayLabel === bw.displayLabel &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
+      );
+    }
+
+    case "viewed-image": {
+      const bi = b as typeof a;
+      return (
+        a.imagePath === bi.imagePath && a.active === bi.active && Equal.equals(a.entry, bi.entry)
       );
     }
 

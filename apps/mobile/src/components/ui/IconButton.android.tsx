@@ -73,7 +73,10 @@ export function IconButton(props: IconButtonProps) {
         <SymbolView
           name={props.icon === "ellipsis" ? { ios: "ellipsis", android: "more_vert" } : props.icon}
           size={iconSize}
-          tintColorClassName={iconTint}
+          tintColor={!props.disabled && variant === "standard" ? props.tintColor : undefined}
+          tintColorClassName={
+            !props.disabled && variant === "standard" && props.tintColor ? undefined : iconTint
+          }
           type="monochrome"
         />
       </View>

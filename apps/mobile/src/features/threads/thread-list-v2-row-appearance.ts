@@ -1,11 +1,14 @@
 import type { ViewStyle } from "react-native";
 import type { MobileThemeVariables } from "../../lib/mobileTheme";
+import { flattenThemeColor, themeColorWithAlpha } from "../../lib/mobileTheme";
 
 export const THREAD_LIST_V2_MONO_FONT = "Menlo";
-export const THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME = "px-5 py-2.5";
+export const THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME = "min-h-14 justify-center px-5 py-2.5";
 export const THREAD_LIST_V2_ROW_DIVIDERS = true;
 export const THREAD_LIST_V2_SIDEBAR_ROW_STYLE = {
   borderRadius: 12,
+  minHeight: 56,
+  justifyContent: "center",
   paddingHorizontal: 12,
   paddingVertical: 10,
 } satisfies ViewStyle;
@@ -29,14 +32,27 @@ export function getThreadListV2RowAppearance(
   theme: MobileThemeVariables,
   sidebarPane: boolean,
   selected: boolean,
+  hasUnsentDraft = false,
 ) {
   const selectedBackgroundColor = theme["--color-thread-selected"];
-  const style: ViewStyle | undefined = sidebarPane
-    ? {
-        backgroundColor: selected ? selectedBackgroundColor : theme["--color-drawer"],
-        borderRadius: THREAD_LIST_V2_SIDEBAR_ROW_STYLE.borderRadius,
-      }
-    : undefined;
+  const surfaceColor = theme[sidebarPane ? "--color-drawer" : "--color-screen"];
+  const draft = hasUnsentDraft && !selected;
+  const backgroundColor =
+    sidebarPane && selected
+      ? selectedBackgroundColor
+      : draft
+        ? flattenThemeColor(
+            themeColorWithAlpha(theme["--color-warning-foreground"], 0.08),
+            surfaceColor,
+          )
+        : surfaceColor;
+  const style: ViewStyle | undefined =
+    sidebarPane || draft
+      ? {
+          backgroundColor,
+          ...(sidebarPane ? { borderRadius: THREAD_LIST_V2_SIDEBAR_ROW_STYLE.borderRadius } : {}),
+        }
+      : undefined;
   const swipeContainerStyle: ViewStyle | undefined = sidebarPane
     ? THREAD_LIST_V2_SIDEBAR_ROW_CONTAINER_STYLE
     : undefined;
@@ -59,13 +75,10 @@ export function getThreadListV2RowAppearance(
       ? "accent-drawer-foreground-muted"
       : "accent-foreground-tertiary",
     style,
-    cardStyle: sidebarPane ? { ...style, ...THREAD_LIST_V2_SIDEBAR_ROW_STYLE } : undefined,
+    cardStyle: sidebarPane ? { ...style, ...THREAD_LIST_V2_SIDEBAR_ROW_STYLE } : style,
     swipeContainerStyle,
     swipeBackgroundColor: theme[sidebarPane ? "--color-drawer" : "--color-screen"],
-    providerIconSurfaceColor: sidebarPane
-      ? selected
-        ? selectedBackgroundColor
-        : theme["--color-drawer"]
-      : theme["--color-screen"],
+    // Provider badges blend into the surface beneath them.
+    providerIconSurfaceColor: backgroundColor,
   };
 }
