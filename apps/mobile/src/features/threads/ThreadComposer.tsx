@@ -87,6 +87,7 @@ import {
   composerStripAttachments,
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
+import { composerAttachmentUploadKey } from "../../lib/composerAttachmentUploadQueue";
 import {
   buildModelOptions,
   isModelSelectionUnavailable,
@@ -352,8 +353,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     draftMessage.trim().length > 0 ||
     draftAttachments.length > 0 ||
     (queuedEdit?.existingAttachments.length ?? 0) > 0;
-  // Only media belongs above the composer; every other file reads as its inline chip.
-  const stripAttachments = composerStripAttachments(draftAttachments);
   // Stopping the agent is not what the send button means in edit mode.
   const showStopAction =
     stopping || (!sending && !hasContent && props.canStopThread && queuedEdit === null);
@@ -373,6 +372,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     AuthOrchestrationOperateScope,
   );
   const uploadStates = useAtomValue(composerAttachmentUploadsAtom);
+  const stripAttachments = composerStripAttachments(
+    draftAttachments,
+    (attachment) =>
+      uploadStates[composerAttachmentUploadKey(props.environmentId, attachment.id)]?.status ===
+      "failed",
+  );
   const attachmentsUploading =
     props.connectionState === "connected" &&
     composerAttachmentsStillUploading({
