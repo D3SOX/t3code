@@ -113,9 +113,12 @@ vi.mock("@t3tools/client-runtime/state/context-window", async (importOriginal) =
       : null,
 }));
 vi.mock("../lib/clock", () => ({ useNowMinuteMs: () => 0 }));
-vi.mock("../lib/attachmentUpload", () => ({
-  prepareTurnAttachments: vi.fn(async () => ({ status: "ready", attachments: [] })),
-}));
+vi.mock("../lib/attachmentUpload", async () => {
+  const { Effect } = await import("effect");
+  return {
+    prepareTurnAttachments: vi.fn(() => Effect.succeed({ status: "ready", attachments: [] })),
+  };
+});
 vi.mock("../lib/uuid", () => ({ uuidv4: () => "uuid" }));
 vi.mock("./queued-run-edit", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./queued-run-edit")>()),

@@ -1393,11 +1393,13 @@ describe("AssetAccess", () => {
         kind: "file",
         path: canonicalHtmlPath,
         mutable: true,
+        renderIntent: "file-preview",
       });
       expect(yield* resolveAsset(token, "report.css")).toEqual({
         kind: "file",
         path: canonicalCssPath,
         mutable: true,
+        renderIntent: "file-preview",
       });
       expect(yield* resolveAsset(token, "../secret.txt")).toBeNull();
     }).pipe(Effect.provide(layerTest)),
@@ -1425,6 +1427,7 @@ describe("AssetAccess", () => {
         kind: "file",
         path: canonicalHtmlPath,
         mutable: true,
+        renderIntent: "file-preview",
       });
     }).pipe(Effect.provide(layerTest)),
   );

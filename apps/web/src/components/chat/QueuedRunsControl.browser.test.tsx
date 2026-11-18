@@ -286,6 +286,7 @@ it.each([false, true])("opens queued images in the image viewer, pending=%s", as
 it("tells the user why a steer was rejected", async () => {
   setup();
   const reason = "Target run run:active is stopping and cannot be steered.";
+  state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
     canPromoteToSteer: true,
