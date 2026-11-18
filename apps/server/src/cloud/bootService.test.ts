@@ -548,9 +548,8 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
             ? [runtime.entryPath, "__service-launcher"]
             : [desktopLauncherPath, "serve"],
         );
-        expect((yield* fs.readFileString(repaired.unitPath)).includes(runtime.entryPath)).toBe(
-          platform === "win32",
-        );
+        const unit = decodeServiceUnit(yield* fs.readFile(repaired.unitPath));
+        expect(unit.includes(runtime.entryPath)).toBe(platform === "win32");
         expect((yield* desktop.status).current).toBe(platform !== "win32");
         yield* desktop.restart;
         expect((yield* desktop.status).current).toBe(platform !== "win32");
