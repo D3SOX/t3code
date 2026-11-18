@@ -4,7 +4,6 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import { sortInboxThreadsByReturn } from "@t3tools/client-runtime/state/thread-inbox";
 import { msg, T, useGT, useMessages } from "gt-react-native";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Modal, Pressable, useWindowDimensions, View } from "react-native";
@@ -100,6 +99,7 @@ function ArrangementRow(props: {
   );
 }
 
+/** Native pan recognition wins over list scrolling only inside the handle. */
 function DragHandle(props: {
   title: string;
   disabled: boolean;
@@ -212,17 +212,26 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       settlementEnvironmentIds: new Set(configs.keys()),
       snoozeEnvironmentIds: new Set(configs.keys()),
     };
-    const pinned = getThreadListV2OrderedSection({ ...shared, section: "pinned" });
-    const active = getThreadListV2OrderedSection({ ...shared, section: "active" });
-    const visible = new Set([...pinned, ...active].map(keyOf));
+    const pinned = getThreadListV2OrderedSection({
+      ...shared,
+      section: "pinned",
+    });
+    const active = getThreadListV2OrderedSection({
+      ...shared,
+      section: "active",
+      workingShelfEnabled,
+      inboxReturnAt: threadListInboxReturns.returnedAt,
+    });
+    const visible = new Set([
+      ...pinned.map(keyOf),
+      ...getThreadListV2OrderedSection({ ...shared, section: "active" }).map(keyOf),
+    ]);
     const parked = threads.filter(
       (thread) => thread.archivedAt === null && !visible.has(keyOf(thread)),
     );
     return {
       pinned,
-      active: workingShelfEnabled
-        ? sortInboxThreadsByReturn(active, threadListInboxReturns.returnedAt)
-        : active,
+      active,
       snoozed: parked.filter((thread) => effectiveSnoozed(thread, { now })),
       settled: sortSettledThreads(parked.filter((thread) => !effectiveSnoozed(thread, { now }))),
     };
@@ -240,12 +249,10 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
         reorderableEnvironmentIds:
           section === "pinned"
             ? listEnvironments.pinReorderEnvironmentIds
-            : workingShelfEnabled
-              ? new Set()
-              : listEnvironments.activeReorderEnvironmentIds,
+            : listEnvironments.activeReorderEnvironmentIds,
       });
     return { pinned: planner("pinned"), active: planner("active") };
-  }, [sections, threads, listEnvironments, workingShelfEnabled]);
+  }, [sections, threads, listEnvironments]);
   const rows = useMemo(() => {
     const result: Row[] = [];
     let offset = 0;
@@ -274,7 +281,6 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
   const latest = useRef({ rows, planners, moveThread });
   // oxlint-disable-next-line react/refs -- The autoscroll rAF loop started at drag start reads the current rows and planners on every frame.
   latest.current = { rows, planners, moveThread };
-
   function stop() {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = null;
@@ -298,7 +304,6 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
     },
     [],
   );
-
   function update(translation: number) {
     const current = drag.current;
     if (current === null) return;
@@ -335,7 +340,9 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       current.destination?.placement !== destination?.placement
     ) {
       current.destination = destination;
-      setPreview({ ...current });
+      setPreview({
+        ...current,
+      });
     }
   }
   function start(row: Row) {
@@ -348,7 +355,9 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       translation: 0,
       destination: null,
     };
-    setPreview({ ...drag.current });
+    setPreview({
+      ...drag.current,
+    });
     update(0);
     // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
     let last = performance.now();
@@ -371,7 +380,10 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       const offset = Math.max(0, Math.min(maximum, bounds.offset + speed * dt * 0.5));
       if (offset !== bounds.offset) {
         bounds.offset = offset;
-        list.current?.scrollToOffset({ offset, animated: false });
+        list.current?.scrollToOffset({
+          offset,
+          animated: false,
+        });
         update(current.translation);
       }
       frame.current = requestAnimationFrame(tick);
@@ -401,12 +413,24 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
       presentationStyle="fullScreen"
       onRequestClose={props.onClose}
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView
+        style={{
+          flex: 1,
+        }}
+      >
         {/* A Modal is its own native hierarchy, so measure its own safe area, including side
             insets for the camera, instead of the presenting screen's. */}
-        <SafeAreaProvider style={{ flex: 1 }}>
+        <SafeAreaProvider
+          style={{
+            flex: 1,
+          }}
+        >
           <View className="flex-1 bg-screen">
-            <SafeAreaView style={{ flex: 1 }}>
+            <SafeAreaView
+              style={{
+                flex: 1,
+              }}
+            >
               <SheetHeader
                 presentation="inline"
                 title={gt("Arrange threads")}
@@ -421,7 +445,9 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
                   geometry.current.height = event.nativeEvent.layout.height;
                 }}
                 className="flex-1"
-                style={{ overflow: "hidden" }}
+                style={{
+                  overflow: "hidden",
+                }}
               >
                 {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- A full-screen Modal with an inline header; there is no navigation header to register with. */}
                 <LegendList
@@ -473,7 +499,12 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
                             targetId: null,
                             placement: "before",
                           })
-                            ? [{ name: section, label }]
+                            ? [
+                                {
+                                  name: section,
+                                  label,
+                                },
+                              ]
                             : [];
                         })
                       : [];
@@ -570,7 +601,10 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
                             onPress={() => {
                               const section = item.section;
                               if (section === "snoozed" || section === "settled")
-                                setExpanded((value) => ({ ...value, [section]: !value[section] }));
+                                setExpanded((value) => ({
+                                  ...value,
+                                  [section]: !value[section],
+                                }));
                             }}
                           >
                             <Text className="text-sm font-t3-semibold text-foreground-muted">

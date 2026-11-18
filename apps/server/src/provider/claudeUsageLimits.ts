@@ -1,8 +1,10 @@
+/** SDK reads report percentages and ISO resets; turn events report fractions and epoch seconds. Both map to the same window IDs. */
 import type { SDKControlGetUsageResponse, SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk";
 import type {
   ProviderUsageLimitsUpdate,
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
+  ServerProviderResetCredits,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -19,6 +21,17 @@ import {
 const SESSION_MINS = 5 * 60;
 const WEEK_MINS = 7 * 24 * 60;
 
+export interface ClaudeSubscriptionUsage {
+  readonly response: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
+  readonly resetCredits: ServerProviderResetCredits | undefined;
+}
+
+/**
+ * The account-wide windows, keyed by the SDK's `rateLimitType`. Model-scoped
+ * weeklies are additive on top of these: the CLI reports them under
+ * `rate_limits.model_scoped[]` on `get_usage` and streams the overage-included
+ * model bucket (Fable today) as `seven_day_overage_included`.
+ */
 const WINDOWS: Readonly<
   Record<string, Pick<ServerProviderUsageWindow, "kind" | "label" | "windowDurationMins">>
 > = {
@@ -211,6 +224,8 @@ export function claudeUsageResponseToLimits(input: {
     windows.push(
       scopedWindow(entry.display_name, entry.utilization, isoFromString(entry.resets_at)),
     );
+    // Only a bucket that drew a row may receive events; naming one that was
+    // skipped would let a mid-turn event open a row the probe never showed.
     overageIncluded ??= entry.display_name;
   }
   const spendPercent = readSpendPercent(response.rate_limits);
@@ -232,6 +247,7 @@ export function claudeUsageResponseToLimits(input: {
   };
 }
 
+/** Probe-side helper: map the response and remember the scoped names for events. */
 export const recordClaudeUsageResponse = (
   namesRef: Ref.Ref<ClaudeScopedLimitNames>,
   input: Parameters<typeof claudeUsageResponseToLimits>[0],

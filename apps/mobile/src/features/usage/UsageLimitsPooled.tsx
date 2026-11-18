@@ -7,6 +7,7 @@ import {
   collectLimitAccounts,
   collectLimitPools,
   displayLimitWindows,
+  formatCreditBalance,
   paceRemainingPercent,
   remainingPercent,
   type LimitAccount,
@@ -529,6 +530,27 @@ export function UsageLimitsSection({
                   />
                 );
               })}
+              {pool.accounts.flatMap((account) =>
+                account.limits.credits
+                  ? [
+                      <View
+                        key={account.key}
+                        className="flex-row items-center justify-between gap-3 rounded-[24px] border-continuous bg-grouped-card p-4"
+                      >
+                        <Text className="shrink text-sm text-foreground-muted">
+                          {pool.accounts.length > 1
+                            ? gt("{account} · Credits remaining", {
+                                account: accountName(account, m),
+                              })
+                            : gt("Credits remaining")}
+                        </Text>
+                        <Text className="text-base font-t3-medium tabular-nums text-foreground">
+                          {formatCreditBalance(account.limits.credits)}
+                        </Text>
+                      </View>,
+                    ]
+                  : [],
+              )}
             </View>
           </Fragment>
         );
@@ -707,6 +729,16 @@ export function UsageLimitAccountScreen({ route }: AccountScreenProps) {
                 <Text className="text-sm text-foreground-muted">{account.sourceLabel}</Text>
               )}
             </View>
+            {account.limits.credits ? (
+              <View className="gap-2 rounded-[24px] border-continuous bg-grouped-card p-4">
+                <Text className="text-sm font-t3-medium text-foreground">
+                  <T>Credits remaining</T>
+                </Text>
+                <Text className="text-3xl font-t3-bold tabular-nums text-foreground">
+                  {formatCreditBalance(account.limits.credits)}
+                </Text>
+              </View>
+            ) : null}
             {account.redeem && account.limits.resetCredits ? (
               <View className="gap-3 rounded-[24px] border-continuous bg-grouped-card p-4">
                 <Text className="text-sm font-t3-medium text-foreground">

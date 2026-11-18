@@ -86,7 +86,7 @@ export const getAppBranding = DesktopIpc.makeSyncIpcMethod({
 /**
  * Relay traces leave the machine, so a policy with `telemetry: false`, or one that cannot be read,
  * stops them. Read once here: a sync IPC handler cannot wait on the filesystem. Until the login
- * shell's environment (which may opt out) is known, answer null so the renderer asks again.
+ * shell's environment (which may opt in) is known, answer null so the renderer asks again.
  */
 export const installRelayTelemetryEnabled = Effect.fn("desktop.ipc.window.installRelayTelemetry")(
   function* () {
@@ -104,7 +104,7 @@ export const installRelayTelemetryEnabled = Effect.fn("desktop.ipc.window.instal
         handler: () =>
           shellEnvironment.discoveryFinished.pipe(
             Effect.map((known) =>
-              !policyAllows || !isRelayTracingEnabled(env) ? false : known ? true : null,
+              !policyAllows ? false : known ? isRelayTracingEnabled(env) : null,
             ),
           ),
       }),
@@ -146,6 +146,17 @@ export const getWindowFullscreenState = DesktopIpc.makeSyncIpcMethod({
     const electronWindow = yield* ElectronWindow.ElectronWindow;
     const window = yield* electronWindow.currentMainOrFirst;
     return Option.isSome(window) && window.value.isFullScreen();
+  }),
+});
+
+export const focusWindow = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.FOCUS_WINDOW_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.focusWindow")(function* () {
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const window = yield* electronWindow.currentMainOrFirst;
+    if (Option.isSome(window)) yield* electronWindow.reveal(window.value);
   }),
 });
 

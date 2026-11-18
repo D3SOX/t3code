@@ -88,10 +88,13 @@ export function deriveBlockedOnThreadWait(input: {
 }
 
 export function backgroundWorkHoldsCompletion(
-  tasks: ReadonlyArray<Pick<PendingBackgroundWorkTask, "kind" | "awaited">>,
+  tasks: ReadonlyArray<Pick<PendingBackgroundWorkTask, "taskId" | "kind" | "awaited">>,
 ): boolean {
   return tasks.some(
-    (task) => task.awaited === true || backgroundWorkKindHoldsCompletion(task.kind),
+    (task) =>
+      isPullRequestWatchTask(task) ||
+      task.awaited === true ||
+      backgroundWorkKindHoldsCompletion(task.kind),
   );
 }
 
@@ -115,7 +118,7 @@ export const isPullRequestWatchTask = (task: Pick<PendingBackgroundWorkTask, "ta
 
 /**
  * A monitor wakes the agent once per line, so a progress wake run's completion waits for the
- * monitor to end. A pull request watch wakes only on news and holds while its checks run.
+ * monitor to end. Pull request watches hold completion independently of wake runs.
  */
 export function monitorHoldsWakeCompletion(
   thread: Pick<OrchestrationV2ThreadShell, "latestRunBackgroundWake" | "pendingBackgroundTasks">,
@@ -326,8 +329,7 @@ function pullRequestWatchTasks(
             taskId: `${PULL_REQUEST_WATCH_TASK_ID}${link.host.toLowerCase()}/${link.repository.toLowerCase()}#${link.number}`,
             description: `Watching pull request #${link.number}`,
             kind: "monitor" as const,
-            // Once every check finished, a person moves the PR next: the watch stays on but holds nothing.
-            ...(link.watch.checksPending === false ? {} : { awaited: true as const }),
+            awaited: true,
           },
         ],
   );

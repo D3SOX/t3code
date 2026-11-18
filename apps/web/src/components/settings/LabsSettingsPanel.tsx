@@ -6,6 +6,7 @@ import { T, useGT, useMessages } from "gt-react";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
 import { Button } from "../ui/button";
+import { LegacyFeaturesSection } from "./SettingsPanels";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -28,6 +29,7 @@ export function LabsSettingsPanel() {
         <SimlockHostsRow />
         <FastWorktreeCheckoutRow />
       </SettingsSection>
+      <LegacyFeaturesSection />
     </SettingsPageContainer>
   );
 }
@@ -45,8 +47,10 @@ function BoringSidebarRow() {
       )}
       control={
         <Switch
-          checked={settings.boringSidebarEnabled}
-          onCheckedChange={(checked) => updateSettings({ boringSidebarEnabled: Boolean(checked) })}
+          checked={settings.boringSidebarEnabled || settings.legacySidebarEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ boringSidebarEnabled: Boolean(checked), legacySidebarEnabled: false })
+          }
           aria-label={gt("Boring sidebar (group by project)")}
         />
       }

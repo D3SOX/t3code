@@ -34,13 +34,16 @@ const EXTERNAL_LINK_CONTEXT_MENU_ITEMS = [
 
 function externalLinkContextMenuItems(options: {
   readonly canOpenInPreview: boolean;
+  readonly inAppLabel?: string | undefined;
   readonly threadLinkAction?: "link-to-thread" | "unlink-from-thread" | undefined;
 }): readonly ContextMenuItem<ExternalLinkContextMenuAction>[] {
-  const items = (
-    options.canOpenInPreview
-      ? EXTERNAL_LINK_CONTEXT_MENU_ITEMS
-      : EXTERNAL_LINK_CONTEXT_MENU_ITEMS.filter((item) => item.id !== "open-in-preview")
-  ).map((item) => ({ id: item.id, label: m(item.label) }));
+  const availableItems = options.canOpenInPreview
+    ? EXTERNAL_LINK_CONTEXT_MENU_ITEMS
+    : EXTERNAL_LINK_CONTEXT_MENU_ITEMS.filter((item) => item.id !== "open-in-preview");
+  const items = availableItems.map((item) => ({
+    id: item.id,
+    label: item.id === "open-in-preview" && options.inAppLabel ? options.inAppLabel : m(item.label),
+  }));
   if (options.threadLinkAction === undefined) return items;
   return [
     {
@@ -58,6 +61,7 @@ interface ShowExternalLinkContextMenuOptions {
   readonly href: string;
   readonly position: { readonly x: number; readonly y: number };
   readonly canOpenInPreview?: boolean;
+  readonly inAppLabel?: string | undefined;
   readonly threadLinkAction?: "link-to-thread" | "unlink-from-thread" | undefined;
   readonly showContextMenu: (
     items: readonly ContextMenuItem<ExternalLinkContextMenuAction>[],
@@ -96,6 +100,7 @@ export async function showExternalLinkContextMenu({
   href,
   position,
   canOpenInPreview = true,
+  inAppLabel,
   threadLinkAction,
   showContextMenu,
   openInPreview,
@@ -107,7 +112,7 @@ export async function showExternalLinkContextMenu({
   let action: ExternalLinkContextMenuAction | null;
   try {
     action = await showContextMenu(
-      externalLinkContextMenuItems({ canOpenInPreview, threadLinkAction }),
+      externalLinkContextMenuItems({ canOpenInPreview, inAppLabel, threadLinkAction }),
       position,
     );
   } catch (cause) {

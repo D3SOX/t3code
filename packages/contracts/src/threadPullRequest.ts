@@ -16,6 +16,11 @@ import {
   PullRequestState,
 } from "./pullRequest.ts";
 
+/**
+ * Legacy single-PR link. Still emitted as the thread's derived current pull
+ * request (see `@t3tools/shared/threadPullRequests`) so clients from before
+ * `pullRequests` keep working independently of their release schedule.
+ */
 export const ThreadLinkedPullRequest = Schema.Struct({
   projectId: ProjectId,
   repository: TrimmedNonEmptyString,
@@ -34,6 +39,11 @@ export const ThreadPullRequestLinkSource = Schema.Literals([
 ]);
 export type ThreadPullRequestLinkSource = typeof ThreadPullRequestLinkSource.Type;
 
+/**
+ * Host state persisted on a link by the sync reactor; null until first sync. The overview
+ * fields are optional: a host whose cheap read lacks them leaves them out, and snapshots
+ * written before they existed still decode.
+ */
 export const ThreadPullRequestSnapshot = Schema.Struct({
   state: PullRequestState,
   title: TrimmedNonEmptyString,
@@ -62,7 +72,7 @@ export const ThreadPullRequestStackLayer = Schema.Struct({
 });
 export type ThreadPullRequestStackLayer = typeof ThreadPullRequestStackLayer.Type;
 
-/** Layers run bottom to top. */
+/** A host-native stack the pull request belongs to. Layers run bottom to top. */
 export const ThreadPullRequestStack = Schema.Struct({
   kind: Schema.Literal("native"),
   id: TrimmedNonEmptyString,
@@ -73,6 +83,8 @@ export const ThreadPullRequestStack = Schema.Struct({
 });
 export type ThreadPullRequestStack = typeof ThreadPullRequestStack.Type;
 
+/** Identity of a pull request as a thread link sees it: host-level, so the
+ * same PR linked from two projects (or two environments) compares equal. */
 export const ThreadPullRequestKey = Schema.Struct({
   host: TrimmedNonEmptyString,
   repository: TrimmedNonEmptyString,
@@ -80,11 +92,24 @@ export const ThreadPullRequestKey = Schema.Struct({
 });
 export type ThreadPullRequestKey = typeof ThreadPullRequestKey.Type;
 
+/**
+ * Present while the server watches the pull request for its thread. The server wakes the
+ * thread's agent when checks finish on the head commit, someone else comments, or the branch
+ * starts to conflict. The other fields record what the agent was last told, so each change is
+ * reported once.
+ */
 export const ThreadPullRequestWatch = Schema.Struct({
   startedAt: IsoDateTime,
+  /** Head commit at the last pass; null where the host does not report one. */
   headSha: Schema.NullOr(TrimmedNonEmptyString),
+  /** Failed checks on that commit the agent was told about; a rerun that fails again is news. */
   failedChecks: Schema.Array(TrimmedNonEmptyString),
+  /** The agent was told the required checks on that commit passed. */
   passed: Schema.Boolean,
+  /**
+   * Names in the passing gate on that commit, so a required check that first shows up already
+   * passed is news. Empty on watches saved before this field existed.
+   */
   passedChecks: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -94,6 +119,11 @@ export const ThreadPullRequestWatch = Schema.Struct({
   awaitingApproval: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** The agent was told checks await approval on this head, so later ones stay quiet. */
   approvalAnnounced: Schema.optional(Schema.Boolean),
+  /** All checks that passed, independently of the required gate. Empty while CI is pending. */
+  allPassedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** All finished checks, including failures. Empty while any check is pending. */
+  completedChecks: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** Remarks from others created up to this host time were reported. */
   remarksThrough: IsoDateTime,
   /** Reported remarks at remarksThrough, so late arrivals at that timestamp still count. */
   remarkIds: Schema.Array(TrimmedNonEmptyString),
@@ -101,6 +131,10 @@ export const ThreadPullRequestWatch = Schema.Struct({
   rebaseRequired: Schema.optional(Schema.Boolean),
   /** Last removal seen; null after an empty read, absent before the first read. */
   mergeQueueRemovalId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** Review bot checks on that commit the agent was told finished, as `name:status`. */
+  finishedReviews: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** Reactions on the description the agent knows of, as `content:login`; absent before the first read. */
+  descriptionReactions: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Consecutive comment-only wakes; limited to prevent bot loops. */
   wakes: NonNegativeInt,
   /**

@@ -1,4 +1,4 @@
-import type { AppBarMenuItem } from "../../../components/ui/AppBar.types";
+import type { AppBarMenu, AppBarMenuItem } from "../../../components/ui/AppBar.types";
 
 /** The header of the workspace thread list, on Home and in the sidebar column. */
 export interface WorkspaceListHeaderProps {
@@ -15,6 +15,7 @@ export interface WorkspaceListHeaderProps {
   readonly filter: {
     readonly customized: boolean;
     readonly items: ReadonlyArray<AppBarMenuItem>;
+    readonly renderActionIcon?: AppBarMenu["renderActionIcon"];
   };
   /** iOS: a settings button. Android reaches Settings from the workspace navigation. */
   readonly onOpenSettings?: () => void;

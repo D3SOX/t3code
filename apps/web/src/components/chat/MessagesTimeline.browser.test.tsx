@@ -45,7 +45,7 @@ import {
   deriveTimelineEntriesFromVisibleTurnItems,
 } from "../../session-logic";
 import type { Root } from "mdast";
-import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
+import { ViewedImageTimelineRow } from "./TimelineRowParts";
 import { remarkThoughtPreview, THOUGHT_PREVIEW_MAX_LENGTH } from "./TimelineWorkEntryRow.logic";
 import { TimelineRowCtx } from "./timelineRowContext";
 import { parseMarkdownWithMath } from "@t3tools/shared/markdownMath";
@@ -1753,20 +1753,33 @@ describe("MessagesTimeline attachments", () => {
           {
             threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
             workspaceRoot: "/repo",
+            timelineEntries: [],
             onImageExpand,
           } as never
         }
       >
-        <ViewedImagesTimelineRow
-          row={{
-            kind: "viewed-images",
-            id: "viewed",
-            createdAt: CREATED_AT,
-            paths: ["/repo/first.png", "/repo/second.png", "/repo/third.png"],
-          }}
-        />
+        <div data-image-gallery>
+          {["first.png", "second.png", "third.png"].map((name) => (
+            <ViewedImageTimelineRow
+              key={name}
+              row={{
+                kind: "viewed-image",
+                id: name,
+                createdAt: CREATED_AT,
+                entry: { id: name, tone: "tool", createdAt: CREATED_AT, label: name },
+                imagePath: `/repo/${name}`,
+                active: false,
+              }}
+            />
+          ))}
+        </div>
       </TimelineRowCtx>,
     );
+    for (const name of ["first.png", "second.png", "third.png"]) {
+      await screen
+        .getByRole("button", { name: new RegExp(`Viewed image.*${name.replace(".", "\\.")}`) })
+        .click();
+    }
     await screen.getByRole("button", { name: "Preview second.png" }).click();
     expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -1778,7 +1791,7 @@ describe("MessagesTimeline attachments", () => {
     );
   });
 
-  it("opens an image from an expanded tool row as a gallery of the turn's viewed images", async () => {
+  it("opens a viewed image with its collapsed siblings in the gallery", async () => {
     stubbedAsset.url =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     onTestFinished(() => {
@@ -1798,17 +1811,8 @@ describe("MessagesTimeline attachments", () => {
       [read("first.png"), read("second.png"), read("third.png")],
       { onImageExpand, workspaceRoot: "/repo" },
     );
-    await click(screen.button(/^Read 3 files/));
-    await vi.waitFor(() => expect(screen.buttons("Read")).toHaveLength(3));
-    await click(screen.buttons("Read")[1]!);
-    const inRow = await vi.waitFor(() => {
-      const image = [...screen.container.querySelectorAll("img")].find(
-        (img) => img.alt === "second.png" && !img.closest("[data-image-gallery]"),
-      );
-      expect(image).toBeTruthy();
-      return image!;
-    });
-    await click(inRow.closest<HTMLElement>("button, [role=button]")!);
+    await click(screen.button(/^Viewed image.*second\.png/));
+    await screen.getByRole("button", { name: "Preview second.png" }).click();
     expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         index: 1,

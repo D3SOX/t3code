@@ -23,7 +23,7 @@ import type { EnvironmentShellState } from "./shell.ts";
 import { threadFamilyRead } from "./threadFamilies.ts";
 
 // Rows per page of older settled threads: one "Show more" step of the Settled shelf.
-const OLDER_SETTLED_PAGE_SIZE = 25;
+const OLDER_SETTLED_PAGE_SIZE = 50;
 // A burst of changes (a PR sync touching many old threads) costs one count read.
 const COUNT_REREAD_DELAY = "500 millis";
 

@@ -228,29 +228,33 @@ describe("newTaskDestination", () => {
     });
   }
 
-  it("starts in the current thread's project ahead of the filtered and remembered ones", () => {
-    const projects = [makeProject("remembered"), makeProject("current", "other-environment")];
+  it("keeps the last new-thread project ahead of current and filtered projects", () => {
+    const projects = [
+      makeProject("remembered"),
+      makeProject("current", "other-environment"),
+      makeProject("filtered"),
+    ];
     expect(
       destination({
         useLastProject: true,
         projects,
         current: projects[1],
-        filtered: projects[0],
+        filtered: projects[2],
         last: { environmentId: "environment", projectId: "remembered" },
       }),
     ).toEqual({
-      draft: { requestId: "request", environmentId: "other-environment", projectId: "current" },
+      draft: { requestId: "request", environmentId: "environment", projectId: "remembered" },
     });
   });
 
-  it("starts in the thread list's filtered project ahead of the remembered one", () => {
+  it("uses the thread list's filtered project when remembered and current projects are unavailable", () => {
     const projects = [makeProject("bravo"), makeProject("alpha")];
     expect(
       destination({
         useLastProject: true,
         projects,
         filtered: projects[1],
-        last: { environmentId: "environment", projectId: "bravo" },
+        last: { environmentId: "removed-environment", projectId: "bravo" },
       }),
     ).toEqual({
       draft: { requestId: "request", environmentId: "environment", projectId: "alpha" },

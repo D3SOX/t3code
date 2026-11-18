@@ -13,7 +13,8 @@ import * as Notifications from "expo-notifications";
 import { useNavigation } from "@react-navigation/native";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/reactivity";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { AndroidNotificationsSettings } from "./AndroidNotificationsSettings";
 import { Linking, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { m as resolveMessage } from "../../i18n/messages";
@@ -119,6 +120,8 @@ function useNotificationsReady(): boolean {
 
 export function SettingsNotificationsRouteScreen() {
   const gt = useGT();
+  if (Platform.OS === "android")
+    return <AndroidNotificationsSettings fcmSettings={renderFcmSettings} />;
   if (!hasCloudPublicConfig()) {
     return (
       <SettingsScreen title={gt("Notifications")}>
@@ -137,7 +140,30 @@ export function SettingsNotificationsRouteScreen() {
   return <ConfiguredSettingsNotificationsRouteScreen />;
 }
 
-function ConfiguredSettingsNotificationsRouteScreen() {
+function renderFcmSettings(header: ReactNode) {
+  return <FcmSettings header={header} />;
+}
+
+function FcmSettings({ header }: { header: ReactNode }) {
+  const gt = useGT();
+  if (!hasCloudPublicConfig())
+    return (
+      <SettingsScreen title={gt("Notifications")}>
+        <ScrollView contentContainerClassName="gap-6 px-5 pt-4">
+          {header}
+          <Text className="text-foreground-muted">
+            {gt(
+              "FCM requires a build with Firebase and {product} configured. Choose Local or UnifiedPush to receive notifications without Google services.",
+              { product: "T3 Connect" },
+            )}
+          </Text>
+        </ScrollView>
+      </SettingsScreen>
+    );
+  return <ConfiguredSettingsNotificationsRouteScreen header={header} />;
+}
+
+function ConfiguredSettingsNotificationsRouteScreen({ header }: { header?: ReactNode }) {
   const gt = useGT();
   const m = useMessages();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
@@ -453,6 +479,7 @@ function ConfiguredSettingsNotificationsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
+        {header}
         <SettingsSection title={gt("Agent activity")}>
           <SettingsSwitchRow
             icon="bell.badge"

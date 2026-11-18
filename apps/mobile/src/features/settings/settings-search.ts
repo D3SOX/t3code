@@ -98,6 +98,8 @@ const SETTINGS_SEARCH_TERMS = {
     msg("working section", { $context: "settings search keyword" }),
     msg("new threads", { $context: "settings search keyword" }),
     msg("last project", { $context: "settings search keyword" }),
+    msg("unpin", { $context: "settings search keyword" }),
+    msg("pin confirmation", { $context: "settings search keyword" }),
   ],
   SettingsThreads: [
     msg("new threads", { $context: "settings search keyword" }),

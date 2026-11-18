@@ -1,3 +1,4 @@
+import { isTerminalCloseShortcut, isTerminalSplitVerticalShortcut } from "./keybindings";
 import { assert, describe, it } from "vite-plus/test";
 import {
   compileResolvedKeybindingsConfig,
@@ -122,7 +123,14 @@ const DEFAULT_BINDINGS = compile([
     whenAst: whenIdentifier("terminalFocus"),
   },
   {
-    shortcut: modShortcut("w"),
+    shortcut: {
+      key: "w",
+      metaKey: false,
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      modKey: false,
+    },
     command: "terminal.close",
     whenAst: whenIdentifier("terminalFocus"),
   },
@@ -266,6 +274,104 @@ describe("thread undo shortcut", () => {
 });
 
 describe("split/new/close terminal shortcuts", () => {
+  it("uses terminal-safe split defaults", () => {
+    const context = { platform: "Linux", context: { terminalFocus: true } } as const;
+
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: ")", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+      "terminal.split",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "(", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+      "terminal.splitVertical",
+    );
+    assert.isNull(
+      resolveShortcutCommand(
+        event({ key: "d", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        context,
+      ),
+    );
+  });
+
+  it("requires terminalFocus for default split/new/close bindings", () => {
+    assert.isFalse(
+      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isFalse(
+      isTerminalSplitVerticalShortcut(
+        event({ key: "d", metaKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "MacIntel",
+          context: { terminalFocus: false },
+        },
+      ),
+    );
+    assert.isFalse(
+      isTerminalNewShortcut(event({ key: "n", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isFalse(
+      isTerminalCloseShortcut(
+        event({ key: "W", ctrlKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "Linux",
+          context: { terminalFocus: false },
+        },
+      ),
+    );
+  });
+
+  it("matches split/new when terminalFocus is true", () => {
+    assert.isTrue(
+      isTerminalSplitShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isTrue(
+      isTerminalSplitVerticalShortcut(
+        event({ key: "d", metaKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "MacIntel",
+          context: { terminalFocus: true },
+        },
+      ),
+    );
+    assert.isTrue(
+      isTerminalNewShortcut(event({ key: "n", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isTrue(
+      isTerminalCloseShortcut(
+        event({ key: "W", ctrlKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        {
+          platform: "Linux",
+          context: { terminalFocus: true },
+        },
+      ),
+    );
+  });
+
   it("supports when expressions", () => {
     const keybindings = compile([
       {
@@ -626,21 +732,45 @@ describe("resolveChatShortcutCommand", () => {
 });
 
 describe("resolveShortcutCommand", () => {
-  it("routes mod+w to the terminal while focused and to the right panel otherwise", () => {
-    const closeEvent = event({ key: "w", metaKey: true });
+  it("routes Ctrl+Shift+W to the terminal and mod+w to the right panel", () => {
+    const closeTerminalEvent = event({ key: "W", ctrlKey: true, shiftKey: true });
+    const closePanelEvent = event({ key: "w", metaKey: true });
     assert.strictEqual(
-      resolveShortcutCommand(closeEvent, DEFAULT_BINDINGS, {
+      resolveShortcutCommand(closeTerminalEvent, DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: true },
       }),
       "terminal.close",
     );
     assert.strictEqual(
-      resolveShortcutCommand(closeEvent, DEFAULT_BINDINGS, {
+      resolveShortcutCommand(closePanelEvent, DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: false },
       }),
       "rightPanel.close",
+    );
+  });
+
+  it("closes only a focused terminal with Ctrl+Shift+W and leaves Ctrl+W to the shell", () => {
+    const closeEvent = event({ key: "W", ctrlKey: true, shiftKey: true });
+    assert.strictEqual(
+      resolveShortcutCommand(closeEvent, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+      "terminal.close",
+    );
+    assert.isNull(
+      resolveShortcutCommand(closeEvent, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+    assert.isNull(
+      resolveShortcutCommand(event({ key: "w", ctrlKey: true }), DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
     );
   });
 
@@ -814,7 +944,7 @@ describe("isRichTextBoldShortcut", () => {
 });
 
 describe("composer and pull request shortcuts", () => {
-  it("uses the dictation chord outside the terminal and preserves terminal split", () => {
+  it("uses the dictation chord only outside the terminal", () => {
     const chord = event({ key: "d", ctrlKey: true, shiftKey: true });
     assert.strictEqual(
       resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
@@ -823,12 +953,11 @@ describe("composer and pull request shortcuts", () => {
       }),
       "composer.dictation",
     );
-    assert.strictEqual(
+    assert.isNull(
       resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
         platform: "Linux",
         context: { terminalFocus: true },
       }),
-      "terminal.splitVertical",
     );
   });
   it("fills missing number shortcuts without replacing the saved URL binding", () => {

@@ -19,6 +19,7 @@ import {
   useVisibleThreadShells,
 } from "../../state/entities";
 import { useDebouncedValue, usePaginatedBranches, useThreadSearch } from "../../state/queries";
+import { resolveWorktreeBaseRef } from "@t3tools/client-runtime/state/vcs";
 import { BranchPickerScreen } from "../threads/NewTaskContextPickerScreens";
 import { ThreadSettingsPickerScreen } from "../threads/ThreadSettingsSheet";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -153,7 +154,7 @@ export function ScheduledTaskBranchPickerRouteScreen() {
       title={gt("Base branch")}
       project={project}
       branches={visibleBranches}
-      selectedBranchName={editor.draft.baseRef}
+      selectedBranchName={resolveWorktreeBaseRef(editor.draft.baseRef, branches.refs)}
       query={query}
       onQueryChange={setQuery}
       loading={

@@ -28,7 +28,11 @@ import {
 } from "~/components/chat/composerMentionDrag";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-request-links";
-import { pullRequestLinkPanelTarget, useOpenPrLink } from "~/lib/openPullRequestLink";
+import {
+  pullRequestLinkPanelTarget,
+  useOpenPrLink,
+  usePullRequestLinkContextMenu,
+} from "~/lib/openPullRequestLink";
 import { useClientSettings } from "~/hooks/useSettings";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 import { usePullRequestIntentPrefetch } from "./usePullRequestIntentPrefetch";
@@ -115,6 +119,7 @@ function LinkRowImpl({
   const gt = useGT();
   const resolve = useMessages();
   const openPrLink = useOpenPrLink(threadRef);
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu(threadRef);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const menuAnchor = menuPosition
@@ -178,7 +183,9 @@ function LinkRowImpl({
       <a
         href={link.url}
         onClick={(event) => openPrLink(event, link.url, threadRef)}
-        // Outside drops use the URL; the composer uses this context-chip payload.
+        onContextMenu={(event) => openPrLinkContextMenu(event, link.url, threadRef)}
+        // The link's own URL still rides along for drops outside the app; the composer takes
+        // this payload instead and adds the pull request as a context chip.
         onDragStart={
           snapshot === null
             ? undefined
@@ -441,7 +448,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: true });
   const capabilities = useServerConfigs().get(threadRef.environmentId)?.environment.capabilities;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const opensInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
+  const opensInApp = useClientSettings((settings) => settings.pullRequestLinkTarget === "app");
   const prefetch = usePullRequestIntentPrefetch((target) =>
     links.some(
       (link) =>

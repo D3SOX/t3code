@@ -36,6 +36,8 @@ const dependencies = [
   ProjectService.ProjectService,
 ];
 
+const PR_LINKING_GUIDANCE =
+  "Register PRs created for this thread, PRs implementing this thread's requested changes, and PRs explicitly assigned to this thread for review or monitoring. Link them when creating them or starting that work, including every layer of a stack implementing this task. Do not link PRs touched only for incidental maintenance, such as release-note metadata, labels, cross-references, or coordination updates. Mentioning or modifying a PR alone does not make it relevant to this thread.";
 const guideDependencies = [
   ...dependencies,
   PullRequestReviewGuideService.PullRequestReviewGuideService,
@@ -242,8 +244,7 @@ export const ListThreadPullRequestsResult = Schema.Struct({
 export type ListThreadPullRequestsResult = typeof ListThreadPullRequestsResult.Type;
 
 const LinkPullRequestTool = Tool.make("link_pull_request", {
-  description:
-    "Link a PR to this thread. T3 shows its status and settles the thread on merge. For several PRs, use `link_pull_requests`.",
+  description: `${PR_LINKING_GUIDANCE} Links a pull request to this thread so T3 Code tracks it, shows its status beside the thread, and settles the thread when it merges. Pass the URL, or repository plus number. Linking an already-linked pull request succeeds with alreadyLinked=true. For several PRs, use link_pull_requests.`,
   parameters: PullRequestTargetInput,
   success: LinkPullRequestResult,
   failure: PullRequestToolError,
@@ -306,8 +307,7 @@ const UnlinkPullRequestsTool = Tool.make("unlink_pull_requests", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
-  description:
-    "List a thread's PRs, with last known state and stack order (bottom to top). Not an end-of-work check.",
+  description: `List the pull requests linked to a thread (omit threadId for this thread) with their last known host state, and how they chain into stacks (bottom to top). ${PR_LINKING_GUIDANCE}`,
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId.annotate({ description: "Thread. Default: this thread." })),
@@ -326,7 +326,7 @@ const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
 
 const WatchPullRequestTool = Tool.make("watch_pull_request", {
   description:
-    "Watch an open PR for this thread, linking it first if needed. T3 wakes you on failed checks, passed required checks, new comments or reviews, or conflicts. Handle old comments first. Only later ones wake you. After this call, end your turn. The watch stays on after each wake, so do not call this again on a wake. A wake is not a merge decision. Check readiness yourself.",
+    "Have T3 Code watch an open pull request for this thread, linking it first if needed. T3 Code checks it every two minutes and wakes you with a message when a check fails, the required checks pass, all remaining CI passes, someone else comments or reviews, or the branch starts to conflict with its base. Use this to monitor or babysit a pull request instead of polling, sleeping, or running a watcher. Only comments posted after this call wake you, so handle the existing ones first, then end your turn. A wake is news, not a merge decision: check readiness yourself before merging. While T3 Code watches, the thread stays in the user's Working list, not their inbox. When you hand the work back to the user, call unwatch_pull_request first so the thread returns to their inbox. Watching ends when the pull request merges or closes, when its thread settles or is archived, when T3 Code fails to read it 8 times in a row (a host rate limit only delays it), when the user stops this thread, or when you call unwatch_pull_request. Unsettle the thread before starting a new watch. A subagent cannot watch: its parent thread owns the pull request.",
   parameters: PullRequestTargetInput,
   success: WatchPullRequestResult,
   failure: PullRequestToolError,
@@ -340,7 +340,8 @@ const WatchPullRequestTool = Tool.make("watch_pull_request", {
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromSubagents);
 
 const UnwatchPullRequestTool = Tool.make("unwatch_pull_request", {
-  description: "Stop watching a PR for this thread. It stays linked.",
+  description:
+    "Stop T3 Code from watching a pull request for this thread when monitoring is complete or the user asks you to stop. This disables automatic wakes. If a running review blocks a pending push or review response, keep watching and end your turn instead. An external-review-only waiting exception applies after pending fixes have been pushed and actionable feedback has been handled. The pull request stays linked. Pass the URL, or repository plus number.",
   parameters: PullRequestTargetInput,
   success: WatchPullRequestResult,
   failure: PullRequestToolError,
@@ -353,6 +354,7 @@ const UnwatchPullRequestTool = Tool.make("unwatch_pull_request", {
   .annotate(Tool.OpenWorld, false)
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromSubagents);
 
+/** A pull request to write or read a guide for, by URL or by repository and number. */
 const GuideTarget = Schema.Struct({
   url: PullRequestTargetInput.fields.url,
   repository: PullRequestTargetInput.fields.repository,

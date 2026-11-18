@@ -11,6 +11,14 @@ Object.assign(process.env, repoEnv);
 process.env.EXPO_NO_TYPESCRIPT_SETUP = "1";
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+const isForkAndroidBuild = repoEnv.T3CODE_FORK_ANDROID_BUILD === "1";
+const forkAndroidVersionCode = Number(repoEnv.T3CODE_FORK_ANDROID_VERSION_CODE ?? "1");
+if (
+  isForkAndroidBuild &&
+  (!Number.isSafeInteger(forkAndroidVersionCode) || forkAndroidVersionCode < 1)
+) {
+  throw new Error("T3CODE_FORK_ANDROID_VERSION_CODE must be a positive integer.");
+}
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
@@ -233,10 +241,10 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // Match iOS PostScript names on Android so RN and the native composer share fonts before runtime loading.
 
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: isForkAndroidBuild ? "T3 Code D3SOX" : variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
-  scheme: variant.scheme,
+  scheme: isForkAndroidBuild ? "t3code-d3sox" : variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.3.0",
   runtimeVersion: {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
@@ -246,7 +254,7 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    enabled: !isForkAndroidBuild && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
     url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
@@ -296,7 +304,10 @@ const config: ExpoConfig = {
   },
   android: {
     icon: variant.assets.appIcon,
-    package: variant.androidPackage,
+    // Use upstream's preview identity so its Clerk instance accepts native sign-in,
+    // while the production app remains installable alongside the fork.
+    package: isForkAndroidBuild ? VARIANT_CONFIG.preview.androidPackage : variant.androidPackage,
+    ...(isForkAndroidBuild ? { versionCode: forkAndroidVersionCode } : {}),
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
       : {}),
@@ -480,17 +491,25 @@ const config: ExpoConfig = {
     EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID,
     EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME,
-    observability: {
-      tracesUrl: repoEnv.EXPO_PUBLIC_OTLP_TRACES_URL ?? "https://api.axiom.co/v1/traces",
-      tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
-      tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
-    },
-    eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-      observe: { endpointUrl: observeEndpointUrl },
-    },
+    ...(!isForkAndroidBuild
+      ? {
+          observability: {
+            tracesUrl: repoEnv.EXPO_PUBLIC_OTLP_TRACES_URL ?? "https://api.axiom.co/v1/traces",
+            tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
+            tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
+          },
+        }
+      : {}),
+    ...(isForkAndroidBuild
+      ? {}
+      : {
+          eas: {
+            projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+            observe: { endpointUrl: observeEndpointUrl },
+          },
+        }),
   },
-  owner: "pingdotgg",
+  ...(!isForkAndroidBuild ? { owner: "pingdotgg" } : {}),
   experiments: {
     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
     reactCompiler: true,

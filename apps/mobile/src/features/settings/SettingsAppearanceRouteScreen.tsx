@@ -1,4 +1,9 @@
 import { useGT } from "gt-react-native";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { SettingsSection } from "./components/SettingsSection";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { Platform } from "react-native";
 import { AndroidNavigationAppearanceSection } from "./appearance/sections/AndroidNavigationAppearanceSection";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
@@ -10,6 +15,7 @@ import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppeara
 import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
 import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
 import { ToolCallsAppearanceSection } from "./appearance/sections/ToolCallsAppearanceSection";
+import { EnvironmentIdentificationSection } from "./appearance/sections/EnvironmentIdentificationSection";
 
 export function SettingsAppearanceRouteScreen() {
   const gt = useGT();
@@ -27,6 +33,8 @@ export function SettingsAppearanceRouteScreen() {
         }}
       >
         <ThemeAppearanceSection />
+        <EnvironmentIdentificationSection />
+        <ThreadDisplaySettingsSection />
         {Platform.OS === "android" ? <AndroidNavigationAppearanceSection /> : null}
         <TextAppearanceSection />
         <TerminalAppearanceSection />
@@ -34,5 +42,25 @@ export function SettingsAppearanceRouteScreen() {
         <ToolCallsAppearanceSection />
       </ScrollView>
     </SettingsScreen>
+  );
+}
+
+function ThreadDisplaySettingsSection() {
+  const gt = useGT();
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const showThreadBranches =
+    !AsyncResult.isSuccess(preferences) || preferences.value.sidebarShowThreadBranches !== false;
+
+  return (
+    <SettingsSection title={gt("Thread display")}>
+      <SettingsSwitchRow
+        icon="arrow.triangle.branch"
+        label={gt("Show thread branches")}
+        subtitle={gt("Turn off for more compact thread rows.")}
+        value={showThreadBranches}
+        onValueChange={(value) => savePreferences({ sidebarShowThreadBranches: value })}
+      />
+    </SettingsSection>
   );
 }

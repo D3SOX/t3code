@@ -45,6 +45,7 @@ import {
 import type {
   EnvironmentId,
   MessageId,
+  ProviderInteractionMode,
   RuntimeRequestId,
   ScopedThreadRef,
   ServerConfig as T3ServerConfig,
@@ -290,7 +291,7 @@ export interface ThreadDetailScreenProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
-  readonly onStopThread: () => void;
+  readonly onStopThread: () => void | Promise<unknown>;
   /** Present while the thread's queue is held. */
   readonly onResumeQueue: (() => Promise<void>) | null;
   readonly offersSideChat: boolean;
@@ -304,6 +305,7 @@ export interface ThreadDetailScreenProps {
   ) => Promise<MessageId | null>;
   readonly onReconnectEnvironment: () => void;
   readonly canSwitchThreadProvider: boolean;
+  readonly onUpdateThreadInteractionMode?: (interactionMode: ProviderInteractionMode) => void;
   readonly onRespondToApproval: ApprovalResponder;
   readonly onSelectUserInputOption: (
     requestId: RuntimeRequestId,
@@ -1829,6 +1831,7 @@ function ThreadDetailBody(
                         environmentLabel={props.environmentLabel}
                         selectedThread={props.selectedThread}
                         compactBeforeSend={props.compactBeforeSend ?? null}
+                        selectedThreadDetailRef={props.selectedThreadDetailRef}
                         hasCompactableConversation={
                           hasCompactableConversation && !props.isCompacting
                         }
@@ -1895,6 +1898,7 @@ function ThreadDetailBody(
                         onSendMessage={handleSendMessage}
                         onShowUsageLimits={showUsageLimits}
                         canSwitchProvider={props.canSwitchThreadProvider}
+                        onUpdateInteractionMode={props.onUpdateThreadInteractionMode}
                         onHeightChange={handleComposerHeightChange}
                         onEditorFocusChange={handleOwnedInputFocusChange}
                       />
