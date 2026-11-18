@@ -133,6 +133,8 @@ export const ThreadPullRequestWatch = Schema.Struct({
   mergeQueueRemovalId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Review bot checks on that commit the agent was told finished, as `name:status`. */
   finishedReviews: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** Reactions on the description the agent knows of, as `content:login`; absent before the first read. */
+  descriptionReactions: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** Consecutive comment-only wakes; limited to prevent bot loops. */
   wakes: NonNegativeInt,
   /**

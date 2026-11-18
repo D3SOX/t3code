@@ -111,6 +111,13 @@ query PullRequestWatchFingerprint(
       reviewThreads {
         totalCount
       }
+      # Review bots such as Codex can report a clean review only by reacting to the description.
+      reactionGroups {
+        content
+        reactors {
+          totalCount
+        }
+      }
       # totalCount ignores itemTypes and counts every timeline item; filteredCount honours it.
       mergeQueueRemovals: timelineItems(itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT])
         @include(if: $mergeQueue) {

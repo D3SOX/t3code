@@ -4,6 +4,7 @@ import {
   type OrchestrationV2ConversationMessage,
   type PullRequestCheck,
   PullRequestComment,
+  type PullRequestReaction,
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -19,8 +20,11 @@ import {
 
 // These cases read the head once or at one moment, so the no-checks notice never comes due.
 const evaluatePullRequestWatch = (
-  ...args: Parameters<typeof evaluate> extends [...infer Head, number] ? Head : never
-) => evaluate(...args, 0);
+  ...[from, read, remarks, reactions]: [
+    ...(Parameters<typeof evaluate> extends [...infer Head, number, unknown?] ? Head : never),
+    reactions?: Parameters<typeof evaluate>[4],
+  ]
+) => evaluate(from, read, remarks, 0, reactions);
 
 const STARTED = "2026-10-02T12:00:00.000Z";
 
@@ -978,6 +982,39 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(report.changes, [{ kind: "remarks", remarks: [comments[1]!] }]);
     assert.equal(report.next.remarksThrough, "2026-10-02T12:06:00Z");
     assert.deepEqual(evaluatePullRequestWatch(report.next, detail(), comments).changes, []);
+  });
+
+  it("reports a new reaction on the description once, but not a review starting", () => {
+    const react = (
+      content: "eyes" | "thumbs-up",
+      actors: ReadonlyArray<string>,
+    ): PullRequestReaction => ({ content, count: actors.length, actors, viewerHasReacted: false });
+    const read = (from: ThreadPullRequestWatch, reactions: ReadonlyArray<PullRequestReaction>) =>
+      evaluatePullRequestWatch(from, detail(), noRemarks, reactions);
+
+    // The first read records what is already there.
+    const first = read(watch(), [react("thumbs-up", ["reviewer"])]);
+    assert.deepEqual(first.changes, []);
+    const started = read(first.next, [
+      react("thumbs-up", ["reviewer"]),
+      react("eyes", ["chatgpt-codex-connector"]),
+    ]);
+    assert.deepEqual(started.changes, []);
+    const done = read(started.next, [
+      react("thumbs-up", ["reviewer", "chatgpt-codex-connector", "agent-user"]),
+    ]);
+    assert.deepEqual(done.changes, [
+      { kind: "reactions", reactions: ["thumbs-up:chatgpt-codex-connector"] },
+    ]);
+    assert.deepEqual(
+      read(done.next, [react("thumbs-up", ["chatgpt-codex-connector"])]).changes,
+      [],
+    );
+    // A pass that did not read the activity keeps what the agent was told.
+    assert.deepEqual(
+      evaluatePullRequestWatch(done.next, detail(), noRemarks).next.descriptionReactions,
+      done.next.descriptionReactions,
+    );
   });
 
   it("cuts a long remark in the wake message without splitting an emoji", () => {

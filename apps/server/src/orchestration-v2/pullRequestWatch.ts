@@ -4,6 +4,7 @@ import type {
   PullRequestCheck,
   PullRequestComment,
   PullRequestDetail,
+  PullRequestReaction,
   ThreadPullRequestWatch,
   ThreadPullRequestLink,
   ThreadPullRequestKey,
@@ -66,6 +67,7 @@ export type PullRequestWatchChange =
       readonly failed: ReadonlyArray<PullRequestCheck>;
     }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
+  | { readonly kind: "reactions"; readonly reactions: ReadonlyArray<string> }
   | { readonly kind: "reviews-finished"; readonly checks: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "no-checks"; readonly minutes: number }
   | { readonly kind: "conflicting" }
@@ -110,6 +112,8 @@ export function evaluatePullRequestWatch(
   >,
   remarks: ReadonlyArray<PullRequestComment> | null,
   now: number,
+  /** Reactions on the description; null when this pass did not read them. */
+  reactions: ReadonlyArray<PullRequestReaction> | null = null,
 ): PullRequestWatchReport {
   const changes: Array<PullRequestWatchChange> = [];
   // A read without a head says nothing about pushes, so it keeps the last known one.
@@ -276,6 +280,23 @@ export function evaluatePullRequestWatch(
     ...atLatest.map((remark) => remark.id),
   ];
 
+  // Some review bots (Codex) report a clean review only by reacting to the description. 👀 means
+  // a review started, so only the reaction that replaces it is news.
+  const reactionKeys = reactions?.flatMap((reaction) =>
+    reaction.content === "eyes"
+      ? []
+      : reaction.actors
+          .filter((actor) => actor.toLowerCase() !== own)
+          .map((actor) => `${reaction.content}:${actor}`),
+  );
+  const toldReactions = watch.descriptionReactions;
+  const newReactions =
+    reactionKeys === undefined || toldReactions === undefined
+      ? []
+      : reactionKeys.filter((key) => !toldReactions.includes(key));
+  if (newReactions.length > 0) changes.push({ kind: "reactions", reactions: newReactions });
+  const descriptionReactions = reactionKeys ?? toldReactions;
+
   // Like a failed check, a conflict or rebase a push did not resolve is news for the new head.
   const toldConflict = !headMoved && watch.conflicting;
   if (watch.awaitingBaseline !== "all" && detail.mergeability === "conflicting" && !toldConflict) {
@@ -317,7 +338,9 @@ export function evaluatePullRequestWatch(
   const finishedReviews =
     checksBaseline || tellReviews ? [...toldReviews, ...newReviews.map(reviewKey)] : toldReviews;
 
-  const commentsOnly = changes.length > 0 && changes.every((change) => change.kind === "remarks");
+  const commentsOnly =
+    changes.length > 0 &&
+    changes.every((change) => change.kind === "remarks" || change.kind === "reactions");
   const progress = headMoved || (changes.length > 0 && !commentsOnly);
   const wakes = (progress ? 0 : watch.wakes) + (commentsOnly ? 1 : 0);
   return {
@@ -339,6 +362,7 @@ export function evaluatePullRequestWatch(
       rebaseRequired,
       mergeQueueRemovalId,
       finishedReviews,
+      ...(descriptionReactions === undefined ? {} : { descriptionReactions }),
       wakes,
       // Only a read that cannot be trusted to show the checks leaves the baseline to the next one.
       ...(checksBaseline &&
@@ -483,6 +507,14 @@ function changeLines(
           return `  - ${remark.author?.login ?? "someone"}${where}: ${said}${remark.url ? ` ${remark.url}` : ""}`;
         }),
       ];
+    case "reactions":
+      return [
+        `- New ${change.reactions.length === 1 ? "reaction" : "reactions"} on the description. A review bot can finish this way without posting a review or comment:`,
+        ...listed(change.reactions, (key) => {
+          const at = key.indexOf(":");
+          return `  - ${key.slice(at + 1)}: ${key.slice(0, at)}`;
+        }),
+      ];
     case "reviews-finished":
       return [
         `- Review checks finished${context.commit}. A reviewer with nothing to add can finish without posting a review or comment:`,
@@ -513,6 +545,7 @@ const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-awaiting-approval": "checks await approval",
   "checks-completed": "checks finished with failures",
   remarks: "new comments",
+  reactions: "new reactions",
   "reviews-finished": "reviews finished",
   "no-checks": "no checks reported",
   conflicting: "merge conflict",

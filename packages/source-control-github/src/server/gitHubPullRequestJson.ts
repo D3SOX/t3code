@@ -1056,6 +1056,10 @@ export function toPullRequestWatchFingerprint(
       pr.reviews?.totalCount ?? 0,
       newestEdit(pr.reviews),
       pr.reviewThreads.totalCount,
+      (pr.reactionGroups ?? [])
+        .filter((group) => group.reactors.totalCount > 0)
+        .map((group) => `${group.content}:${group.reactors.totalCount}`)
+        .join(","),
     ].join(" "),
   };
 }

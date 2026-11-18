@@ -250,6 +250,7 @@ function watchesEqual(left: ThreadPullRequestWatch, right: ThreadPullRequestWatc
     left.rebaseRequired === right.rebaseRequired &&
     left.mergeQueueRemovalId === right.mergeQueueRemovalId &&
     (left.finishedReviews ?? []).join("\n") === (right.finishedReviews ?? []).join("\n") &&
+    left.descriptionReactions?.join("\n") === right.descriptionReactions?.join("\n") &&
     left.wakes === right.wakes &&
     left.awaitingBaseline === right.awaitingBaseline &&
     left.checksAwaitedSince === right.checksAwaitedSince &&
@@ -772,7 +773,13 @@ export const make = Effect.gen(function* () {
       remarks: fingerprint?.remarks ?? null,
     });
     yield* eachTarget(group, (target) => {
-      const report = evaluatePullRequestWatch(target.watch, detail, remarks, now);
+      const report = evaluatePullRequestWatch(
+        target.watch,
+        detail,
+        remarks,
+        now,
+        Option.isSome(activity) ? (activity.value.reactions ?? null) : null,
+      );
       if (report.changes.length > 0) {
         const wake = {
           ...pullRequestWatchMessage({

@@ -1914,6 +1914,7 @@ describe("pull request watch fingerprints", () => {
       readonly reviews: number;
       readonly removals: number;
       readonly timelineItems: number;
+      readonly reaction?: string;
     }) => ({
       state: "OPEN",
       mergeable: "MERGEABLE",
@@ -1921,6 +1922,12 @@ describe("pull request watch fingerprints", () => {
       comments: { totalCount: 1, nodes: [{ lastEditedAt: input.commentEditedAt }] },
       reviews: { totalCount: input.reviews, nodes: [] },
       reviewThreads: { totalCount: 0 },
+      reactionGroups: [
+        { content: "THUMBS_UP", reactors: { totalCount: 0 } },
+        ...(input.reaction === undefined
+          ? []
+          : [{ content: input.reaction, reactors: { totalCount: 1 } }]),
+      ],
       mergeQueueRemovals: { totalCount: input.timelineItems, filteredCount: input.removals },
       commits: {
         nodes: [
@@ -1961,6 +1968,10 @@ describe("pull request watch fingerprints", () => {
     expect(summaryEdited.remarks).not.toBe(before.remarks);
     expect(summaryEdited.status).toBe(before.status);
     expect(replied.remarks).not.toBe(before.remarks);
+    // A review bot swapping 👀 for 👍 keeps the reaction count.
+    const reviewing = fingerprint({ ...base, reaction: "EYES" });
+    expect(reviewing.remarks).not.toBe(before.remarks);
+    expect(fingerprint({ ...base, reaction: "THUMBS_UP" }).remarks).not.toBe(reviewing.remarks);
     // Queued and dropped between two passes leaves the head and its checks as they were.
     const dropped = fingerprint({ ...base, removals: 1, timelineItems: 5 });
     expect(dropped.status).not.toBe(before.status);
