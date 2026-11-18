@@ -1555,6 +1555,7 @@ const TOOL_CALL_VISIBILITY_LABELS: Record<ToolCallVisibility, string> = {
   showAll: msg("Show all"),
   hideSuccessful: msg("Hide successful"),
   hideAll: msg("Hide all"),
+  viewedImagesOnly: msg("Only viewed images"),
   zen: msg("Zen", { $context: "tool call visibility" }),
 };
 

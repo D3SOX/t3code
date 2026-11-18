@@ -337,6 +337,7 @@ const TOOL_CALL_VISIBILITY_OPTIONS: ReadonlyArray<{
   { value: "showAll", label: msg("Show all") },
   { value: "hideSuccessful", label: msg("Hide successful") },
   { value: "hideAll", label: msg("Hide all") },
+  { value: "viewedImagesOnly", label: msg("Only viewed images") },
   { value: "zen", label: msg("Zen") },
 ];
 

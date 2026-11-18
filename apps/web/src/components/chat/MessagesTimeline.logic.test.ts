@@ -3133,7 +3133,7 @@ describe("v2 run and attempt history", () => {
     const ended = { ...running, turnEnded: true };
     const rows = (
       timelineEntries: ReadonlyArray<TimelineEntry>,
-      toolCallVisibility: "hideSuccessful" | "hideAll" | "zen",
+      toolCallVisibility: "hideSuccessful" | "hideAll" | "viewedImagesOnly" | "zen",
       latestRun?: typeof ended | typeof running,
     ) =>
       deriveMessagesTimelineRows({
@@ -3155,6 +3155,27 @@ describe("v2 run and attempt history", () => {
       "final",
     ]);
     expect(rows([user, failed, final], "hideAll")).toEqual(["user", "final"]);
+    const image: TimelineEntry = {
+      id: "image",
+      kind: "work",
+      createdAt: at(8),
+      entry: {
+        id: "image",
+        createdAt: at(8),
+        runId,
+        label: "Viewed image",
+        tone: "tool",
+        itemType: "file_search",
+        toolLifecycleStatus: "completed",
+        viewedImagePath: "shot.png",
+      },
+    };
+    expect(rows([user, image, failed, final], "hideAll")).toEqual(["user", "final"]);
+    expect(rows([user, image, failed, final], "viewedImagesOnly")).toEqual([
+      "user",
+      "image",
+      "final",
+    ]);
     expect(rows(turn, "zen")).toEqual(["user", "final"]);
     const [steer, answer] = [
       message("steer", "user", 4, "steer"),

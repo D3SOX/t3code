@@ -365,6 +365,7 @@ export function workEntryHiddenByToolCallVisibility(
   visibility: ToolCallVisibility,
 ): boolean {
   if (visibility === "showAll" || !HIDEABLE_TOOL_CALL_ITEM_TYPES.has(entry.itemType)) return false;
+  if (visibility === "viewedImagesOnly") return workEntryViewedImagePath(entry) === null;
   if (visibility !== "hideSuccessful") return true;
   return entry.toolLifecycleStatus === "completed" && !workEntryDisplayIndicatesToolFailure(entry);
 }
