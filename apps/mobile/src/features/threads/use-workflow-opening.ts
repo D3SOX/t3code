@@ -7,6 +7,7 @@ import {
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
 import { Atom } from "effect/reactivity";
+import { useMessages } from "gt-react-native";
 
 import { environmentThreadDetails } from "../../state/threads";
 
@@ -16,6 +17,7 @@ const EMPTY_THREAD_ATOM = Atom.make<EnvironmentThread | null>(null);
 export function useWorkflowOpening(ref: ScopedThreadRef | null) {
   const environmentId = ref?.environmentId ?? null;
   const threadId = ref?.threadId ?? null;
+  const m = useMessages();
   const threadAtom =
     environmentId === null || threadId === null
       ? EMPTY_THREAD_ATOM
@@ -40,9 +42,12 @@ export function useWorkflowOpening(ref: ScopedThreadRef | null) {
   );
   return projection === null
     ? null
-    : resolveWorkflowOpening({
-        thread: projection.thread,
-        messages: projection.messages,
-        parentSubagents,
-      });
+    : resolveWorkflowOpening(
+        {
+          thread: projection.thread,
+          messages: projection.messages,
+          parentSubagents,
+        },
+        m,
+      );
 }

@@ -4,6 +4,12 @@ import { serverEnvironment } from "../../state/server";
 import { useQuietThreadShell } from "../../state/entities";
 import { makeQueuedRunsAtom } from "@t3tools/client-runtime/queued-run-edit";
 import { type StaticScreenProps, useNavigation } from "@react-navigation/native";
+import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
@@ -11,6 +17,7 @@ import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/co
 import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert, Animated, Platform, Pressable, ScrollView, View } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -83,6 +90,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const target = route.params;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const gt = useGT();
+  const m = useMessages();
   const theme = useUniwindTheme();
   const workflow = useThreadQueueWorkflow(target);
   const supportsNextToolQueue =
@@ -127,9 +136,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       scopeThreadRef(target.environmentId, target.threadId),
     ),
   );
-  const editBlockedReason = queuedRunEditBlockedReason({
-    openQuestionCount: pendingQuestions?.userInputs.length ?? 0,
-  });
+  const editBlockedReason = queuedRunEditBlockedReason(
+    {
+      openQuestionCount: pendingQuestions?.userInputs.length ?? 0,
+    },
+    m,
+  );
   const order = queuedRuns.map(({ run }) => run.id).join(",");
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancels the native drag animation when remote queue updates invalidate its measured positions.
   useEffect(() => {
@@ -256,9 +268,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         await (async () => {
           for (const attachment of entry.attachments) {
             if (attachment.type !== "image" && attachment.type !== "file")
-              throw new Error("This attachment cannot be restored.");
+              throw new Error(gt("This attachment cannot be restored."));
             if (connection._tag !== "Some")
-              throw new Error("Reconnect the environment to restore attachments.");
+              throw new Error(gt("Reconnect the environment to restore attachments."));
             const url = assetUrlStateFromResult(
               await createAssetUrl({
                 environmentId: target.environmentId,
@@ -271,13 +283,13 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               }),
               connection.value.httpBaseUrl,
             );
-            if (url._tag !== "Success") throw new Error("Could not restore an attachment.");
+            if (url._tag !== "Success") throw new Error(gt("Could not restore an attachment."));
             const downloaded = await downloadAttachmentForPreview({
               url: url.url,
               attachment,
               signal: AbortSignal.timeout(30_000),
             });
-            if (!downloaded) throw new Error("Could not restore an attachment.");
+            if (!downloaded) throw new Error(gt("Could not restore an attachment."));
             await (async () => {
               const fileUri = await persistComposerAttachmentFile(downloaded.uri, attachment.name);
               const common = {
@@ -318,7 +330,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               runId,
             }),
           );
-          if (result._tag !== "Success") throw new Error("Could not remove the queued message.");
+          if (result._tag !== "Success")
+            throw new Error(gt("Could not remove the queued message."));
           restoreRemovedQueuedMessage(threadKey, {
             text: entry.text,
             context: entry.context,
@@ -335,8 +348,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             },
           });
           Alert.alert(
-            "Could not return the queued message",
-            error instanceof Error ? error.message : "Try again after reconnecting.",
+            gt("Could not return the queued message"),
+            error instanceof Error ? error.message : gt("Try again after reconnecting."),
           );
         });
       } else if (workflow?.canSendNow) {
@@ -346,7 +359,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         workflow.canPromoteToSteer &&
         (queuedRuns[index]?.run.freshContext !== true || workflow.promoteSkipsCompaction === true)
       ) {
-        await promote({
+        const result = await promote({
           ...target,
           input: {
             threadId: target.threadId,
@@ -359,6 +372,12 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               : {}),
           },
         });
+        if (action === "steer" && result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          Dialog.alert(
+            gt("Could not send queued message"),
+            errorDisplayMessage(squashAtomCommandFailure(result), m) ?? gt("Try again."),
+          );
+        }
       }
     })().finally(() => {
       busyRef.current = false;
@@ -396,16 +415,16 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       {workflow?.isHeld && queuedRuns.length > 0 ? (
         <View className="gap-2 py-3">
           <Text className="text-sm text-foreground-muted">
-            {editing ? "Queue paused while editing" : "Queue paused"}
+            {editing ? gt("Queue paused while editing") : gt("Queue paused")}
           </Text>
           <Button
-            label="Resume queue"
+            label={gt("Resume queue")}
             disabled={resuming || busyRunId !== null || editing !== null}
             onPress={async () => {
               if (busyRef.current) return;
               busyRef.current = true;
               setResuming(true);
-              await resume({
+              const result = await resume({
                 ...target,
                 input: {
                   threadId: target.threadId,
@@ -413,13 +432,21 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               });
               busyRef.current = false;
               setResuming(false);
+              // A usage limit holds the queue until the composer's Resume thread continues the run.
+              if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                const error = squashAtomCommandFailure(result);
+                Dialog.alert(
+                  gt("Could not resume queue"),
+                  errorDisplayMessage(error, m) ?? gt("Try again."),
+                );
+              }
             }}
           />
         </View>
       ) : null}
       {queuedRuns.length === 0 ? (
         <Text className="pt-6 text-center text-sm text-foreground-muted">
-          No messages waiting in this queue.
+          <T>No messages waiting in this queue.</T>
         </Text>
       ) : null}
       {queuedRuns.map(({ run, text, attachments, context, message }, index) => {
@@ -446,7 +473,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           text,
         });
         const title =
-          controls.displayText || (attachments.length > 0 ? "Attachments" : "Queued message");
+          controls.displayText ||
+          (attachments.length > 0 ? gt("Attachments") : gt("Queued message"));
         return (
           <QueueShiftedRow
             key={run.id}
@@ -554,7 +582,9 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               >
                 <View className="flex-row items-center">
                   <Menu
-                    accessibilityLabel={`Actions for queued message ${index + 1}`}
+                    accessibilityLabel={gt("Actions for queued message {number}", {
+                      number: index + 1,
+                    })}
                     shouldOpenOnLongPress
                     style={{ flex: 1 }}
                     actions={[
@@ -565,15 +595,15 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                                   {
                                     id: run.queueAfterNextTool ? "after-turn" : "next-tool",
                                     title: run.queueAfterNextTool
-                                      ? "Run after current turn"
-                                      : "Steer after next tool call",
+                                      ? gt("Run after current turn")
+                                      : gt("Steer after next tool call"),
                                     attributes: { disabled: !controls.canSend },
                                   },
                                 ]
                               : []),
                             {
                               id: "steer",
-                              title: workflow?.canSendNow ? "Send now" : "Steer now",
+                              title: workflow?.canSendNow ? gt("Send now") : gt("Steer now"),
                               attributes: { disabled: !controls.canSend },
                               image: "arrow.turn.left.up",
                             },
@@ -581,19 +611,23 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                         : []),
                       {
                         id: "edit",
-                        title: "Edit",
+                        title: gt("Edit", { $context: "verb, menu action" }),
                         attributes: { disabled: !controls.canEdit },
                         image: "pencil",
                       },
-                      { id: "up", title: "Move up", attributes: { disabled: !controls.canMoveUp } },
+                      {
+                        id: "up",
+                        title: gt("Move up"),
+                        attributes: { disabled: !controls.canMoveUp },
+                      },
                       {
                         id: "down",
-                        title: "Move down",
+                        title: gt("Move down"),
                         attributes: { disabled: !controls.canMoveDown },
                       },
                       {
                         id: "remove",
-                        title: "Remove",
+                        title: gt("Remove", { $context: "verb, menu action" }),
                         attributes: { disabled: !controls.canDismiss, destructive: true },
                       },
                     ]}
@@ -606,8 +640,14 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                       accessibilityLabel={title}
                       accessibilityHint={
                         controls.canEdit
-                          ? `${run.queueAfterNextTool ? "Sends after next tool call" : "Sends after current turn"}. Opens this message in the composer for editing`
-                          : undefined
+                          ? run.queueAfterNextTool
+                            ? gt(
+                                "Sends after next tool call. Opens this message in the composer for editing",
+                              )
+                            : gt(
+                                "Sends after current turn. Opens this message in the composer for editing",
+                              )
+                          : (editBlockedReason ?? undefined)
                       }
                       disabled={!controls.canEdit}
                       onPress={() => void act(run.id, "edit")}
@@ -645,12 +685,14 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                           tintColorClassName="accent-foreground-muted"
                         />
                         <Text className="text-2xs text-foreground-muted">
-                          {run.queueAfterNextTool ? "After tool" : "After turn"}
+                          {run.queueAfterNextTool ? gt("After tool") : gt("After turn")}
                         </Text>
                       </View>
                       {controls.isEditing ? (
                         <Text className="shrink-0 text-2xs uppercase tracking-wide text-primary">
-                          Editing
+                          {gt("Editing", {
+                            $context: "status badge on the queued message being edited",
+                          })}
                         </Text>
                       ) : null}
                     </Pressable>
@@ -661,8 +703,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                       accessibilityRole="button"
                       accessibilityLabel={
                         workflow?.canSendNow
-                          ? `Send message ${index + 1} now`
-                          : `Steer with message ${index + 1} now`
+                          ? gt("Send message {number} now", { number: index + 1 })
+                          : gt("Steer with message {number} now", { number: index + 1 })
                       }
                       disabled={!controls.canSend}
                       onPress={() => void act(run.id, "steer")}
@@ -675,7 +717,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                           tintColorClassName="accent-primary-foreground"
                         />
                         <Text className="font-t3-medium text-sm text-primary-foreground">
-                          {workflow?.canSendNow ? "Send now" : "Steer"}
+                          {workflow?.canSendNow
+                            ? gt("Send now")
+                            : gt("Steer", {
+                                $context: "verb, sends the message into the running turn",
+                              })}
                         </Text>
                       </View>
                     </Pressable>
@@ -691,7 +737,10 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View collapsable={false} className="flex-1 bg-sheet">
-        <SheetHeader title="Queued" onClose={() => navigation.goBack()} />
+        <SheetHeader
+          title={gt("Queued", { $context: "title of the queued messages sheet" })}
+          onClose={() => navigation.goBack()}
+        />
         <ScreenContent>{content}</ScreenContent>
       </View>
       <FilePreviewModal source={previewFile} onRequestClose={() => setPreviewFile(null)} />
@@ -740,6 +789,8 @@ function QueueRowSwipeable(props: {
   readonly children: React.ReactNode;
 }) {
   const swipeableRef = useRef<SwipeableMethods | null>(null);
+  const gt = useGT();
+  const m = useMessages();
   return (
     <ReanimatedSwipeable
       ref={swipeableRef}
@@ -764,7 +815,7 @@ function QueueRowSwipeable(props: {
       renderRightActions={() => (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL}
+          accessibilityLabel={m(REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL)}
           disabled={!props.enabled}
           onPress={() => {
             swipeableRef.current?.close();
@@ -776,7 +827,9 @@ function QueueRowSwipeable(props: {
           }}
         >
           <SymbolView name="trash" size={16} tintColorClassName="accent-danger-foreground" />
-          <Text className="pt-1 text-2xs font-t3-medium text-danger-foreground">Remove</Text>
+          <Text className="pt-1 text-2xs font-t3-medium text-danger-foreground">
+            {gt("Remove", { $context: "verb, menu action" })}
+          </Text>
         </Pressable>
       )}
     >
@@ -854,11 +907,12 @@ function QueueAttachmentThumbnail(props: {
 }) {
   const resource = queueAttachmentResource(props.attachment);
   const url = useAssetUrl(props.environmentId, resource);
+  const gt = useGT();
   return (
     // Its own press target, so tapping an image previews it instead of editing the message.
     <Pressable
       accessibilityRole="imagebutton"
-      accessibilityLabel={`Open ${props.attachment.name}`}
+      accessibilityLabel={gt("Open {name}", { name: props.attachment.name })}
       hitSlop={6}
       onPress={props.onPress}
       className="active:opacity-70"
@@ -887,6 +941,7 @@ function QueueDragHandle(props: {
   onMove: (y: number) => void;
   onEnd: (y: number, success: boolean) => void;
 }) {
+  const gt = useGT();
   const onStart = useEffectEvent(() => props.onStart());
   const onMove = useEffectEvent((y: number) => props.onMove(y));
   const onEnd = useEffectEvent((y: number, success: boolean) => props.onEnd(y, success));
@@ -905,7 +960,7 @@ function QueueDragHandle(props: {
         collapsable={false}
         accessible
         accessibilityRole="adjustable"
-        accessibilityLabel={`Reorder ${props.title}`}
+        accessibilityLabel={gt("Reorder {title}", { title: props.title })}
         accessibilityState={{
           disabled: props.disabled,
         }}
@@ -914,7 +969,7 @@ function QueueDragHandle(props: {
             ? [
                 {
                   name: "decrement",
-                  label: "Move up",
+                  label: gt("Move up"),
                 },
               ]
             : []),
@@ -922,7 +977,7 @@ function QueueDragHandle(props: {
             ? [
                 {
                   name: "increment",
-                  label: "Move down",
+                  label: gt("Move down"),
                 },
               ]
             : []),
@@ -953,6 +1008,7 @@ function QueuedRunSender(props: {
   readonly environmentId: EnvironmentId;
   readonly message: QueuedRunMessage;
 }) {
+  const gt = useGT();
   const { attribution, scheduledTaskId } = resolveUserMessagePresentation(props.message);
   const senderThreadId = attribution === "agent" ? props.message.senderThreadId : undefined;
   // A linked environment's agent sent it from a thread there.
@@ -970,15 +1026,16 @@ function QueuedRunSender(props: {
       ? {
           icon: "calendar.badge.clock" as const,
           label:
-            tasks.data?.tasks.find((task) => task.id === scheduledTaskId)?.title ?? "Automation",
+            tasks.data?.tasks.find((task) => task.id === scheduledTaskId)?.title ??
+            gt("Automation"),
         }
       : attribution === "agent"
         ? {
             icon: "bubble.left.and.bubble.right" as const,
-            label: senderShell?.title.trim() || linkedSender?.title.trim() || "Agent",
+            label: senderShell?.title.trim() || linkedSender?.title.trim() || gt("Agent"),
           }
         : attribution === "t3code"
-          ? { icon: null, label: "Sent by T3 Code" }
+          ? { icon: null, label: gt("Sent by T3 Code") }
           : null;
   if (sender === null) return null;
   return (

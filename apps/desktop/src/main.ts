@@ -21,7 +21,6 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import serverPackageJson from "../../server/package.json" with { type: "json" };
 
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
 import * as ElectronApp from "./electron/ElectronApp.ts";
@@ -63,7 +62,6 @@ import * as DesktopPreReadyFileSystem from "./app/DesktopPreReadyFileSystem.ts";
 import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
 import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
 import * as DesktopSshEnvironment from "./ssh/DesktopSshEnvironment.ts";
-import { resolveDesktopSshCliRunner } from "./ssh/DesktopSshCliRunner.ts";
 import * as DesktopSshPasswordPrompts from "./ssh/DesktopSshPasswordPrompts.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopLegacyLocalStorage from "./app/DesktopLegacyLocalStorage.ts";
@@ -108,22 +106,14 @@ const layerDesktopEnvironment = Layer.unwrap(
   }),
 );
 
-// Release builds default to the exact app version. Downstream source packages
-// can select a compatible published archive when their commit version has no
-// release assets. Development points the remote at a source checkout instead.
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const processEnvironment = yield* HostProcess.Environment;
+    const env = yield* HostProcess.Environment;
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(
-        resolveDesktopSshCliRunner({
-          appVersion: environment.appVersion,
-          archiveVersionOverride: processEnvironment.T3CODE_SSH_ARCHIVE_VERSION,
-          devRemoteT3ServerEntryPath: environment.devRemoteT3ServerEntryPath,
-          isDevelopment: environment.isDevelopment,
-          nodeEngineRange: serverPackageJson.engines.node,
-        }),
+      // Per connect: the login shell's environment is installed after this layer is built.
+      resolveCliRunner: Effect.sync(() =>
+        DesktopSshEnvironment.resolveDesktopSshCliRunner(environment, env),
       ),
       resolveLauncherId: yield* Effect.cached(
         DesktopSshEnvironment.readOrCreateLauncherId(

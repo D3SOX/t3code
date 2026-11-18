@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import { useEffect, useState } from "react";
 import { useIsFocused, useNavigation, useNavigationState } from "@react-navigation/native";
 import { BackHandler, Keyboard, StatusBar } from "react-native";
@@ -14,6 +15,7 @@ import {
 } from "./WorkspaceListHeader.types";
 
 export function WorkspaceListHeader(props: WorkspaceListHeaderProps) {
+  const gt = useGT();
   const { artworkStage } = useEnvironmentIdentification();
   const isFocused = useIsFocused();
   const navigation = useNavigation();
@@ -83,7 +85,7 @@ export function WorkspaceListHeader(props: WorkspaceListHeaderProps) {
           connectionState.hasConnections
             ? [
                 {
-                  title: "Filter threads",
+                  title: gt("Filter threads"),
                   icon: workspaceListFilterIcon(props.filter.customized),
                   items: props.filter.items,
                   renderActionIcon: props.filter.renderActionIcon,

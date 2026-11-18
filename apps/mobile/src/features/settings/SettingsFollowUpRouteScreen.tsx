@@ -1,3 +1,4 @@
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { DEFAULT_PULL_REQUEST_LINK_TARGET } from "@t3tools/contracts";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -19,23 +20,26 @@ const FOLLOW_UP_OPTIONS: ReadonlyArray<{
 }> = [
   {
     behavior: "queue",
-    label: "After current turn",
-    description: "Your message waits and runs after the current turn finishes.",
+    label: msg("After current turn"),
+    description: msg("Your message waits and runs after the current turn finishes."),
   },
   {
     behavior: "next-tool",
-    label: "After next tool call",
-    description:
+    label: msg("After next tool call"),
+    description: msg(
       "Wait for the next tool to finish, then steer the active turn. If the turn ends first, run next.",
+    ),
   },
   {
     behavior: "steer",
-    label: "Steer",
-    description: "Your message reaches the agent right away, changing what it is working on.",
+    label: msg("Steer", { $context: "verb, follow-up behavior" }),
+    description: msg("Your message reaches the agent right away, changing what it is working on."),
   },
 ];
 
 export function SettingsFollowUpRouteScreen() {
+  const gt = useGT();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
@@ -52,12 +56,12 @@ export function SettingsFollowUpRouteScreen() {
       contentContainerClassName="gap-3 px-5 pt-4"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
     >
-      <SettingsSection title="While the agent is running">
+      <SettingsSection title={gt("While the agent is running")}>
         {FOLLOW_UP_OPTIONS.map((option, index) => (
           <SettingsChoiceRow
             key={option.behavior}
-            label={option.label}
-            description={option.description}
+            label={m(option.label)}
+            description={m(option.description)}
             selected={selectedBehavior === option.behavior}
             separated={index > 0}
             disabled={!preferencesReady}
@@ -67,16 +71,19 @@ export function SettingsFollowUpRouteScreen() {
       </SettingsSection>
       <PullRequestLinkSettings />
       <Text className="px-2 text-sm text-foreground-muted">
-        Long-press the send button to use the other option for a single message. With a hardware
-        keyboard, hold {Platform.OS === "android" ? "Ctrl" : "Command"} while sending.
+        <T>
+          Long-press the send button to use the other option for a single message. With a hardware
+          keyboard, hold <Var>{Platform.OS === "android" ? "Ctrl" : "Command"}</Var> while sending.
+        </T>
       </Text>
     </ScrollView>
   );
 
-  return <SettingsScreen title="Chat">{content}</SettingsScreen>;
+  return <SettingsScreen title={gt("Chat")}>{content}</SettingsScreen>;
 }
 
 function PullRequestLinkSettings() {
+  const gt = useGT();
   const preferences = useAtomValue(mobilePreferencesAtom);
   const save = useAtomSet(updateMobilePreferencesAtom);
   const ready = AsyncResult.isSuccess(preferences) && !preferences.waiting;
@@ -84,17 +91,17 @@ function PullRequestLinkSettings() {
     ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)
     : null;
   return (
-    <SettingsSection title="Open pull requests in">
+    <SettingsSection title={gt("Open pull requests in")}>
       <SettingsChoiceRow
-        label="System browser"
-        description="Open links with your device's default app."
+        label={gt("System browser")}
+        description={gt("Open links with your device's default app.")}
         selected={target === "system"}
         disabled={!ready}
         onPress={() => save({ pullRequestLinkTarget: "system" })}
       />
       <SettingsChoiceRow
         label="T3 Code"
-        description="View pull requests inside T3 Code."
+        description={gt("View pull requests inside T3 Code.")}
         selected={target === "app"}
         disabled={!ready}
         separated

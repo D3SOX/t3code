@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
@@ -17,10 +18,11 @@ import { ToolCallsAppearanceSection } from "./appearance/sections/ToolCallsAppea
 import { EnvironmentIdentificationSection } from "./appearance/sections/EnvironmentIdentificationSection";
 
 export function SettingsAppearanceRouteScreen() {
+  const gt = useGT();
   const insets = useSafeAreaInsets();
 
   return (
-    <SettingsScreen title="Appearance">
+    <SettingsScreen title={gt("Appearance")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -44,17 +46,18 @@ export function SettingsAppearanceRouteScreen() {
 }
 
 function ThreadDisplaySettingsSection() {
+  const gt = useGT();
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const preferences = useAtomValue(mobilePreferencesAtom);
   const showThreadBranches =
     !AsyncResult.isSuccess(preferences) || preferences.value.sidebarShowThreadBranches !== false;
 
   return (
-    <SettingsSection title="Thread display">
+    <SettingsSection title={gt("Thread display")}>
       <SettingsSwitchRow
         icon="arrow.triangle.branch"
-        label="Show thread branches"
-        subtitle="Turn off for more compact thread rows."
+        label={gt("Show thread branches")}
+        subtitle={gt("Turn off for more compact thread rows.")}
         value={showThreadBranches}
         onValueChange={(value) => savePreferences({ sidebarShowThreadBranches: value })}
       />

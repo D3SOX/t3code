@@ -1,4 +1,7 @@
+import { msg } from "gt-react";
+
 import { formatContextWindowCompactionMessage as formatCompactionMessage } from "./compaction.logic";
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ModelSelection, ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import {
   resolveSelectableProviderInstanceEntry,
@@ -54,10 +57,13 @@ export function resolveContextWindowModelDisplayName(
 export function formatContextWindowCompactionMessage(
   modelDisplayName: string | null | undefined,
   autoCompactThreshold?: number | null,
+  resolve: MessageResolver = m,
 ): string {
   if (!(typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) && modelDisplayName)
-    return `Context for ${modelDisplayName} compacts automatically when needed.`;
-  return formatCompactionMessage(autoCompactThreshold);
+    return resolve(
+      msg("Context for {model} compacts automatically when needed.", { model: modelDisplayName }),
+    );
+  return formatCompactionMessage(autoCompactThreshold, resolve);
 }
 
 export function shouldReserveContextWindowMeter(input: {

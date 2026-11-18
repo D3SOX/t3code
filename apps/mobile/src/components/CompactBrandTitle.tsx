@@ -1,5 +1,6 @@
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import Constants from "expo-constants";
+import { useGT } from "gt-react-native";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import { AppText as Text } from "./ui/AppText";
@@ -10,6 +11,8 @@ import { useEnvironmentIdentification } from "../state/environmentIdentification
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
 const BRAND_MAX_FONT_SCALE = 1.4;
+const WORDMARK_SUFFIX = "Code (D3SOX)";
+
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
   return Platform.isPad && !NATIVE_WORKSPACE_COLUMNS_SUPPORTED ? IPAD_HOME_TITLE_OFFSET : 0;
@@ -22,6 +25,7 @@ export function CompactBrandTitle(
     readonly fit?: boolean;
   } = {},
 ) {
+  const gt = useGT();
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
@@ -41,7 +45,9 @@ export function CompactBrandTitle(
       aria-level={1}
       accessibilityLabel={
         props.accessibilityLabel ??
-        `T3 Code (D3SOX), Threads${mode !== "none" && stageLabel !== "Beta" ? `, ${stageLabel}` : ""}`
+        (mode !== "none" && stageLabel !== "Beta"
+          ? gt("T3 Code (D3SOX), Threads, {stage}", { stage: stageLabel })
+          : gt("T3 Code (D3SOX), Threads"))
       }
       accessible
       role="heading"
@@ -77,7 +83,7 @@ export function CompactBrandTitle(
             : {}),
         }}
       >
-        Code (D3SOX)
+        {WORDMARK_SUFFIX}
       </Text>
       {showPill && showStage ? (
         <View

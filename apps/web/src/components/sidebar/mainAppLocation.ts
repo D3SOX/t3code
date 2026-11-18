@@ -8,7 +8,9 @@ import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../../threadRo
 export { isAppModalPage } from "../../appHistory";
 
 export function isSidebarUtilityPage(pathname: string) {
-  return pathname.startsWith("/projects/") || pathname === "/pull-requests";
+  return (
+    pathname.startsWith("/projects/") || pathname === "/pull-requests" || pathname === "/issues"
+  );
 }
 
 // Pages the root route always renders without the app shell, so they are never

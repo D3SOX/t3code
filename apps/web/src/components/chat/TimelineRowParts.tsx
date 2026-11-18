@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import {
   resolveViewedImageAsset,
   workEntriesViewedImagePaths,
@@ -23,14 +24,22 @@ export function MessageAuthorHeading({ children }: { children: string }) {
 
 export { TimelineRowTimestamp } from "./UserMessagePresentation";
 
-export function ActivityShimmerOverlay({ children }: { children: ReactNode }) {
+export function ActivityShimmerOverlay({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden
       className="live-activity-focus pointer-events-none absolute inset-y-0 select-none"
     >
       <span className="live-activity-focus-counter block">
-        <span className="live-activity-focus-aligned block text-foreground">{children}</span>
+        <span className={cn("live-activity-focus-aligned block text-foreground", className)}>
+          {children}
+        </span>
       </span>
     </span>
   );
@@ -42,6 +51,7 @@ export function ViewedImageTimelineRow({
   row: Extract<TimelineRow, { kind: "viewed-image" }>;
 }) {
   const { threadRef, workspaceRoot, timestampFormat } = use(TimelineRowCtx);
+  const gt = useGT();
   const [expanded, setExpanded] = useState(false);
   const image = threadRef
     ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
@@ -69,7 +79,7 @@ export function ViewedImageTimelineRow({
           )}
         </span>
         <span className="shrink-0 text-sm text-secondary-label">
-          {row.active ? "Viewing image" : "Viewed image"}
+          {row.active ? gt("Viewing image") : gt("Viewed image")}
         </span>
         <span className="min-w-0 flex-1 break-words text-sm text-secondary-label">
           {displayPath}
@@ -97,6 +107,8 @@ export function ViewedImageTimelineRow({
 function ViewedImagePreview({ row }: { row: Extract<TimelineRow, { kind: "viewed-image" }> }) {
   const { timelineEntries, threadRef, workspaceRoot, activeThreadEnvironmentId, onImageExpand } =
     use(TimelineRowCtx);
+  const gt = useGT();
+  const fallbackName = gt("image", { $context: "fallback name of an image without alt text" });
   const paths = workEntriesViewedImagePaths(
     timelineEntries.flatMap((entry) =>
       entry.kind === "work" && entry.entry.runId === row.entry.runId ? [entry.entry] : [],
@@ -124,12 +136,12 @@ function ViewedImagePreview({ row }: { row: Extract<TimelineRow, { kind: "viewed
       path,
       item: {
         src,
-        name: asset.alt.trim() || "image",
+        name: asset.alt.trim() || fallbackName,
         actionsSource: assetMediaActionsSource({
           environmentId,
           resource: asset.resource,
           kind: "image",
-          name: asset.alt || "image",
+          name: asset.alt || fallbackName,
           src,
           workspaceRoot,
         }),

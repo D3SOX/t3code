@@ -7,6 +7,7 @@ import {
   type ModelCapacityRetry,
 } from "@t3tools/shared/modelCapacityRetry";
 import { useEffect, useMemo, useState } from "react";
+import { T } from "gt-react-native";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { useEnvironmentThread } from "../../state/threads";
@@ -55,7 +56,9 @@ function CapacityRetryNotice({
         className="min-h-12 self-start justify-center rounded-lg bg-primary px-3"
         onPress={onCancel}
       >
-        <Text className="text-sm font-t3-medium text-primary-foreground">Cancel retry</Text>
+        <Text className="text-sm font-t3-medium text-primary-foreground">
+          <T>Cancel retry</T>
+        </Text>
       </Pressable>
     </View>
   );

@@ -1,10 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react-native";
 import { AuthOrchestrationReadScope, type EnvironmentId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult, Atom } from "effect/reactivity";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import { m } from "../../i18n/messages";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentShell } from "../../state/shell";
 import { serverEnvironment } from "../../state/server";
@@ -49,7 +51,7 @@ export function useAndroidPushState() {
 const statuses = new Map<EnvironmentId, string>();
 const listeners = new Set<() => void>();
 export function getUnifiedPushHostStatus(environmentId: EnvironmentId): string {
-  return statuses.get(environmentId) ?? "Waiting for host connection";
+  return statuses.get(environmentId) ?? m(msg("Waiting for host connection"));
 }
 export function subscribeUnifiedPushHostStatus(listener: () => void) {
   listeners.add(listener);
@@ -64,7 +66,7 @@ function setStatus(environmentId: EnvironmentId, status: string) {
 }
 function registrationError(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
   const error = squashAtomCommandFailure(result);
-  return error instanceof Error ? error.message : "Host registration failed";
+  return error instanceof Error ? error.message : m(msg("Host registration failed"));
 }
 
 function HostNotifications({ connection }: { connection: SavedRemoteConnection }) {
@@ -80,14 +82,14 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
   useEffect(() => {
     void loadOrCreateAgentAwarenessDeviceId()
       .then(setDeviceId)
-      .catch(() => setStatus(environmentId, "Could not load this device's identity"));
+      .catch(() => setStatus(environmentId, m(msg("Could not load this device's identity"))));
   }, [environmentId]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Register the host key with the external UnifiedPush distributor when connected.
   useEffect(() => {
     if (state.transport !== "unifiedpush" || !state.enabled || connectionState !== "connected")
       return;
     if (!supported) {
-      setStatus(environmentId, "Update this host to enable UnifiedPush");
+      setStatus(environmentId, m(msg("Update this host to enable UnifiedPush")));
       return;
     }
     let cancelled = false;
@@ -96,7 +98,7 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
       .then((result) => {
         if (cancelled) return;
         if (AsyncResult.isSuccess(result)) {
-          setStatus(environmentId, "Registering with distributor");
+          setStatus(environmentId, m(msg("Registering with distributor")));
           registerAndroidUnifiedPush(environmentId, result.value.publicKey);
         } else setStatus(environmentId, registrationError(result));
       });
@@ -139,7 +141,7 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
         if (!cancelled)
           setStatus(
             environmentId,
-            AsyncResult.isSuccess(result) ? "Registered" : registrationError(result),
+            AsyncResult.isSuccess(result) ? m(msg("Registered")) : registrationError(result),
           );
       });
     return () => {

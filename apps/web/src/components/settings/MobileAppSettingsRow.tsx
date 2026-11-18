@@ -1,13 +1,17 @@
+import { useGT } from "gt-react";
+
 import { AndroidIcon } from "../Icons";
 import { Button } from "../ui/button";
 import { SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 export function MobileAppSettingsRow() {
+  const searchableSetting = useSearchableSetting();
+  const gt = useGT();
   return (
     <SettingsRow
       {...searchableSetting("mobile-app")}
-      description="Connect to your server from your phone or tablet."
+      description={gt("Connect to your server from your phone or tablet.")}
       control={
         <Button
           size="sm"

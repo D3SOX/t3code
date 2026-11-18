@@ -129,6 +129,12 @@ describe("storage cleanup settings", () => {
   });
 });
 
+describe("ClientSettings terminal close confirmation", () => {
+  it("leaves confirmation off for settings without a saved preference", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(false);
+  });
+});
+
 describe("ClientSettings pull request links", () => {
   it("opens pull requests in the system browser by default", () => {
     expect(decodeClientSettings({}).pullRequestLinkTarget).toBe("system");

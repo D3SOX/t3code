@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useMessages } from "gt-react";
 
 import {
   threadUndoLabel,
@@ -13,13 +14,16 @@ import { InlineButton } from "../ui/button";
 export function SidebarThreadUndoNotice() {
   const notice = useThreadUndoNotice((state) => state.notice);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const m = useMessages();
   if (!notice) return null;
 
   return (
     <Alert role="group" variant="sidebar">
       <AlertDescription>
-        {threadUndoNoticeSummary(notice)},{" "}
-        <InlineButton onClick={undoLatestThreadAction}>{threadUndoLabel(keybindings)}</InlineButton>
+        {threadUndoNoticeSummary(notice, m)},{" "}
+        <InlineButton onClick={undoLatestThreadAction}>
+          {threadUndoLabel(keybindings, m)}
+        </InlineButton>
       </AlertDescription>
     </Alert>
   );

@@ -1,4 +1,5 @@
 import { capacityRetryLabel } from "@t3tools/shared/modelCapacityRetry";
+import { T } from "gt-react";
 import { useEffect, useState } from "react";
 import { CircleAlertIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
@@ -38,7 +39,7 @@ function CapacityRetryBanner({
         <AlertDescription aria-live="off">{capacityRetryLabel(retry, now)}</AlertDescription>
         <AlertAction>
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel retry
+            <T>Cancel retry</T>
           </Button>
         </AlertAction>
       </Alert>

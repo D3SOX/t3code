@@ -1,3 +1,4 @@
+import { useMessages } from "gt-react";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   type AssetUrlState as RuntimeAssetUrlState,
@@ -34,7 +35,7 @@ export function useAssetUrlState(
   revision?: string | null,
 ): AssetUrlState {
   const registry = useContext(RegistryContext);
-  const fileAccess = useFilesystemReadAccess(environmentId);
+  const fileAccess = useFilesystemReadAccess(environmentId, useMessages());
   const mutableResource = isMutableAssetResource(resource);
   const blocked = blockedAssetUrlState(resource, fileAccess);
   const preparedConnection = usePreparedConnection(environmentId);

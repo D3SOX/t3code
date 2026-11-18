@@ -1,4 +1,5 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { msg } from "gt-react";
 import type { ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import type {
   AssistantCitation,
@@ -10,7 +11,11 @@ import {
   serializeAssistantCitation,
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
-import { isCurrencyAmountQuery, isPathWord } from "@t3tools/shared/composerTrigger";
+import {
+  detectComposerPullRequestTrigger,
+  isCurrencyAmountQuery,
+  isPathWord,
+} from "@t3tools/shared/composerTrigger";
 import {
   splitPromptIntoComposerSegments,
   type ComposerPromptSegment,
@@ -23,6 +28,7 @@ import {
   type ShortcutMatchContext,
 } from "./keybindings";
 import { isMacPlatform } from "./lib/utils";
+import { m, type MessageResolver } from "./i18n/messages";
 
 export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default" | "side" | "btw" | "clear";
@@ -140,26 +146,30 @@ export function composerSubmissionHints(
     context?: Partial<ShortcutMatchContext>;
     followUpBehavior: ClientSettings["followUpBehavior"];
     isEditingQueuedMessage?: boolean;
+    resolve?: MessageResolver;
   },
 ): string {
   const platform = input.platform ?? navigator.platform;
   const mac = isMacPlatform(platform);
+  const resolve = input.resolve ?? m;
   const actionFor = (intent: ComposerSubmissionIntent) => {
-    if (input.isEditingQueuedMessage) return "Update queued message";
-    if (intent === "background" && !input.isDraftThread) return "Send and start a new thread";
+    if (input.isEditingQueuedMessage) return resolve(msg("Update queued message"));
+    if (intent === "background" && !input.isDraftThread) {
+      return resolve(msg("Send and start a new thread"));
+    }
     if (input.isRunning) {
       const timing = followUpBehaviorForSubmission(input.followUpBehavior, intent);
       return timing === "queue"
-        ? "Queue after current turn"
+        ? resolve(msg("Queue after current turn"))
         : timing === "next-tool"
-          ? "Queue after next tool call"
-          : "Steer immediately";
+          ? resolve(msg("Queue after next tool call"))
+          : resolve(msg("Steer immediately"));
     }
     return intent === "background"
       ? input.isDraftThread
-        ? "Start thread in background"
-        : "Send and start a new thread"
-      : "Send message";
+        ? resolve(msg("Start thread in background"))
+        : resolve(msg("Send and start a new thread"))
+      : resolve(msg("Send message"));
   };
   const hints = new Map<string, Set<string>>();
   const add = (intent: ComposerSubmissionIntent, label: string) => {
@@ -382,15 +392,8 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
       rangeEnd: cursor,
     };
   }
-  const pullRequestMatch = /^#([\p{L}\p{N}][\p{L}\p{N}_-]*)?$/u.exec(token);
-  if (pullRequestMatch) {
-    return {
-      kind: "pull-request",
-      query: pullRequestMatch[1] ?? "",
-      rangeStart: tokenStart,
-      rangeEnd: cursor,
-    };
-  }
+  const pullRequestTrigger = detectComposerPullRequestTrigger(token, cursor);
+  if (pullRequestTrigger) return pullRequestTrigger;
   const skillPrefix = /^\p{Sc}/u.exec(token);
   if (skillPrefix) {
     if (isCurrencyAmountQuery(token.slice(skillPrefix[0].length))) return null;

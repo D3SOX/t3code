@@ -1,8 +1,14 @@
 import { useCallback } from "react";
 import { useNavigation, useRoute, StackActions } from "@react-navigation/native";
-import { nativePullRequestDestination } from "../lib/pullRequestNavigation";
+import { resolveIssueLinkTarget } from "@t3tools/client-runtime/issue-links";
+import {
+  nativePullRequestDestination,
+  pullRequestCandidateForIssueLink,
+} from "../lib/pullRequestNavigation";
+import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { Platform } from "react-native";
 import { useSelectWorkspaceDetail } from "../features/layout/workspace/useSelectWorkspaceDetail";
+import type { WorkspaceDetail } from "../features/layout/workspace/workspace-detail-selection";
 import {
   DEFAULT_PULL_REQUEST_LINK_TARGET,
   EnvironmentId,
@@ -11,6 +17,8 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
+import { msg } from "gt-react-native";
+import { m, type MessageResolver } from "../i18n/messages";
 import { useProjects, useThreadShell } from "../state/entities";
 import { tryOpenExternalUrl } from "../lib/openExternalUrl";
 import { mobilePreferencesAtom } from "../state/preferences";
@@ -18,44 +26,95 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { appAtomRegistry } from "../state/atom-registry";
 import { environmentServerConfigsAtom } from "../state/server";
+import { composerPullRequests } from "../state/pull-requests";
+import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { withKnownPullRequestSummary } from "../state/use-thread-pr";
 
 let linkNavigationId = 0;
 const nextLinkNavigationId = () => ++linkNavigationId;
 
 type PullRequestContext = { readonly environmentId: string; readonly projectId: string };
+type PullRequestParams = Extract<WorkspaceDetail, { readonly name: "PullRequest" }>["params"];
 
 // Avoid useRoute so layouts without route context can open any thread's pull requests.
 export function useNavigateToPullRequest(options?: { readonly replace?: boolean }) {
   const navigation = useNavigation();
   const projects = useProjects();
   const replace = options?.replace;
+  const readPreview = useAtomQueryRunner(composerPullRequests.preview, {
+    reportFailure: false,
+    reportDefect: false,
+  });
   const selectDetail = useSelectWorkspaceDetail();
   const preferences = useAtomValue(mobilePreferencesAtom);
   const linkTarget = AsyncResult.isSuccess(preferences)
     ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)
     : DEFAULT_PULL_REQUEST_LINK_TARGET;
-  return useCallback(
-    async (url: string, context: PullRequestContext | null, target = linkTarget) => {
-      if (target === "system") return tryOpenExternalUrl(url, "pull-request");
-      // Read at press time so a capability push does not hand every link a new handler.
-      const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
-      const destination = nativePullRequestDestination(url, context, projects, (environmentId) =>
-        serverConfigs.has(environmentId),
-      );
-      if (!destination) return tryOpenExternalUrl(url, "pull-request");
-      const params = withKnownPullRequestSummary({
-        ...destination,
-        ...(destination.navigationUrl ? { navigationId: nextLinkNavigationId() } : {}),
-      });
-      // Android shows one page at a time; iOS opens it over the current page, so Back returns.
-      if (Platform.OS === "android") selectDetail({ name: "PullRequest", params });
-      else if (replace) navigation.dispatch(StackActions.replace("PullRequest", params));
-      else navigation.dispatch(StackActions.push("PullRequest", params));
+  // Android shows one page at a time; iOS opens it over the current page, so Back returns.
+  const openPullRequestPage = (params: PullRequestParams) => {
+    if (Platform.OS === "android") selectDetail({ name: "PullRequest", params });
+    else if (replace) navigation.dispatch(StackActions.replace("PullRequest", params));
+    else navigation.dispatch(StackActions.push("PullRequest", params));
+  };
+  return async (
+    url: string,
+    context: PullRequestContext | null,
+    target: BrowserLinkTarget = linkTarget,
+  ) => {
+    if (target === "system") return tryOpenExternalUrl(url, "pull-request");
+    // Read at press time so a config push does not hand every link a new handler.
+    const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
+    const destination = nativePullRequestDestination(url, context, projects, (environmentId) =>
+      serverConfigs.has(environmentId),
+    );
+    if (!destination) {
+      // An issue link from the same text opens the issue; anything else leaves for the browser.
+      const environmentId = context && EnvironmentId.make(context.environmentId);
+      const issue =
+        environmentId && serverConfigs.get(environmentId)?.environment.capabilities.issues === true
+          ? resolveIssueLinkTarget({
+              url,
+              projects: projects.filter((project) => project.environmentId === environmentId),
+              preferredProjectId: context.projectId,
+            })
+          : null;
+      if (!issue || !environmentId) return tryOpenExternalUrl(url, "pull-request");
+      const candidate = pullRequestCandidateForIssueLink(url, issue.ref);
+      if (candidate) {
+        const preview = await readPreview({ environmentId, input: candidate.target });
+        if (preview._tag === "Success") {
+          const params = withKnownPullRequestSummary({
+            ...candidate.target,
+            environmentId,
+            ...(candidate.navigationUrl
+              ? { navigationUrl: candidate.navigationUrl, navigationId: nextLinkNavigationId() }
+              : {}),
+          });
+          openPullRequestPage(params);
+          return true;
+        }
+        // A dropped connection says nothing about what the link names; the browser knows.
+        if (isAtomCommandInterrupted(preview)) return tryOpenExternalUrl(url, "pull-request");
+      }
+      const issueParams = {
+        environmentId,
+        projectId: issue.ref.projectId,
+        tracker: issue.ref.tracker,
+        ...(issue.ref.host === undefined ? {} : { host: issue.ref.host }),
+        scope: issue.ref.scope,
+        issueKey: issue.ref.key,
+      };
+      if (replace) navigation.dispatch(StackActions.replace("Issue", issueParams));
+      else navigation.dispatch(StackActions.push("Issue", issueParams));
       return true;
-    },
-    [navigation, projects, replace, selectDetail, linkTarget],
-  );
+    }
+    const params = withKnownPullRequestSummary({
+      ...destination,
+      ...(destination.navigationUrl ? { navigationId: nextLinkNavigationId() } : {}),
+    });
+    openPullRequestPage(params);
+    return true;
+  };
 }
 
 export function useOpenPullRequest(options?: {
@@ -97,16 +156,22 @@ export function useOpenPullRequest(options?: {
   );
 }
 
-export function pullRequestLinkContextMenu(open: ReturnType<typeof useOpenPullRequest>) {
+export function pullRequestLinkContextMenu(
+  open: ReturnType<typeof useOpenPullRequest>,
+  resolve: MessageResolver = m,
+) {
   return {
     fileContextMenu: (url: string) =>
       sourceControlClients.parseChangeRequestUrl(url)
         ? {
             title: url,
             actions: [
-              { id: "pr-open-app", title: "Open in T3 Code" },
-              { id: "pr-open-system", title: "Open in system browser" },
-              { id: "pr-copy-link", title: "Copy link" },
+              {
+                id: "pr-open-app",
+                title: resolve(msg("Open in {product}", { product: "T3 Code" })),
+              },
+              { id: "pr-open-system", title: resolve(msg("Open in system browser")) },
+              { id: "pr-copy-link", title: resolve(msg("Copy link")) },
             ],
           }
         : undefined,
