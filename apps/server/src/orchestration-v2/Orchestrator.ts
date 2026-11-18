@@ -15197,7 +15197,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         if (
           thread === undefined ||
           thread.settledOverride !== null ||
-          backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) ||
+          (thread.pendingBackgroundTasks ?? []).length > 0 ||
           visibleThreadPullRequests(thread.pullRequests ?? []).some(
             (link) => link.watch !== undefined,
           ) ||

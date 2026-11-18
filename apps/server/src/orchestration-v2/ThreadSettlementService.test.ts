@@ -190,17 +190,18 @@ describe("isAutoSettlementCandidate", () => {
     ).toBe(true);
   });
 
-  it("settles a thread whose only background work is a command left running", () => {
+  it("keeps a thread while any background work runs, awaited or not", () => {
+    // Settling would stop the process, and with it a command the agent is still waiting on.
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({
           pendingBackgroundTasks: [
-            { taskId: "dev", kind: "command", description: "vp run dev --share" },
+            { taskId: "watch", kind: "command", description: "gh run watch 1 --exit-status" },
           ],
         }),
         NOW_MS,
       ),
-    ).toBe(true);
+    ).toBe(false);
     // A pull request watch whose checks finished holds nothing, yet still keeps the thread.
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(

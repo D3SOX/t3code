@@ -1,8 +1,4 @@
-import {
-  backgroundWorkHoldsCompletion,
-  isPullRequestWatchTask,
-  turnItemUpdateCanEndBackgroundWork,
-} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { turnItemUpdateCanEndBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
@@ -179,13 +175,10 @@ export function isAutoSettlementCandidate(
   if (thread.pendingRuntimeRequest !== null) return false;
   // A guest is waiting on the owner; settling would hide the Request.
   if ((thread.pendingGuestMessageCount ?? 0) > 0) return false;
-  // A live run, or background work that will wake the agent, is not
-  // staleness. A dev server left running is: the agent is done.
   if (thread.activityRunStatus != null) return false;
-  const pendingTasks = thread.pendingBackgroundTasks ?? [];
-  if (backgroundWorkHoldsCompletion(pendingTasks)) return false;
-  // Settling ends a watch, which would silently drop a reviewer's later comments.
-  if (pendingTasks.some(isPullRequestWatchTask)) return false;
+  // Settling stops the provider process, killing any command the agent may still be waiting on
+  // without marking it awaited. A leftover dev server settles once the idle release ends it.
+  if ((thread.pendingBackgroundTasks ?? []).length > 0) return false;
   if (threadHasQueuedTurnStart(thread, nowMs)) return false;
   // Interrupted runs must keep the same snooze protection the sidebar shows.
   return !isSnoozed(thread, nowMs);
@@ -791,7 +784,7 @@ export const make = Effect.gen(function* () {
           ? Effect.void
           : enqueueThread(event.threadId);
       case "provider-thread.updated":
-        return backgroundWorkHoldsCompletion(event.payload.pendingBackgroundTasks ?? [])
+        return (event.payload.pendingBackgroundTasks ?? []).length > 0
           ? Effect.void
           : enqueueThread(event.threadId);
       case "turn-item.updated": {
