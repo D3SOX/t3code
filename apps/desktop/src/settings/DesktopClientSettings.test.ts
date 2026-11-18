@@ -33,7 +33,7 @@ const clientSettings: ClientSettings = {
   confirmQuit: "double-click",
   confirmThreadArchive: true,
   confirmThreadDelete: false,
-  confirmThreadUnpin: false,
+  skipThreadUnpinConfirmation: false,
   diffFilesCollapsed: true,
   diffIgnoreWhitespace: true,
   diffLayout: "stacked",

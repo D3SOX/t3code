@@ -41,6 +41,7 @@ import {
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
 import type { MessageResolver } from "../../i18n/messages";
+import { resolveWorktreeBaseRef } from "@t3tools/client-runtime/state/vcs";
 import { useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -66,6 +67,7 @@ import { buildModelOptions } from "../../lib/modelOptions";
 import { withImplicitFastModeSelection } from "../../lib/providerOptions";
 import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { usePaginatedBranches } from "../../state/queries";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { resolveNewTaskBranchLabel } from "../threads/new-task-context-presentation";
@@ -738,6 +740,13 @@ function TaskForm({
           project.id === draft.task?.projectId),
     )
     .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
+  const projectRefs = usePaginatedBranches({
+    environmentId,
+    cwd:
+      draft.workspace === "worktree"
+        ? (projects.find((project) => project.id === draft.projectId)?.workspaceRoot ?? null)
+        : null,
+  });
   const config = useEnvironmentServerConfig(environmentId);
   const destinationLabel = useScheduledTaskDestinationLabel(environmentId, draft.threadId);
   const boundThread = useScheduledTaskThread(environmentId, draft.threadId);
@@ -780,6 +789,7 @@ function TaskForm({
     const current = readEditor();
     if (!current || current.environmentId !== environmentId) return;
     const draft = current.draft;
+    const baseRef = resolveWorktreeBaseRef(draft.baseRef, projectRefs.refs);
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       submissionPending.current ||
@@ -838,11 +848,14 @@ function TaskForm({
       !draft.projectId ||
       !draft.modelSelection ||
       !schedule ||
-      (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim())
+      (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim()) ||
+      (draft.workspace === "worktree" && !baseRef)
     ) {
       Dialog.alert(
         gt("Incomplete task"),
-        gt("Add a name, prompt, project, model, valid schedule, and checkout path if needed."),
+        gt(
+          "Add a name, prompt, project, model, valid schedule, and base branch or checkout path if needed.",
+        ),
       );
       return;
     }
@@ -867,7 +880,7 @@ function TaskForm({
             ? { type: "existing_worktree", worktreePath: draft.checkoutPath.trim() }
             : {
                 type: "worktree",
-                baseRef: draft.baseRef.trim() || "main",
+                baseRef,
                 startFromOrigin: draft.startFromOrigin,
               },
       // Tasks have no mode picker; a mode above the administrator's ceiling is refused.
@@ -1094,7 +1107,7 @@ function TaskForm({
               label={gt("Base branch")}
               value={resolveNewTaskBranchLabel(
                 {
-                  branchName: draft.baseRef,
+                  branchName: resolveWorktreeBaseRef(draft.baseRef, projectRefs.refs),
                   startFromOrigin: draft.startFromOrigin,
                   workspaceMode: "worktree",
                 },

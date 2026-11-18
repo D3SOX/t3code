@@ -198,6 +198,9 @@ const layerDesktopBackend = DesktopBackendPool.layer.pipe(
   Layer.provideMerge(layerDesktopWindow),
 );
 
+// WSL orchestrator hangs off the backend layer because it needs the
+// pool + configuration + serverExposure; it pulls NetService and the
+// foundation services through the same provideMerge chain.
 const layerDesktopWslBackend = DesktopWslBackend.layer.pipe(
   Layer.provideMerge(layerDesktopBackend),
 );

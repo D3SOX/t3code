@@ -447,7 +447,6 @@ export function workEntryViewedImagePath(entry: WorkLogPresentationEntry): strin
     : null;
 }
 
-/** Distinct images the agent opened across a tool group, in viewing order. */
 export function workEntriesViewedImagePaths(
   entries: ReadonlyArray<WorkLogPresentationEntry>,
 ): string[] {

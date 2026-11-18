@@ -22,6 +22,7 @@ import {
 } from "~/state/environments";
 import { projectEnvironment } from "~/state/projects";
 import { type NewThreadHandler, useNewThreadHandler } from "./useHandleNewThread";
+import { useClientSettings } from "./useSettings";
 
 function reportScratchFailure(title: string, error: unknown) {
   toastManager.add(
@@ -40,6 +41,7 @@ type ScratchEnvironment = Pick<EnvironmentPresentation, "connection" | "serverCo
 export function createScratchProjectActions(input: {
   readonly environments: () => Iterable<ScratchEnvironment>;
   readonly primaryEnvironmentId: () => EnvironmentId | null;
+  readonly preferredEnvironmentId: () => EnvironmentId | null;
   readonly registry: AtomRegistry.AtomRegistry;
   readonly handleNewThread: NewThreadHandler;
 }) {
@@ -51,8 +53,9 @@ export function createScratchProjectActions(input: {
     return availableScratchWorkspaceRoot(environment?.connection.phase, environment?.serverConfig);
   };
 
-  // The primary (local) environment wins; `fallback` only applies when it offers no scratch root.
   const scratchEnvironmentId = (fallback: EnvironmentId | null): EnvironmentId | null => {
+    const preferred = input.preferredEnvironmentId();
+    if (preferred !== null) return scratchWorkspaceRootFor(preferred) !== null ? preferred : null;
     const primary = input.primaryEnvironmentId();
     if (primary !== null && scratchWorkspaceRootFor(primary) !== null) return primary;
     if (fallback !== null && scratchWorkspaceRootFor(fallback) !== null) return fallback;
@@ -97,11 +100,15 @@ export function createScratchProjectActions(input: {
 export function useScratchProject() {
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const preferredEnvironmentId = useClientSettings(
+    (settings) => settings.defaultScratchEnvironmentId,
+  );
   const registry = useContext(RegistryContext);
   const handleNewThread = useNewThreadHandler();
   return createScratchProjectActions({
     environments: () => environments,
     primaryEnvironmentId: () => primaryEnvironmentId,
+    preferredEnvironmentId: () => preferredEnvironmentId,
     registry,
     handleNewThread,
   });

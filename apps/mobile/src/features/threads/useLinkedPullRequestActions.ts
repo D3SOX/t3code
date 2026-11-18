@@ -21,6 +21,7 @@ import { changeRequestTermKind } from "../../lib/changeRequestTerm";
 import { AuthOrchestrationOperateScope, type ThreadPullRequestLink } from "@t3tools/contracts";
 import * as Clipboard from "expo-clipboard";
 import { useGT } from "gt-react-native";
+import { Platform } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { m } from "../../i18n/messages";
@@ -30,6 +31,7 @@ import type { EnvironmentRuntimeState } from "../../state/remote-runtime-types";
 import { useEnvironmentScope } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useNavigateToPullRequest } from "../../native/useOpenPullRequest";
 
 type MenuAction = MenuProps["actions"][number];
 
@@ -40,6 +42,7 @@ export function useLinkedPullRequestActions(input: {
 }) {
   const gt = useGT();
   const { thread, project, runtime } = input;
+  const navigateToPullRequest = useNavigateToPullRequest();
   const terminology = sourceControlClients.get(project?.repositoryIdentity?.provider).changeRequest;
   const capabilities = runtime?.serverConfig?.environment.capabilities;
   const canOperate = useEnvironmentScope(
@@ -150,8 +153,17 @@ export function useLinkedPullRequestActions(input: {
     const open = link.snapshot === null || link.snapshot.state === "open";
     const watching = link.watch !== undefined;
     return [
+      {
+        id: "app",
+        title: gt("Open in {product}", { product: "T3 Code" }),
+        image: Platform.OS === "ios" ? "arrow.up.forward.app" : "open_in_new",
+      },
       { id: "copy", title: gt("Copy link"), image: "link" },
-      { id: "browser", title: gt("Open in browser"), image: "safari" },
+      {
+        id: "browser",
+        title: gt("Open in system browser"),
+        image: Platform.OS === "ios" ? "safari" : "open_in_browser",
+      },
       ...((watching ? canWatch : canStartWatch) && open
         ? [
             {
@@ -175,7 +187,18 @@ export function useLinkedPullRequestActions(input: {
   };
 
   const onMenuAction = (link: ThreadPullRequestLink, action: string) => {
-    if (action === "copy") void Clipboard.setStringAsync(link.url);
+    if (action === "app")
+      void navigateToPullRequest(
+        link.url,
+        thread
+          ? {
+              environmentId: String(thread.environmentId),
+              projectId: String(thread.projectId),
+            }
+          : null,
+        "app",
+      );
+    else if (action === "copy") void Clipboard.setStringAsync(link.url);
     else if (action === "browser")
       void tryOpenExternalUrl(link.url, "pull-request").then((opened) => {
         if (!opened) {

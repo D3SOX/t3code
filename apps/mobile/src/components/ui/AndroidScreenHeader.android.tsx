@@ -2,7 +2,7 @@ import { AppActivityIndicator } from "./AppActivityIndicator";
 import { Column, Text as NativeText, RNHostView } from "@expo/ui/jetpack-compose";
 import { useGT } from "gt-react-native";
 import { use, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { View, type ColorValue } from "react-native";
 
 import type { AppSymbolName } from "./AppSymbol";
 import { NativeAppBar } from "./NativeAppBar.android";
@@ -32,6 +32,7 @@ export function AndroidHeaderIconButton(props: {
   readonly onPress?: () => void;
   readonly disabled?: boolean;
   readonly selected?: boolean;
+  readonly tintColor?: ColorValue;
 }) {
   return <IconButton {...props} tintColorClassName="accent-header-foreground" />;
 }

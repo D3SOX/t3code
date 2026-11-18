@@ -15,6 +15,8 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 
 import { canOpenLinksInApp } from "../browser/browserLinkTarget";
 import { useOpenLink } from "../browser/useOpenLink";
+import { readLocalApi } from "../localApi";
+import { showPullRequestLinkContextMenu } from "../components/pullRequest/pullRequestLinkContextMenu";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { m } from "../i18n/messages";
@@ -64,11 +66,12 @@ export function pullRequestLinkPanelTarget(input: {
   });
 }
 
-function shouldOpenPullRequestExternally(
+export function shouldOpenPullRequestExternally(
   event: Pick<MouseEvent<HTMLElement>, "metaKey" | "ctrlKey"> &
     Partial<Pick<MouseEvent<HTMLElement>, "button">>,
+  preference: "system" | "app" = "app",
 ): boolean {
-  return event.metaKey || event.ctrlKey || event.button === 1;
+  return event.metaKey || event.ctrlKey || event.button === 1 || preference === "system";
 }
 
 export function useOpenChangeRequestLink(
@@ -87,7 +90,6 @@ export function useOpenChangeRequestLink(
 ) => boolean {
   const navigate = useNavigate();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const openInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
   const ignoreWhitespace = useClientSettings((settings) => settings.diffIgnoreWhitespace);
   const browserLinkTarget = useClientSettings((settings) => settings.browserLinkTarget);
   const readDiffPreview = useAtomQueryRunner(reviewEnvironment.diffPreview, {
@@ -96,7 +98,7 @@ export function useOpenChangeRequestLink(
   });
   const openLink = useOpenLink(threadRef);
   return (event, targetUrl, targetThreadRef, targetEnvironmentId, onCommitUnavailable) => {
-    if (!openInApp || shouldOpenPullRequestExternally(event)) return false;
+    if (shouldOpenPullRequestExternally(event)) return false;
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;
     const openPullRequest = () => {
@@ -261,19 +263,33 @@ export function useOpenChangeRequestLink(
 export function useOpenPrLink(threadRef?: ScopedThreadRef) {
   const openChangeRequest = useOpenChangeRequestLink(threadRef);
   const openLink = useOpenLink(threadRef);
+  const linkTarget = useClientSettings((settings) => settings.pullRequestLinkTarget);
   return (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
     if (event.button > 1) return false;
     event.stopPropagation();
-    const openInBrowser = shouldOpenPullRequestExternally(event);
+    const openInBrowser = shouldOpenPullRequestExternally(event, linkTarget);
     const isAnchor =
       event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
     // Native links handle modified clicks; buttons still need openExternal.
     if (openInBrowser && isAnchor) return false;
-
     event.preventDefault();
+    if (openInBrowser) {
+      void readLocalApi()
+        ?.shell.openExternal(prUrl)
+        .catch((error: unknown) => {
+          console.error(error);
+          toastManager.add({
+            type: "error",
+            title: m(msg("Unable to open pull request link")),
+          });
+        });
+      return false;
+    }
     if (!openInBrowser && openChangeRequest(event, prUrl, targetThreadRef)) return true;
-
-    void openLink(prUrl, { event, threadRef: targetThreadRef }).catch((error: unknown) => {
+    void openLink(prUrl, {
+      event,
+      threadRef: targetThreadRef,
+    }).catch((error: unknown) => {
       console.error(error);
       toastManager.add(
         stackedThreadToast({
@@ -284,5 +300,46 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       );
     });
     return false;
+  };
+}
+export function usePullRequestLinkContextMenu(threadRef?: ScopedThreadRef) {
+  const openChangeRequest = useOpenChangeRequestLink(threadRef);
+  return (
+    event: Pick<
+      MouseEvent<HTMLElement>,
+      "preventDefault" | "stopPropagation" | "clientX" | "clientY"
+    >,
+    prUrl: string,
+    targetThreadRef?: ScopedThreadRef,
+    targetEnvironmentId?: EnvironmentId,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void showPullRequestLinkContextMenu({
+      url: prUrl,
+      position: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+      openInApp: () => {
+        const opened = openChangeRequest(
+          {
+            metaKey: false,
+            ctrlKey: false,
+            preventDefault: () => undefined,
+            stopPropagation: () => undefined,
+          },
+          prUrl,
+          targetThreadRef,
+          targetEnvironmentId,
+        );
+        if (!opened) {
+          toastManager.add({
+            type: "error",
+            title: m(msg("This pull request is not available in T3 Code")),
+          });
+        }
+      },
+    });
   };
 }

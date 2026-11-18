@@ -1,4 +1,5 @@
 import { msg, T, useGT, useMessages, Var } from "gt-react-native";
+import { DEFAULT_PULL_REQUEST_LINK_TARGET } from "@t3tools/contracts";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -19,8 +20,15 @@ const FOLLOW_UP_OPTIONS: ReadonlyArray<{
 }> = [
   {
     behavior: "queue",
-    label: msg("Queue", { $context: "verb, follow-up behavior" }),
+    label: msg("After current turn"),
     description: msg("Your message waits and runs after the current turn finishes."),
+  },
+  {
+    behavior: "next-tool",
+    label: msg("After next tool call"),
+    description: msg(
+      "Wait for the next tool to finish, then steer the active turn. If the turn ends first, run next.",
+    ),
   },
   {
     behavior: "steer",
@@ -61,6 +69,7 @@ export function SettingsFollowUpRouteScreen() {
           />
         ))}
       </SettingsSection>
+      <PullRequestLinkSettings />
       <Text className="px-2 text-sm text-foreground-muted">
         <T>
           Long-press the send button to use the other option for a single message. With a hardware
@@ -71,4 +80,33 @@ export function SettingsFollowUpRouteScreen() {
   );
 
   return <SettingsScreen title={gt("Chat")}>{content}</SettingsScreen>;
+}
+
+function PullRequestLinkSettings() {
+  const gt = useGT();
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const save = useAtomSet(updateMobilePreferencesAtom);
+  const ready = AsyncResult.isSuccess(preferences) && !preferences.waiting;
+  const target = AsyncResult.isSuccess(preferences)
+    ? (preferences.value.pullRequestLinkTarget ?? DEFAULT_PULL_REQUEST_LINK_TARGET)
+    : null;
+  return (
+    <SettingsSection title={gt("Open pull requests in")}>
+      <SettingsChoiceRow
+        label={gt("System browser")}
+        description={gt("Open links with your device's default app.")}
+        selected={target === "system"}
+        disabled={!ready}
+        onPress={() => save({ pullRequestLinkTarget: "system" })}
+      />
+      <SettingsChoiceRow
+        label="T3 Code"
+        description={gt("View pull requests inside T3 Code.")}
+        selected={target === "app"}
+        disabled={!ready}
+        separated
+        onPress={() => save({ pullRequestLinkTarget: "app" })}
+      />
+    </SettingsSection>
+  );
 }

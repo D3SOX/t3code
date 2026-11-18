@@ -108,7 +108,7 @@ function pickPrimaryRemote(
   const marked = pickMarkedRemote(remotes, resolved);
   if (marked) return marked;
 
-  for (const preferredRemoteName of ["upstream", "origin"] as const) {
+  for (const preferredRemoteName of ["origin", "upstream"] as const) {
     const remoteUrl = remotes.get(preferredRemoteName);
     if (remoteUrl) {
       return { remoteName: preferredRemoteName, remoteUrl };

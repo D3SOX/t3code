@@ -13,6 +13,7 @@ import {
 } from "@t3tools/contracts";
 import {
   type ResetCreditChoice,
+  formatCreditBalance,
   paceOf,
   paceRemainingPercent,
   remainingPercent,
@@ -220,6 +221,16 @@ export function AccountLimits(props: {
           ))}
         </View>
       )}
+      {limits.credits ? (
+        <View className="flex-row justify-between gap-3">
+          <Text className="text-sm text-foreground-muted">
+            <T>Credits remaining</T>
+          </Text>
+          <Text className="text-sm font-t3-medium tabular-nums text-foreground">
+            {formatCreditBalance(limits.credits)}
+          </Text>
+        </View>
+      ) : null}
       {externalUsage ? (
         <Pressable
           accessibilityRole="link"

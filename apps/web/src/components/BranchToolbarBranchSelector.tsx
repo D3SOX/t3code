@@ -33,7 +33,7 @@ import {
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { readLocalApi } from "../localApi";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
+import { useOpenPrLink, usePullRequestLinkContextMenu } from "../lib/openPullRequestLink";
 import { usePaginatedBranches } from "../state/queries";
 import { useProjectClone } from "../state/projectClones";
 import { readThreadShell, useProject, useQuietThreadShell } from "../state/entities";
@@ -719,6 +719,7 @@ export function BranchToolbarBranchSelector({
   );
   const openPrLink = useOpenPrLink(threadRef);
   const linkedIssues = serverThread?.issues ?? [];
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu(threadRef);
 
   function selectPickerItem(itemValue: string) {
     if (itemValue === checkoutPullRequestItemValue && prReference && onCheckoutPullRequestRequest) {
@@ -863,8 +864,14 @@ export function BranchToolbarBranchSelector({
             onOpenPullRequest={(event, targetUrl = prUrl) => {
               if (targetUrl) openPrLink(event, targetUrl);
             }}
+            onOpenPullRequestContextMenu={(event) => {
+              if (prUrl) openPrLinkContextMenu(event, prUrl);
+            }}
           />
         ) : null}
+        {/* Context menu lives on the wrapper: the disabled Button has
+            pointer-events-none, so the trigger itself never sees right-clicks
+            while refs are loading or a branch action is pending. */}
         <span
           className="flex min-w-0"
           onMouseDownCapture={(event) => {
