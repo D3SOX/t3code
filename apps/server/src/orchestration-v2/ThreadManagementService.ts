@@ -73,7 +73,7 @@ import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 
-export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
+export type ThreadManagementSendMode = "auto" | "queue" | "next-tool" | "steer" | "restart";
 
 export interface ThreadManagementProvenance {
   readonly createdBy: OrchestrationV2Actor;
@@ -902,7 +902,8 @@ const make = Effect.gen(function* () {
       };
     } else {
       dispatchMode = {
-        type: mode === "queue" ? "queue_after_active" : "start_immediately",
+        type: mode === "queue" || mode === "next-tool" ? "queue_after_active" : "start_immediately",
+        ...(mode === "next-tool" ? { afterNextTool: true } : {}),
       };
     }
 

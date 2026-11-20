@@ -72,6 +72,7 @@ export interface SubscriptionUsageSnapshot {
 const SNAPSHOT_MAX_AGE = 15 * 60_000;
 export const WIDGET_REFRESH_INTERVAL = 5 * 60_000;
 
+/** Bound probes across config updates, reconnects, and foreground transitions. */
 export function createWidgetRefresher<Id>(refresh: (id: Id) => Promise<unknown>) {
   const attempted = new Map<Id, number>();
   const pending = new Set<Id>();
@@ -206,9 +207,14 @@ function subscriptionUsageProps(
   now: number,
   configuredDrivers: ReadonlySet<string>,
   maxWindowsPerProvider: number,
+  separateAccounts: boolean,
   resolve: MessageResolver,
 ): SubscriptionUsageSnapshot {
-  const pools = collectLimitPools(accounts, now);
+  const pools = separateAccounts
+    ? [...accounts]
+        .sort((left, right) => left.key.localeCompare(right.key))
+        .flatMap((account) => collectLimitPools([account], now))
+    : collectLimitPools(accounts, now);
   const checked = accounts
     .filter((account) => account.driver === "codex" || account.driver === "claudeAgent")
     .map((account) => Date.parse(account.limits.checkedAt));
@@ -219,82 +225,90 @@ function subscriptionUsageProps(
         (driver) =>
           configuredDrivers.has(driver) || accounts.some((account) => account.driver === driver),
       )
-      .map((driver) => {
-        const pool = pools.find((candidate) => candidate.driver === driver);
+      .flatMap((driver) => {
+        const driverPools = pools.filter((candidate) => candidate.driver === driver);
         const name = driver === "codex" ? "Codex" : "Claude";
         const kind = driver === "codex" ? "codex" : "claude";
         const colors = { light: providerColors("light")[kind], dark: providerColors("dark")[kind] };
-        if (!pool)
+        if (driverPools.length === 0)
+          return [
+            {
+              name,
+              colors,
+              detail: resolve(msg("No limits available")),
+              windows: [],
+              expiresAt: 0,
+              totalWindows: 0,
+            },
+          ];
+        return driverPools.map((pool, index) => {
+          const checkedAt = Math.min(...pool.accounts.map((a) => Date.parse(a.limits.checkedAt)));
+          const expiresAt = Math.min(
+            checkedAt + SNAPSHOT_MAX_AGE,
+            ...pool.windows.flatMap((window) =>
+              window.resets.filter(isUpcoming).map((reset) => reset.at),
+            ),
+          );
+          const fresh = Number.isFinite(expiresAt) && expiresAt > now;
+          const sortedWindows = [...pool.windows].sort(
+            (a, b) => a.remainingPercent - b.remainingPercent,
+          );
+          // Keep a session and weekly limit when scoped limits fill the storage budget.
+          const selectedWindows = [
+            ...new Set([
+              sortedWindows.find((window) => window.kind === "session"),
+              sortedWindows.find((window) => window.kind === "weekly"),
+              ...sortedWindows,
+            ]),
+          ]
+            .filter((window) => window !== undefined)
+            .slice(0, maxWindowsPerProvider)
+            .sort((a, b) => a.remainingPercent - b.remainingPercent);
           return {
-            name,
+            name: separateAccounts && driverPools.length > 1 ? `${name} ${index + 1}` : name,
             colors,
-            detail: resolve(msg("No limits available")),
-            windows: [],
-            expiresAt: 0,
-            totalWindows: 0,
+            detail: !fresh
+              ? resolve(msg("Open {app} to refresh", { app: "T3" }))
+              : pool.accounts.length > 1
+                ? resolve(
+                    msg(
+                      "{count, plural, one {{count} account · pooled} other {{count} accounts · pooled}}",
+                      {
+                        count: pool.accounts.length,
+                      },
+                    ),
+                  )
+                : resolve(msg("Subscription remaining")),
+            expiresAt: fresh ? expiresAt : 0,
+            totalWindows: fresh ? pool.windows.length : 0,
+            windows: fresh
+              ? selectedWindows.map((window) => ({
+                  kind: window.kind,
+                  label: window.label,
+                  remaining: Math.round(window.remainingPercent),
+                  reset: window.resets[0]
+                    ? isUpcoming(window.resets[0])
+                      ? resolve(msg("Next reset {time}", { time: resetTime(window.resets[0].at) }))
+                      : resolve(msg("Reset {time}", { time: resetTime(window.resets[0].at) }))
+                    : resolve(msg("Reset time unavailable")),
+                  accounts: widgetAccounts(window, resolve),
+                }))
+              : [],
           };
-        const checkedAt = Math.min(...pool.accounts.map((a) => Date.parse(a.limits.checkedAt)));
-        const expiresAt = Math.min(
-          checkedAt + SNAPSHOT_MAX_AGE,
-          ...pool.windows.flatMap((window) =>
-            window.resets.filter(isUpcoming).map((reset) => reset.at),
-          ),
-        );
-        const fresh = Number.isFinite(expiresAt) && expiresAt > now;
-        const sortedWindows = [...pool.windows].sort(
-          (a, b) => a.remainingPercent - b.remainingPercent,
-        );
-        const selectedWindows = [
-          ...new Set([
-            sortedWindows.find((window) => window.kind === "session"),
-            sortedWindows.find((window) => window.kind === "weekly"),
-            ...sortedWindows,
-          ]),
-        ]
-          .filter((window) => window !== undefined)
-          .slice(0, maxWindowsPerProvider)
-          .sort((a, b) => a.remainingPercent - b.remainingPercent);
-        return {
-          name,
-          colors,
-          detail: !fresh
-            ? resolve(msg("Open {app} to refresh", { app: "T3" }))
-            : pool.accounts.length > 1
-              ? resolve(
-                  msg(
-                    "{count, plural, one {{count} account · pooled} other {{count} accounts · pooled}}",
-                    {
-                      count: pool.accounts.length,
-                    },
-                  ),
-                )
-              : resolve(msg("Subscription remaining")),
-          expiresAt: fresh ? expiresAt : 0,
-          totalWindows: fresh ? pool.windows.length : 0,
-          windows: fresh
-            ? selectedWindows.map((window) => ({
-                kind: window.kind,
-                label: window.label,
-                remaining: Math.round(window.remainingPercent),
-                reset: window.resets[0]
-                  ? isUpcoming(window.resets[0])
-                    ? resolve(msg("Next reset {time}", { time: resetTime(window.resets[0].at) }))
-                    : resolve(msg("Reset {time}", { time: resetTime(window.resets[0].at) }))
-                  : resolve(msg("Reset time unavailable")),
-                accounts: widgetAccounts(window, resolve),
-              }))
-            : [],
-        };
+        });
       }),
   };
 }
 
+/** Deduplicate accounts before pooling, and only publish display data to the OS. */
 export function buildSubscriptionUsageSnapshot(
   presentations: LimitPresentations,
   url: string,
   maxWindowsPerProvider = 6,
+  grouping: "pooled" | "accounts" = "pooled",
   resolve: MessageResolver = m,
 ): SubscriptionUsageSnapshot {
+  // Freshness is evaluated at publication/render time, not on unrelated config emissions.
   const configuredDrivers = new Set(
     [...presentations.values()].flatMap((presentation) =>
       (presentation.serverConfig?.providers ?? [])
@@ -313,6 +327,7 @@ export function buildSubscriptionUsageSnapshot(
     0,
     configuredDrivers,
     maxWindowsPerProvider,
+    grouping === "accounts",
     resolve,
   );
   return {

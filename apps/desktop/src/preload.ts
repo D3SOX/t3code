@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getClientPlatform: () => clientPlatform,
+  focusWindow: () => ipcRenderer.invoke(IpcChannels.FOCUS_WINDOW_CHANNEL),
   restartAudioService: () => ipcRenderer.invoke(IpcChannels.RESTART_AUDIO_SERVICE_CHANNEL),
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),

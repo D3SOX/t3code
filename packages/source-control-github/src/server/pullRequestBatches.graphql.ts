@@ -309,6 +309,22 @@ export const PullRequestReviewThreadConnection = Schema.Struct({
 })
 export interface PullRequestReviewThreadConnection extends Schema.Struct.Type<typeof PullRequestReviewThreadConnection.fields> {}
 
+/** The connection type for Reactor. */
+export const ReactorConnection = Schema.Struct({
+  /** Identifies the total count of items in the connection. */
+  totalCount: Shared.Int
+})
+export interface ReactorConnection extends Schema.Struct.Type<typeof ReactorConnection.fields> {}
+
+/** A group of emoji reactions to a particular piece of content. */
+export const ReactionGroup = Schema.Struct({
+  /** Identifies the emoji reaction. */
+  content: GraphQL.enumLiterals(Shared.ReactionContent.literals),
+  /** Reactors to the reaction subject with the emotion represented by this reaction group. */
+  reactors: ReactorConnection
+})
+export interface ReactionGroup extends Schema.Struct.Type<typeof ReactionGroup.fields> {}
+
 /** The connection type for PullRequestTimelineItems. */
 export const PullRequestTimelineItemsConnection = Schema.Struct({
   /** Identifies the count of items after applying `before` and `after` filters. */
@@ -385,6 +401,8 @@ export const PullRequestWatchFingerprintRepositoryPullRequestPullRequest = Schem
   reviews: Schema.NullOr(ReviewsPullRequestReviewConnection),
   /** The list of all review threads for this pull request. */
   reviewThreads: PullRequestReviewThreadConnection,
+  /** A list of reactions grouped by content left on the subject. */
+  reactionGroups: Schema.NullOr(Schema.Array(ReactionGroup)),
   /** A list of events, comments, commits, etc. associated with the pull request. */
   mergeQueueRemovals: Schema.optionalKey(PullRequestTimelineItemsConnection),
   /** A list of commits present in this pull request's head branch not present in the base branch. */
@@ -409,7 +427,7 @@ export const PullRequestWatchFingerprint = GraphQL.query("PullRequestWatchFinger
       { name: "mergeQueue", body: "Boolean!" }
     ],
     selections: [
-      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){state mergeable headRefOid comments(first:100 orderBy:{field:UPDATED_AT direction:DESC}){totalCount nodes{lastEditedAt}}reviews(last:100){totalCount nodes{lastEditedAt}}reviewThreads{totalCount}mergeQueueRemovals:timelineItems(itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT])@include(if:$", "mergeQueue", "){filteredCount}commits(last:1){nodes{commit{statusCheckRollup{contexts{checkRunCountsByState{state count}statusContextCountsByState{state count}}}}}}}}"] }
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){state mergeable headRefOid comments(first:100 orderBy:{field:UPDATED_AT direction:DESC}){totalCount nodes{lastEditedAt}}reviews(last:100){totalCount nodes{lastEditedAt}}reviewThreads{totalCount}reactionGroups{content reactors{totalCount}}mergeQueueRemovals:timelineItems(itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT])@include(if:$", "mergeQueue", "){filteredCount}commits(last:1){nodes{commit{statusCheckRollup{contexts{checkRunCountsByState{state count}statusContextCountsByState{state count}}}}}}}}"] }
     ],
     fragments: []
   },

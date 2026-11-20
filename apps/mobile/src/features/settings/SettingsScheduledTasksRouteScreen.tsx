@@ -867,7 +867,9 @@ function TaskForm({
     ) {
       Dialog.alert(
         gt("Incomplete task"),
-        gt("Add a name, prompt, project, model, valid schedule, and checkout path if needed."),
+        gt(
+          "Add a name, prompt, project, model, valid schedule, and base branch or checkout path if needed.",
+        ),
       );
       return;
     }

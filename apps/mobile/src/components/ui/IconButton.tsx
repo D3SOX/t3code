@@ -31,11 +31,14 @@ export function IconButton(props: IconButtonProps) {
       <SymbolView
         name={props.icon}
         size={24}
+        tintColor={!props.disabled && variant === "standard" ? props.tintColor : undefined}
         tintColorClassName={
           props.disabled
             ? "accent-icon-subtle"
             : variant === "standard"
-              ? (props.tintColorClassName ?? iconTintClassName)
+              ? props.tintColor
+                ? undefined
+                : (props.tintColorClassName ?? iconTintClassName)
               : iconTintClassName
         }
       />

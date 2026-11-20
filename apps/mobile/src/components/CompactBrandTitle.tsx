@@ -3,21 +3,20 @@ import Constants from "expo-constants";
 import { useGT } from "gt-react-native";
 import { useState } from "react";
 import { Platform, View } from "react-native";
-
 import { AppText as Text } from "./ui/AppText";
 import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
+import { useEnvironmentIdentification } from "../state/environmentIdentification";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
 const BRAND_MAX_FONT_SCALE = 1.4;
-const WORDMARK_SUFFIX = "Code";
+const WORDMARK_SUFFIX = "Code (D3SOX)";
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
   return Platform.isPad && !NATIVE_WORKSPACE_COLUMNS_SUPPORTED ? IPAD_HOME_TITLE_OFFSET : 0;
 }
-
 export function CompactBrandTitle(
   props: {
     readonly allowFontScaling?: boolean;
@@ -30,44 +29,71 @@ export function CompactBrandTitle(
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
+  const { mode } = useEnvironmentIdentification();
+  const artworkStage = mode === "artwork" && stageLabel !== "Beta" ? stageLabel : null;
+  const showPill = mode === "pill" && stageLabel !== "Beta";
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
   // Measured only while the badge shows, so hiding it does not make it look like it fits.
   const [fullWidth, setFullWidth] = useState<number | null>(null);
   const showStage =
     !props.fit || availableWidth === null || fullWidth === null || fullWidth <= availableWidth;
-
   const title = (
     <View
       onLayout={
         props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
       }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? gt("T3 Code, Threads")}
+      accessibilityLabel={
+        props.accessibilityLabel ??
+        (mode !== "none" && stageLabel !== "Beta"
+          ? gt("T3 Code (D3SOX), Threads, {stage}", { stage: stageLabel })
+          : gt("T3 Code (D3SOX), Threads"))
+      }
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
       style={[
-        { marginLeft: titleOffset },
-        Platform.OS === "android" && { gap: 5.25 * scale },
-        props.fit && { flexShrink: 0 },
+        {
+          marginLeft: titleOffset,
+        },
+        Platform.OS === "android" && {
+          gap: 5.25 * scale,
+        },
+        props.fit && {
+          flexShrink: 0,
+        },
       ]}
     >
-      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
-      {/* A logo beside a fixed-size wordmark: it may grow with Dynamic Type, not crowd the bar. */}
+      <T3Wordmark
+        color={artworkStage ? "white" : undefined}
+        colorClassName={artworkStage ? undefined : "accent-icon"}
+        height={Math.round(15 * scale)}
+      />
       <Text
         allowFontScaling={props.allowFontScaling}
         maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
         className="font-t3-medium text-foreground-muted"
-        style={{ fontSize: 21 * scale, letterSpacing: -0.5 * scale }}
+        style={{
+          fontSize: 21 * scale,
+          letterSpacing: -0.5 * scale,
+          ...(artworkStage
+            ? {
+                color: "white",
+              }
+            : {}),
+        }}
       >
         {WORDMARK_SUFFIX}
       </Text>
-      {showStage ? (
+      {showPill && showStage ? (
         <View
           className="rounded-full bg-subtle px-1.5 py-0.5"
           style={
             Platform.OS === "android"
-              ? { paddingHorizontal: 5.25 * scale, paddingVertical: 1.75 * scale }
+              ? {
+                  paddingHorizontal: 5.25 * scale,
+                  paddingVertical: 1.75 * scale,
+                }
               : undefined
           }
         >
@@ -75,7 +101,10 @@ export function CompactBrandTitle(
             allowFontScaling={props.allowFontScaling}
             maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
             className="font-t3-bold text-foreground-muted uppercase"
-            style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
+            style={{
+              fontSize: 9 * scale,
+              letterSpacing: 0.9 * scale,
+            }}
           >
             {stageLabel}
           </Text>
@@ -83,7 +112,6 @@ export function CompactBrandTitle(
       ) : null}
     </View>
   );
-
   return props.fit ? (
     <View
       className="min-w-0 flex-1 flex-row items-center"

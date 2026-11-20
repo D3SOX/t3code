@@ -75,7 +75,9 @@ export function limitsNotice(
   if (limits.unavailable?.reason === "probeFailed") {
     return limits.unavailable.message ?? resolve(msg("Could not read limits."));
   }
-  return limits.windows.length === 0 ? resolve(msg("No limits reported.")) : null;
+  return limits.windows.length === 0 && !limits.credits
+    ? resolve(msg("No limits reported."))
+    : null;
 }
 
 /** @public */
