@@ -1,3 +1,4 @@
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { useAtomValue } from "@effect/atom-react";
 import { T, useGT } from "gt-react-native";
 import type { ReactNode } from "react";
@@ -88,7 +89,7 @@ export function AndroidNotificationsSettings({
             appAtomRegistry.get(serverEnvironment.unsubscribePush.permissionAtom(environmentId)),
         )
         .map(async ({ environmentId }) => {
-          const result = await serverEnvironment.unsubscribePush.run(appAtomRegistry, {
+          const result = await runAtomCommand(appAtomRegistry, serverEnvironment.unsubscribePush, {
             environmentId,
             input: { deviceId },
           });

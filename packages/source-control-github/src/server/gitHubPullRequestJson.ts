@@ -1069,6 +1069,8 @@ export interface GitHubPullRequestCore extends GitHubPullRequestDetail {
   /** Teams asked for a review. `reviewRequestLogins` holds the people. */
   readonly maintainerCanModify: boolean;
   readonly canEditMaintainerEdits: boolean;
+  readonly mergeCommitSha?: string | null;
+  readonly mergedBy?: PullRequestActor | null;
   readonly reviewRequestTeams: ReadonlyArray<PullRequestActor>;
   readonly viewerAccess: GitHubViewerAccess & GitHubRepositoryAccess;
   readonly comparison: GitHubBaseComparison | null;
@@ -1173,6 +1175,8 @@ export function toPullRequestCore(result: PullRequestCore.Result): GitHubPullReq
       pr.headRepositoryOwner?.__typename === "User" &&
       pr.headRepository !== null &&
       pr.headRef !== null,
+    mergeCommitSha: trimmed(pr.mergeCommit?.oid),
+    mergedBy: toActor(pr.mergedBy),
     viewerAccess: {
       canWrite: toCanWrite(repository.viewerPermission),
       canDeleteBranch: toCanWrite(pr.headRepository?.viewerPermission) && pr.headRef !== null,

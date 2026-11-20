@@ -42,6 +42,7 @@ vi.mock("../state/use-thread-pr", () => ({
 }));
 vi.mock("../state/server", () => ({ environmentServerConfigsAtom: {} }));
 vi.mock("../state/pull-requests", () => ({ composerPullRequests: {} }));
+vi.mock("../state/issueTrackers", () => ({ issueTrackerEnvironment: {} }));
 vi.mock("../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
 vi.mock("../state/atom-registry", () => ({
   appAtomRegistry: {

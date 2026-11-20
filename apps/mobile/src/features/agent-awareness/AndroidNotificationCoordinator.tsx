@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { msg } from "gt-react-native";
 import { AuthOrchestrationReadScope, type EnvironmentId } from "@t3tools/contracts";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult, Atom } from "effect/reactivity";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -93,15 +93,16 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
       return;
     }
     let cancelled = false;
-    void serverEnvironment.pushConfig
-      .run(appAtomRegistry, { environmentId, input: {} })
-      .then((result) => {
-        if (cancelled) return;
-        if (AsyncResult.isSuccess(result)) {
-          setStatus(environmentId, m(msg("Registering with distributor")));
-          registerAndroidUnifiedPush(environmentId, result.value.publicKey);
-        } else setStatus(environmentId, registrationError(result));
-      });
+    void runAtomCommand(appAtomRegistry, serverEnvironment.pushConfig, {
+      environmentId,
+      input: {},
+    }).then((result) => {
+      if (cancelled) return;
+      if (AsyncResult.isSuccess(result)) {
+        setStatus(environmentId, m(msg("Registering with distributor")));
+        registerAndroidUnifiedPush(environmentId, result.value.publicKey);
+      } else setStatus(environmentId, registrationError(result));
+    });
     return () => {
       cancelled = true;
     };
@@ -127,23 +128,21 @@ function HostNotifications({ connection }: { connection: SavedRemoteConnection }
       return;
     if (!endpoint?.endpoint || !endpoint.publicKey || !endpoint.auth) return;
     let cancelled = false;
-    void serverEnvironment.subscribePush
-      .run(appAtomRegistry, {
-        environmentId,
-        input: {
-          deviceId,
-          endpoint: endpoint.endpoint,
-          publicKey: endpoint.publicKey,
-          auth: endpoint.auth,
-        },
-      })
-      .then((result) => {
-        if (!cancelled)
-          setStatus(
-            environmentId,
-            AsyncResult.isSuccess(result) ? m(msg("Registered")) : registrationError(result),
-          );
-      });
+    void runAtomCommand(appAtomRegistry, serverEnvironment.subscribePush, {
+      environmentId,
+      input: {
+        deviceId,
+        endpoint: endpoint.endpoint,
+        publicKey: endpoint.publicKey,
+        auth: endpoint.auth,
+      },
+    }).then((result) => {
+      if (!cancelled)
+        setStatus(
+          environmentId,
+          AsyncResult.isSuccess(result) ? m(msg("Registered")) : registrationError(result),
+        );
+    });
     return () => {
       cancelled = true;
     };

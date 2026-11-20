@@ -13,6 +13,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   PULL_REQUEST_WATCH_WAKE_LIMIT,
   evaluatePullRequestWatch as evaluate,
+  pullRequestWatchEndMessage,
   pullRequestWatchMessage,
   refreshQueuedPullRequestMessage,
   combinePullRequestWatchWakes,
@@ -197,6 +198,51 @@ describe("evaluatePullRequestWatch", () => {
       { kind: "conflicting" },
       { kind: "needs-rebase" },
     ]);
+  });
+
+  it("reports failures on the first read only when CI was pending at the start", () => {
+    const red = detail({ checks: [check("lint", "failure"), check("test", "pending")] });
+    const pending = evaluatePullRequestWatch(
+      watch({ awaitingBaseline: "all", checksPending: true }),
+      red,
+      noRemarks,
+    );
+    assert.deepEqual(pending.changes, [
+      { kind: "checks-failed", failed: [check("lint", "failure")] },
+    ]);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        pending.next,
+        detail({ checks: [check("lint", "failure"), check("test", "success")] }),
+        noRemarks,
+      ).changes,
+      [{ kind: "checks-finished", passed: 1, failing: [check("lint", "failure")] }],
+    );
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        watch({ awaitingBaseline: "all", checksPending: false }),
+        red,
+        noRemarks,
+      ).changes,
+      [],
+    );
+
+    // A read the host could not finish keeps the baseline and must keep the seed with it.
+    const placeholder = { ...check("Workflow approval status", "pending"), placeholder: true };
+    const incomplete = evaluatePullRequestWatch(
+      watch({ awaitingBaseline: "all", checksPending: true }),
+      detail({ checks: [check("lint", "success"), placeholder] }),
+      noRemarks,
+    );
+    assert.deepEqual(incomplete.changes, []);
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        incomplete.next,
+        detail({ checks: [check("lint", "success"), check("gated", "failure")] }),
+        noRemarks,
+      ).changes,
+      [{ kind: "checks-failed", failed: [check("gated", "failure")] }],
+    );
   });
 
   it("baselines checks already awaiting approval", () => {
@@ -483,7 +529,7 @@ describe("evaluatePullRequestWatch", () => {
       detail({ checks: finishedChecks }),
       noRemarks,
     );
-    assert.deepEqual(finished.changes, [{ kind: "checks-completed", count: 2, failed: [failed] }]);
+    assert.deepEqual(finished.changes, [{ kind: "checks-finished", passed: 1, failing: [failed] }]);
     const laterUnread = evaluatePullRequestWatch(
       finished.next,
       detail({ checks: [...finishedChecks, unknown] }),
@@ -509,7 +555,7 @@ describe("evaluatePullRequestWatch", () => {
     });
     const report = evaluatePullRequestWatch(early.next, finished, noRemarks);
     assert.deepEqual(report.changes, [
-      { kind: "checks-completed", count: 2, failed: [running.checks[0]!] },
+      { kind: "checks-finished", passed: 1, failing: [running.checks[0]!] },
     ]);
     assert.deepEqual(evaluatePullRequestWatch(report.next, finished, noRemarks).changes, []);
   });
@@ -535,14 +581,14 @@ describe("evaluatePullRequestWatch", () => {
     );
     assert.deepEqual(pending.changes, []);
     assert.deepEqual(evaluatePullRequestWatch(pending.next, finished, noRemarks).changes, [
-      { kind: "checks-completed", count: 2, failed: [failed] },
+      { kind: "checks-finished", passed: 1, failing: [failed] },
     ]);
     const late = evaluatePullRequestWatch(
       reported.next,
       detail({ checks: [...finished.checks, check("package", "success")] }),
       noRemarks,
     );
-    assert.deepEqual(late.changes, [{ kind: "checks-completed", count: 3, failed: [failed] }]);
+    assert.deepEqual(late.changes, [{ kind: "checks-finished", passed: 2, failing: [failed] }]);
     const pushed = evaluatePullRequestWatch(
       reported.next,
       { ...finished, headSha: "bbbbbbbbbb" },
@@ -1378,6 +1424,45 @@ describe("evaluatePullRequestWatch", () => {
   });
 });
 
+describe("pullRequestWatchEndMessage", () => {
+  const url = "https://git.cafe/pingdotgg/t3code/pull/7";
+  const end = (overrides: Partial<Parameters<typeof pullRequestWatchEndMessage>[0]["detail"]>) =>
+    pullRequestWatchEndMessage({
+      number: 7,
+      url,
+      detail: { state: "merged", baseBranch: "main", ...overrides },
+    });
+  const mergeCommitSha = "3b2f958603a51d8c42c4ede02eee7b8cb310b2d9";
+
+  it("says how the pull request ended, with the merge commit and merger the host reports", () => {
+    const merged = end({
+      mergeCommitSha,
+      mergedBy: { login: "juliusmarminge", name: null, avatarUrl: null },
+    });
+    assert.equal(
+      merged.text,
+      `Pull request #7 (${url}) was merged into main by juliusmarminge as 3b2f958, so T3 Code stopped watching it.`,
+    );
+    assert.deepEqual(merged.notification, {
+      source: { kind: "monitor" },
+      outcome: "completed",
+      summary: "#7: merged, stopped watching",
+    });
+    // GitCafe reports a merge made on GitHub without who made it.
+    assert.equal(
+      end({ mergeCommitSha }).text,
+      `Pull request #7 (${url}) was merged into main as 3b2f958, so T3 Code stopped watching it.`,
+    );
+
+    const closed = end({ state: "closed" });
+    assert.equal(
+      closed.text,
+      `Pull request #7 (${url}) was closed without merging, so T3 Code stopped watching it. If it is reopened, call watch_pull_request to watch it again.`,
+    );
+    assert.equal(closed.notification.summary, "#7: closed, stopped watching");
+  });
+});
+
 describe("pullRequestWatchMessage", () => {
   it("distinguishes finished CI with outstanding failures from passing CI", () => {
     const report = evaluatePullRequestWatch(
@@ -1396,11 +1481,10 @@ describe("pullRequestWatchMessage", () => {
     });
     assert.include(
       message.text,
-      "All 2 checks finished on aaaaaaa; 1 check still needs attention:",
+      "- Every check has finished on aaaaaaa: 1 passed, 1 still failing:\n  - lint https://ci.example/lint",
     );
-    assert.include(message.text, "lint (failure) https://ci.example/lint");
     assert.equal(message.notification.outcome, "failed");
-    assert.equal(message.notification.summary, "#12: checks finished with failures");
+    assert.equal(message.notification.summary, "#12: checks finished");
   });
 
   it("says a finished review check means the reviewer is done", () => {

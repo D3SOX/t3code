@@ -1,7 +1,8 @@
 import { useGT } from "gt-react-native";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { Platform } from "react-native";
@@ -47,7 +48,7 @@ export function SettingsAppearanceRouteScreen() {
 
 function ThreadDisplaySettingsSection() {
   const gt = useGT();
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const preferences = useAtomValue(mobilePreferencesAtom);
   const showThreadBranches =
     !AsyncResult.isSuccess(preferences) || preferences.value.sidebarShowThreadBranches !== false;

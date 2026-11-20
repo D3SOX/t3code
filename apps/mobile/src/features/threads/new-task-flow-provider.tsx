@@ -5,8 +5,7 @@ import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 import { useNowMinuteMs } from "../../lib/clock";
 import { m, type MessageResolver } from "../../i18n/messages";
 import * as Dialog from "../../components/ui/Dialog";
-import { useAtomSet } from "@effect/atom-react";
-import { updateMobilePreferencesAtom } from "../../state/preferences";
+import { saveMobilePreferences } from "../../state/preferences";
 import React, { useRef, useState } from "react";
 
 import type {
@@ -244,7 +243,7 @@ export function NewTaskFlowProvider(
 ) {
   const projects = useProjects();
   const messages = useMessages();
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const threads = useThreadShells();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const groupingSettings = useMobileProjectGroupingSettings();
@@ -609,7 +608,7 @@ export function NewTaskFlowProvider(
       environmentId: project.environmentId,
       projectKey: scopedProjectKey(project.environmentId, project.id),
     });
-    savePreferences({
+    void savePreferences({
       lastNewThreadProjectRef: { environmentId: project.environmentId, projectId: project.id },
     });
   };
