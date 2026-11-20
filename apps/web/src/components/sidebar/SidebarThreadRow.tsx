@@ -1299,7 +1299,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <div
         className={cn(
           "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
-          showThreadBranches ? "mt-0.5" : "col-start-2 row-start-1",
+          // Shares the project line with the row actions; items that no longer fit wrap out of
+          // sight instead of sliding under them.
+          showThreadBranches ? "mt-0.5" : "h-4 flex-wrap overflow-hidden",
         )}
       >
         {showThreadBranches && checkoutThread.branch ? (
@@ -1607,9 +1609,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           <div
             className={cn(
               "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              showThreadBranches
-                ? "h-[4.875rem]"
-                : "grid h-15 grid-cols-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1",
+              showThreadBranches ? "h-[4.875rem]" : "flex h-15 flex-col gap-1",
               showThreadBranches && metaLineEmpty && "h-auto",
             )}
           >
@@ -1630,6 +1630,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
+              {showThreadBranches ? null : metaLine}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (
@@ -1776,7 +1777,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className={cn("flex min-w-0", showThreadBranches ? "mt-1" : "col-span-2")}>
+            <div className={cn("flex min-w-0", showThreadBranches && "mt-1")}>
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -1785,7 +1786,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : null}
               {titleLineIcons}
             </div>
-            {metaLine}
+            {showThreadBranches ? metaLine : null}
           </div>
         </TooltipTrigger>
         {detailsTooltip}
