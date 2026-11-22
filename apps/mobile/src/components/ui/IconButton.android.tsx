@@ -72,7 +72,7 @@ export function IconButton(props: IconButtonProps) {
       <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
         <SymbolView
           name={props.icon === "ellipsis" ? { ios: "ellipsis", android: "more_vert" } : props.icon}
-          size={iconSize}
+          size={iconSize * (props.iconScale ?? 1)}
           tintColor={!props.disabled && variant === "standard" ? props.tintColor : undefined}
           tintColorClassName={
             !props.disabled && variant === "standard" && props.tintColor ? undefined : iconTint

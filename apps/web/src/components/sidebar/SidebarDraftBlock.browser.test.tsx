@@ -6,7 +6,23 @@ import { expect, it, vi } from "vite-plus/test";
 import { act, render } from "../../../test/render";
 import { formatAssistantCitationForComposer } from "../../composer-logic";
 import { DraftId, useComposerDraftStore } from "../../composerDraftStore";
-import { SidebarDraftBlock } from "./SidebarDraftBlock";
+import { SidebarDraftBlock, useSidebarDrafts } from "./SidebarDraftBlock";
+
+function DraftBlock({ onNavigateToDraft }: { onNavigateToDraft: (draftId: DraftId) => void }) {
+  const { draftIds, routeDraftComposer } = useSidebarDrafts(null, null);
+  return (
+    <SidebarDraftBlock
+      draftIds={draftIds}
+      routeDraftComposer={routeDraftComposer}
+      jumpLabelByDraftId={null}
+      projectByKey={new Map()}
+      projectDisplayNameByKey={new Map()}
+      routeDraftId={null}
+      onNavigateToDraft={onNavigateToDraft}
+      onDraftContextMenu={vi.fn()}
+    />
+  );
+}
 
 it("keeps draft previews current through edits, promotion and removal", async () => {
   const expandedKey = "t3code:sidebar:drafts-expanded";
@@ -32,18 +48,11 @@ it("keeps draft previews current through edits, promotion and removal", async ()
   const draftId = DraftId.make("draft-preview");
   const threadId = ThreadId.make("draft-preview-thread");
   const onRender = vi.fn();
-  const props = {
-    projectByKey: new Map(),
-    projectDisplayNameByKey: new Map(),
-    scopedProjectKeys: null,
-    routeDraftId: null,
-    onNavigateToDraft: vi.fn(),
-    onDraftContextMenu: vi.fn(),
-  };
+  const onNavigateToDraft = vi.fn();
   await using screen = await render(
     <Profiler id="draft-block" onRender={onRender}>
       <ul>
-        <SidebarDraftBlock {...props} />
+        <DraftBlock onNavigateToDraft={onNavigateToDraft} />
       </ul>
     </Profiler>,
   );
@@ -98,7 +107,7 @@ it("keeps draft previews current through edits, promotion and removal", async ()
   await act(() => initial.setPrompt(nextDraftId, "Edited while collapsed"));
   await screen.rerender(
     <ul>
-      <SidebarDraftBlock {...props} />
+      <DraftBlock onNavigateToDraft={onNavigateToDraft} />
     </ul>,
   );
   await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
@@ -106,7 +115,7 @@ it("keeps draft previews current through edits, promotion and removal", async ()
   await toggle.click();
   await expect.element(row).toHaveAccessibleName("Edited while collapsed, Unsent draft");
   await row.click();
-  expect(props.onNavigateToDraft).toHaveBeenCalledWith(nextDraftId);
+  expect(onNavigateToDraft).toHaveBeenCalledWith(nextDraftId);
   await act(() => initial.clearDraftThread(nextDraftId));
   await expect.element(row).not.toBeInTheDocument();
   await expect.element(toggle).not.toBeInTheDocument();

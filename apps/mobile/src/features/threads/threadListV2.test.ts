@@ -1206,6 +1206,9 @@ describe("buildThreadListV2ListItems", () => {
                 : "settled-shelf",
       ),
     ).toEqual(["Active", "active", "unsent", "queued-1", "queued-2", "settled-shelf", "settled"]);
+    expect(threadJumpTarget(items, "thread.jump.2")).toMatchObject({
+      pendingTask: { draftKey: "new-task:unsent" },
+    });
     // Only the leading queued row labels the section, exactly like Settled.
     expect(
       items.flatMap((item) => (item.type === "v2-pending" ? [item.showPendingDivider] : [])),
@@ -1287,9 +1290,17 @@ describe("buildThreadListV2ListItems", () => {
       "v2-settled-shelf",
       "v2-thread",
     ]);
-    expect(threadJumpTarget(items, "thread.jump.1")?.id).toBe("active");
-    expect(threadJumpTarget(items, "thread.jump.2")?.id).toBe("settled");
-    expect(threadJumpTarget(items, "thread.jump.3")).toBeNull();
+    expect(threadJumpTarget(items, "thread.jump.1")).toMatchObject({
+      item: { thread: { id: "active" } },
+    });
+    expect(threadJumpTarget(items, "thread.jump.2")).toMatchObject({
+      type: "v2-pending",
+      pendingTask: { key: "pending-task:queued" },
+    });
+    expect(threadJumpTarget(items, "thread.jump.3")).toMatchObject({
+      item: { thread: { id: "settled" } },
+    });
+    expect(threadJumpTarget(items, "thread.jump.4")).toBeNull();
   });
 });
 

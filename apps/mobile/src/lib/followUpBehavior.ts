@@ -17,7 +17,5 @@ export function resolveMobileFollowUpDispatchMode(input: {
 }): ComposerDispatchMode | undefined {
   if (!input.running) return undefined;
   if (!input.canSteer) return "queue";
-  const action = input.override ?? input.preference;
-  // Auto steers a live turn and safely queues if it ends before delivery.
-  return action === "steer" ? "auto" : action;
+  return input.override ?? input.preference;
 }

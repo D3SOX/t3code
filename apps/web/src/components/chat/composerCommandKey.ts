@@ -19,6 +19,7 @@ import {
   shouldHandleComposerMenuKey,
 } from "../../composer-logic";
 import { type PendingUserInput } from "../../session-logic";
+import { promptSuggestionToAccept } from "./usePromptSuggestion";
 import {
   type EnvironmentContextRecord,
   type PreviewAnnotationPayload,
@@ -66,7 +67,6 @@ export function composerCommandKeyHandler(input: {
   readonly composerPreviewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly composerReviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly composerEditorRef: RefObject<ComposerPromptEditorHandle | null>;
-  readonly composerMenuOpenRef: RefObject<boolean>;
   readonly composerMenuItemsRef: RefObject<ComposerCommandItem[]>;
   readonly activeComposerMenuItemRef: RefObject<ComposerCommandItem | null>;
   readonly setComposerDraftPrompt: (
@@ -129,7 +129,6 @@ export function composerCommandKeyHandler(input: {
     composerPreviewAnnotations,
     composerReviewComments,
     composerEditorRef,
-    composerMenuOpenRef,
     composerMenuItemsRef,
     activeComposerMenuItemRef,
     setComposerDraftPrompt,
@@ -255,8 +254,7 @@ export function composerCommandKeyHandler(input: {
       return true;
     }
     const { trigger } = resolveActiveComposerTrigger();
-    const menuIsActive =
-      !isLiteralPendingAnswer && (composerMenuOpenRef.current || trigger !== null);
+    const menuIsActive = !isLiteralPendingAnswer && trigger !== null;
     if (key === "Escape") {
       if (event.isComposing || event.keyCode === 229) return false;
       if (!menuIsActive && promptSuggestion !== null && promptRef.current.length === 0) {
@@ -265,10 +263,9 @@ export function composerCommandKeyHandler(input: {
       }
       if (!menuIsActive) return false;
       dismissComposerTrigger(trigger);
-      composerMenuOpenRef.current = false;
       return true;
     }
-    if (menuIsActive && shouldHandleComposerMenuKey(event, submissionIntent)) {
+    if (menuIsActive && !event.shiftKey && shouldHandleComposerMenuKey(event, submissionIntent)) {
       const currentItems = composerMenuItemsRef.current;
       const selectedItem = activeComposerMenuItemRef.current ?? currentItems[0];
       if (key === "ArrowDown" && currentItems.length > 0) {
@@ -284,10 +281,10 @@ export function composerCommandKeyHandler(input: {
         return true;
       }
     }
+    const acceptedSuggestion = promptSuggestionToAccept(promptSuggestion, promptRef.current);
     if (
       key === "Tab" &&
-      promptSuggestion !== null &&
-      promptRef.current.length === 0 &&
+      acceptedSuggestion !== null &&
       !menuIsActive &&
       !event.shiftKey &&
       !event.altKey &&
@@ -297,7 +294,7 @@ export function composerCommandKeyHandler(input: {
       event.keyCode !== 229
     ) {
       // The typing guard must see this draft, so an approval that lands next is not answered with it.
-      return applyPromptReplacement(0, 0, promptSuggestion);
+      return applyPromptReplacement(0, 0, acceptedSuggestion);
     }
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);

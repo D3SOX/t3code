@@ -17,7 +17,7 @@ describe("mobile follow-up delivery", () => {
     "preserves every explicit timing with the %s preference",
     (preference) => {
       expect(resolveMobileFollowUpDispatchMode({ running: true, canSteer: true, preference })).toBe(
-        preference === "steer" ? "auto" : preference,
+        preference,
       );
       for (const override of ["queue", "next-tool", "steer"] as const) {
         expect(
@@ -27,7 +27,7 @@ describe("mobile follow-up delivery", () => {
             preference,
             override,
           }),
-        ).toBe(override === "steer" ? "auto" : override);
+        ).toBe(override);
       }
     },
   );

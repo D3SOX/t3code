@@ -925,7 +925,6 @@ export function useThreadComposerState(input: {
     }
 
     // Resolve at send time because outbox delivery may be delayed.
-    // Steering uses "auto" so an ended turn queues a run instead of restoring the draft.
     // An approval redirect must steer the waiting turn instead of queueing behind it.
     const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
     const setupRunning = [selectedThreadActivityRun?.status, selectedThreadRuntime?.status].some(

@@ -15,16 +15,18 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { deriveThreadQueueWorkflowState } from "@t3tools/client-runtime/state/thread-workflows";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import { isSlashCommand } from "@t3tools/shared/composerTrigger";
 import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
-import type {
-  ChatAttachment as ContractChatAttachment,
-  EnvironmentId,
-  MessageId,
-  RunId,
-  ThreadId,
+import {
+  parseGoalCommand,
+  type ChatAttachment as ContractChatAttachment,
+  type EnvironmentId,
+  type MessageId,
+  type RunId,
+  type ThreadId,
 } from "@t3tools/contracts";
 import {
   Clock3Icon,
@@ -334,6 +336,13 @@ export function QueuedRunsControl({
               const rowRunId = item.runId;
               const rowServerIndex = item.serverIndex;
               const isEditing = rowRunId !== null && rowRunId === props.editingRunId;
+              // The server decides on the agent's text, and a goal command can stop the turn.
+              const sentText = {
+                text: item.message?.text ?? item.text,
+                attachments: item.attachments,
+              };
+              const movesCommandFirst =
+                isSlashCommand(sentText) && parseGoalCommand(sentText) === null;
               const rowDraggable =
                 rowRunId !== null && rowServerIndex !== null && canReorder && busyRunId === null;
               return (
@@ -484,7 +493,8 @@ export function QueuedRunsControl({
                     {item.runId &&
                     activeRun &&
                     workflow?.canPromoteToSteer &&
-                    supportsNextToolQueue ? (
+                    supportsNextToolQueue &&
+                    !isSlashCommand(sentText) ? (
                       <Button
                         size="xs"
                         variant="ghost"
@@ -578,12 +588,27 @@ export function QueuedRunsControl({
                                 ? gt("Start a turn with this message ({shortcut})", {
                                     shortcut: props.steerShortcutLabel,
                                   })
-                                : gt("Send as a steer instead ({shortcut})", {
-                                    shortcut: props.steerShortcutLabel,
-                                  })
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message ({shortcut})", {
+                                      shortcut: props.steerShortcutLabel,
+                                    })
+                                  : movesCommandFirst
+                                    ? gt(
+                                        "Move this command to the front of the queue ({shortcut})",
+                                        {
+                                          shortcut: props.steerShortcutLabel,
+                                        },
+                                      )
+                                    : gt("Send as a steer instead ({shortcut})", {
+                                        shortcut: props.steerShortcutLabel,
+                                      })
                               : workflow?.canSendNow
                                 ? gt("Start a turn with this message")
-                                : gt("Send as a steer instead")}
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message")
+                                  : movesCommandFirst
+                                    ? gt("Move this command to the front of the queue")
+                                    : gt("Send as a steer instead")}
                           </TooltipPopup>
                         </Tooltip>
                         <Tooltip>

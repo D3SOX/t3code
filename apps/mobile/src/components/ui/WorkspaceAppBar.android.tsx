@@ -1,6 +1,6 @@
 import { useGT } from "gt-react-native";
 import { Box, Icon, IconButton, RNHostView } from "@expo/ui/jetpack-compose";
-import { size } from "@expo/ui/jetpack-compose/modifiers";
+import { semantics, size } from "@expo/ui/jetpack-compose/modifiers";
 import type { MenuAction } from "@react-native-menu/menu";
 import {
   createContext,
@@ -172,74 +172,75 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
   return (
     <View className="bg-header" style={{ paddingTop, paddingBottom }}>
       {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
-      <View
-        pointerEvents={searching ? "none" : "auto"}
-        accessibilityElementsHidden={searching}
-        importantForAccessibility={searching ? "no-hide-descendants" : "auto"}
-        style={{ opacity: searching ? 0 : 1 }}
-      >
-        <NativeAppBar
-          transparent={artworkStage !== null}
-          title={
-            <RNHostView matchContents={{ vertical: true }}>
-              <View collapsable={false} className="justify-center" style={{ height: ACTION_SIZE }}>
-                {props.titleContent ?? (
-                  <AppText textRole="title" numberOfLines={1} className="text-header-foreground">
-                    {props.title}
-                  </AppText>
-                )}
-              </View>
-            </RNHostView>
-          }
-          // Both slots always exist: Expo UI applies a child insert or removal a frame before the
-          // other children's new props, so changing the slot count drew the wrong glyph mid-switch.
-          nativeActions={
-            <>
-              <IconButton enabled={search !== undefined} onClick={search?.onOpen}>
-                <Icon
-                  source={SEARCH_ICON}
-                  size={24}
-                  tint={search ? tint : "transparent"}
-                  contentDescription={search?.accessibilityLabel}
-                />
-              </IconButton>
-              <Box contentAlignment="center" modifiers={[size(ACTION_SIZE, ACTION_SIZE)]}>
-                <Icon
-                  source={filter?.customized ? FILTER_FILLED_ICON : FILTER_ICON}
-                  size={24}
-                  tint={filter ? tint : "transparent"}
-                />
-              </Box>
-            </>
-          }
-        />
-        {filter && !searching ? (
-          <View
-            className="absolute"
-            style={{ right: ACTION_END_INSET, top: (height - ACTION_SIZE) / 2 }}
-          >
-            {filterMenu}
-          </View>
-        ) : null}
-      </View>
       {searching ? (
         <View
-          className="absolute inset-0 bg-header"
-          style={{ paddingTop, paddingBottom, paddingHorizontal: ACTION_END_INSET }}
+          className="flex-row items-center gap-1"
+          style={{ height, paddingHorizontal: ACTION_END_INSET }}
         >
-          {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
-          <View className="flex-1 flex-row items-center gap-1">
-            <AndroidHeaderIconButton
-              accessibilityLabel={gt("Close search")}
-              icon="arrow.left"
-              onPress={search.onClose}
-              tintColor={artworkStage ? "white" : undefined}
-            />
-            {search.field}
-            {filterMenu}
-          </View>
+          <AndroidHeaderIconButton
+            accessibilityLabel={gt("Close search")}
+            icon="arrow.left"
+            onPress={search.onClose}
+            tintColor={artworkStage ? "white" : undefined}
+          />
+          {search.field}
+          {filterMenu}
         </View>
-      ) : null}
+      ) : (
+        <View>
+          <NativeAppBar
+            transparent={artworkStage !== null}
+            title={
+              <RNHostView matchContents={{ vertical: true }}>
+                <View
+                  collapsable={false}
+                  className="justify-center"
+                  style={{ height: ACTION_SIZE }}
+                >
+                  {props.titleContent ?? (
+                    <AppText textRole="title" numberOfLines={1} className="text-header-foreground">
+                      {props.title}
+                    </AppText>
+                  )}
+                </View>
+              </RNHostView>
+            }
+            // Both slots always exist: Expo UI applies a child insert or removal a frame before the
+            // other children's new props, so changing the slot count drew the wrong glyph mid-switch.
+            nativeActions={
+              <>
+                <IconButton
+                  enabled={search !== undefined}
+                  onClick={search?.onOpen}
+                  modifiers={[
+                    size(ACTION_SIZE, ACTION_SIZE),
+                    ...(search
+                      ? [semantics({ contentDescription: search.accessibilityLabel })]
+                      : []),
+                  ]}
+                >
+                  <Icon source={SEARCH_ICON} size={24} tint={search ? tint : "transparent"} />
+                </IconButton>
+                <Box contentAlignment="center" modifiers={[size(ACTION_SIZE, ACTION_SIZE)]}>
+                  <Icon
+                    source={filter?.customized ? FILTER_FILLED_ICON : FILTER_ICON}
+                    size={24}
+                    tint={filter ? tint : "transparent"}
+                  />
+                </Box>
+              </>
+            }
+          />
+          {filter ? (
+            <View
+              className="absolute"
+              style={{ right: ACTION_END_INSET, top: (height - ACTION_SIZE) / 2 }}
+            >
+              {filterMenu}
+            </View>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
