@@ -949,6 +949,14 @@ it.effect.each(
         assert.equal(edited.steerWhenReadyRunId, run.id);
         yield* orchestrator.dispatch({
           type: "queued-run.edit",
+          commandId: CommandId.make("edit-steer-start"),
+          threadId,
+          runId: edited.id,
+          text: "edit this steer",
+          editing: true,
+        });
+        yield* orchestrator.dispatch({
+          type: "queued-run.edit",
           commandId: CommandId.make("edit-steer-to-compact"),
           threadId,
           runId: edited.id,
@@ -958,6 +966,7 @@ it.effect.each(
           (candidate) => candidate.id === edited.id,
         )!;
         assert.isUndefined(compact.steerWhenReadyRunId);
+        assert.notEqual(compact.queueEditing, true);
         assert.equal(compact.queuePosition, edited.queuePosition);
       }
       if (direct) {

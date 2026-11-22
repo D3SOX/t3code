@@ -493,7 +493,8 @@ export function QueuedRunsControl({
                     {item.runId &&
                     activeRun &&
                     workflow?.canPromoteToSteer &&
-                    supportsNextToolQueue ? (
+                    supportsNextToolQueue &&
+                    !isSlashCommand(sentText) ? (
                       <Button
                         size="xs"
                         variant="ghost"
@@ -587,18 +588,27 @@ export function QueuedRunsControl({
                                 ? gt("Start a turn with this message ({shortcut})", {
                                     shortcut: props.steerShortcutLabel,
                                   })
-                                : movesCommandFirst
-                                  ? gt("Move this command to the front of the queue ({shortcut})", {
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message ({shortcut})", {
                                       shortcut: props.steerShortcutLabel,
                                     })
-                                  : gt("Send as a steer instead ({shortcut})", {
-                                      shortcut: props.steerShortcutLabel,
-                                    })
+                                  : movesCommandFirst
+                                    ? gt(
+                                        "Move this command to the front of the queue ({shortcut})",
+                                        {
+                                          shortcut: props.steerShortcutLabel,
+                                        },
+                                      )
+                                    : gt("Send as a steer instead ({shortcut})", {
+                                        shortcut: props.steerShortcutLabel,
+                                      })
                               : workflow?.canSendNow
                                 ? gt("Start a turn with this message")
-                                : movesCommandFirst
-                                  ? gt("Move this command to the front of the queue")
-                                  : gt("Send as a steer instead")}
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message")
+                                  : movesCommandFirst
+                                    ? gt("Move this command to the front of the queue")
+                                    : gt("Send as a steer instead")}
                           </TooltipPopup>
                         </Tooltip>
                         <Tooltip>

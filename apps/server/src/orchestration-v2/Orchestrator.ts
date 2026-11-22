@@ -8205,7 +8205,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         activeAttemptId: attemptId,
         status: "queued",
         ...(steerWhenReadyRunId === undefined ? {} : { steerWhenReadyRunId }),
+        // A slash command waits for the turn to end, so it never steers after a tool.
         ...(!freshContext &&
+        !isSlashCommand(command) &&
         dispatchMode.type === "queue_after_active" &&
         dispatchMode.afterNextTool === true
           ? { queueAfterNextTool: true }
@@ -11965,7 +11967,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         runId: queuedRun.id,
         providerInstanceId: queuedRun.providerInstanceId,
         occurredAt: now,
-        payload: { ...queuedRun, queueAfterNextTool: command.afterNextTool },
+        payload: {
+          ...queuedRun,
+          queueAfterNextTool: command.afterNextTool && !isSlashCommand(queuedMessage),
+        },
       });
       return;
     }
@@ -12490,13 +12495,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     // A command cannot steer, so an edit into one keeps it queued where it is.
     if (
-      queuedRun.steerWhenReadyRunId !== undefined &&
+      (queuedRun.steerWhenReadyRunId !== undefined || queuedRun.queueAfterNextTool === true) &&
       isSlashCommand({
         text: command.text,
         attachments: command.attachments ?? queuedMessage.attachments,
       })
     ) {
-      const { steerWhenReadyRunId: _, ...queued } = queuedRun;
+      const { steerWhenReadyRunId: _, queueAfterNextTool: __, ...queued } = queuedRun;
       yield* emitEvent({
         type: "run.updated",
         threadId: command.threadId,
@@ -12504,7 +12509,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(queuedRun.rootNodeId === null ? {} : { nodeId: queuedRun.rootNodeId }),
         providerInstanceId: queuedRun.providerInstanceId,
         occurredAt: now,
-        payload: queued,
+        // The save above ended the edit pause; this update must not restore it.
+        payload: queuedRun.queueEditing === true ? { ...queued, queueEditing: false } : queued,
       });
     }
     // Thread deletion only cleans files the thread still references.
