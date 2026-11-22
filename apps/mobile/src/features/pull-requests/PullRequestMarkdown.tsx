@@ -24,7 +24,7 @@ import {
 } from "@t3tools/client-runtime/source-control-clients";
 import { nativePullRequestMarkdown } from "./pullRequestAutolinks";
 
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+import { useOpenPullRequest, pullRequestLinkContextMenu } from "../../native/useOpenPullRequest";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
 import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
 import { markdownImageSources } from "../../lib/markdownImageSources";
@@ -233,6 +233,7 @@ function PullRequestMarkdownContent(props: {
   const resolveMediaUrl = (href: string) =>
     changeRequestUrl ? resolveChangeRequestMediaUrl(href, changeRequestUrl) : href;
   const openPullRequest = useOpenPullRequest();
+  const pullRequestLinkMenu = pullRequestLinkContextMenu(openPullRequest);
   const openLink = (href: string) => {
     void openPullRequest(href);
   };
@@ -248,6 +249,7 @@ function PullRequestMarkdownContent(props: {
         preserveSoftBreaks={props.lineBreaks ?? hostLineBreaks}
         textStyle={styles.nativeTextStyle}
         onLinkPress={openLink}
+        {...pullRequestLinkMenu}
         renderImage={renderImage}
         onImagePress={(href) =>
           setPreview(pullRequestImageSource(resolveMediaUrl(href), mediaContext))

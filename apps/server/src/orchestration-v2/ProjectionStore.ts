@@ -55,6 +55,7 @@ import type {
   RunAttemptId,
 } from "@t3tools/contracts";
 import {
+  MessageId,
   IDLE_COMPACTION_TEXT,
   idleCompactionOf,
   isQueuedProviderThreadPlaceholder,
@@ -76,7 +77,6 @@ import {
   OrchestrationV2TurnItemJson as OrchestrationV2TurnItemJsonSchema,
   orchestrationV2RunWorkStartedAt,
   RunId,
-  MessageId,
   RuntimeRequestId,
   CheckpointScopeId,
   CheckpointId,
@@ -590,6 +590,11 @@ export interface ProjectionStoreV2Shape {
   readonly getTurnItem: (input: {
     readonly threadId: ThreadId;
     readonly itemId: TurnItemId;
+  }) => Effect.Effect<OrchestrationV2TurnItem | null, ProjectionStoreV2Error>;
+  readonly getCommandByNativeRef: (input: {
+    readonly threadId: ThreadId;
+    readonly providerThreadId: ProviderThreadId;
+    readonly nativeId: string;
   }) => Effect.Effect<OrchestrationV2TurnItem | null, ProjectionStoreV2Error>;
   readonly getMessagesById: (
     threadId: ThreadId,
@@ -1259,6 +1264,8 @@ type ShellThreadRow = {
   readonly payload_json: string;
   readonly forked_from_run_source_thread_id: string | null;
   readonly latest_run_id: string | null;
+  readonly latest_run_user_message_id: string | null;
+  readonly latest_run_completion_silent: number | null;
   readonly latest_run_status: string | null;
   readonly latest_run_requested_at: string | null;
   readonly latest_run_started_at: string | null;
@@ -1272,6 +1279,7 @@ type ShellThreadRow = {
   readonly last_error: string | null;
   readonly terminal_failure_payload_json: string | null;
   readonly blocking_run_id: string | null;
+  readonly blocking_run_user_message_id: string | null;
   readonly blocking_run_requested_at: string | null;
   readonly blocking_run_started_at: string | null;
   readonly blocking_run_completed_at: string | null;
@@ -1959,6 +1967,8 @@ export function threadShellFromProjection(
       ? {}
       : { delegatedFrom: projection.thread.delegatedFrom }),
     latestRunId: latestRun?.id ?? null,
+    latestRunUserMessageId: latestRun?.userMessageId ?? null,
+    latestRunCompletionSilent: latestRun?.completionSilent === true,
     latestRunRequestedAt: latestRun?.requestedAt ?? null,
     latestRunStartedAt: latestRun?.startedAt ?? null,
     latestRunCompletedAt: latestRun?.completedAt ?? null,
@@ -2101,6 +2111,8 @@ function isActivityRunForShell(
 type ShellThreadState = {
   readonly thread: OrchestrationV2ThreadProjection["thread"];
   readonly latestRunId: RunId | null;
+  readonly latestRunUserMessageId: MessageId | null;
+  readonly latestRunCompletionSilent: boolean;
   readonly latestRunStatus: OrchestrationV2ShellThreadStatus;
   readonly latestRunRequestedAt: DateTime.Utc | null;
   readonly latestRunStartedAt: DateTime.Utc | null;
@@ -2273,6 +2285,8 @@ function shellFromState(input: {
       ? {}
       : { delegatedFrom: input.state.thread.delegatedFrom }),
     latestRunId: input.state.latestRunId,
+    latestRunUserMessageId: input.state.latestRunUserMessageId,
+    latestRunCompletionSilent: input.state.latestRunCompletionSilent,
     latestRunRequestedAt: input.state.latestRunRequestedAt,
     latestRunStartedAt: input.state.latestRunStartedAt,
     latestRunCompletedAt: input.state.latestRunCompletedAt,
@@ -6686,7 +6700,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 AND json_extract(payload_json, '$.queueHeld') IS NOT 1)
             AND NOT EXISTS (SELECT 1 FROM orchestration_v2_projection_runs
               WHERE thread_id = ${threadId}
-                AND status IN ('preparing', 'starting', 'running', 'waiting'))`;
+                AND (status IN ('preparing', 'starting', 'running', 'waiting')
+                  OR (status = 'queued' AND (json_extract(payload_json, '$.queueEditing') = 1))))`;
             return rows.length > 0;
           }),
         )
@@ -6845,6 +6860,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         WHERE run.run_id = ${sql.literal(runIdColumn)}
       ), -1) BETWEEN ${from} AND ${through}
     `;
+    const getCommandByNativeRef: ProjectionStoreV2Shape["getCommandByNativeRef"] = ({
+      threadId,
+      providerThreadId,
+      nativeId,
+    }) =>
+      sql<{ payload_json: string }>`SELECT payload_json
+        FROM orchestration_v2_projection_turn_items
+        WHERE thread_id = ${threadId} AND type = 'command_execution'
+          AND json_extract(payload_json, '$.providerThreadId') = ${providerThreadId}
+          AND json_extract(payload_json, '$.nativeItemRef.nativeId') = ${nativeId}
+        LIMIT 1`.pipe(
+        Effect.flatMap((rows) =>
+          rows[0] === undefined
+            ? Effect.succeed(null)
+            : decodeTurnItemPayload(rows[0].payload_json),
+        ),
+        Effect.mapError(controlReadError(threadId)),
+      );
 
     const runAttachmentIds = Effect.fn("ProjectionStore.runAttachmentIds")(function* (
       threadId: ThreadId,
@@ -8398,6 +8431,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ELSE NULL
               END AS forked_from_run_source_thread_id,
               presented.run_id AS latest_run_id,
+              json_extract(presented.payload_json, '$.userMessageId') AS latest_run_user_message_id,
+              json_extract(presented.payload_json, '$.completionSilent') AS latest_run_completion_silent,
               presented.status AS latest_run_status,
               presented.requested_at AS latest_run_requested_at,
               json_extract(presented.payload_json, '$.startedAt') AS latest_run_started_at,
@@ -8460,6 +8495,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 LIMIT 1
               ) AS terminal_failure_payload_json,
               blocked.run_id AS blocking_run_id,
+              json_extract(blocked.payload_json, '$.userMessageId') AS blocking_run_user_message_id,
               blocked.requested_at AS blocking_run_requested_at,
               json_extract(blocked.payload_json, '$.startedAt') AS blocking_run_started_at,
               blocked.completed_at AS blocking_run_completed_at,
@@ -8720,9 +8756,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         WHERE i.run_id IN (SELECT value FROM json_each(${encodeIdList(activeRunIds)}))
           AND i.type IN ('file_change', 'file_search', 'web_search', 'compaction')
           AND i.status IN ('running', 'waiting')
-      `
+          `
       }
-    `;
+          `;
 
     const runMapsByThreadId = (input: {
       readonly runRows: ReadonlyArray<ShellRunRow>;
@@ -9090,7 +9126,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? null
             : yield* decodeTurnItemPayload(row.terminal_failure_payload_json);
         let latestRunId = row.latest_run_id === null ? null : RunId.make(row.latest_run_id);
+        let latestRunUserMessageId =
+          row.latest_run_user_message_id === null
+            ? null
+            : MessageId.make(row.latest_run_user_message_id);
         let latestRunStatus = shellStatusFromStoredRunStatus(row.latest_run_status);
+        let latestRunCompletionSilent = row.latest_run_completion_silent === 1;
         let latestRunRequestedAt =
           row.latest_run_requested_at === null
             ? null
@@ -9117,9 +9158,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           if (blocksQueue && blockingFailure !== null) {
             terminalFailureItem = blockingFailure;
             latestRunId = RunId.make(row.blocking_run_id);
+            latestRunUserMessageId =
+              row.blocking_run_user_message_id === null
+                ? null
+                : MessageId.make(row.blocking_run_user_message_id);
             latestRunStopRequested = row.blocking_run_stop_requested === 1;
             latestRunBackgroundWake = row.blocking_run_background_wake === 1;
             latestRunStatus = "failed";
+            latestRunCompletionSilent = false;
             latestRunRequestedAt =
               row.blocking_run_requested_at === null
                 ? null
@@ -9154,6 +9200,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return {
           thread,
           latestRunId,
+          latestRunUserMessageId,
+          latestRunCompletionSilent,
           latestRunStatus,
           latestRunRequestedAt,
           latestRunStartedAt,
@@ -9872,6 +9920,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       hasPendingDelegatedCompletion: readOnReader(hasPendingDelegatedCompletion),
       getNextTurnItemOrdinal: readOnReader(getNextTurnItemOrdinal),
       getTurnItem: readOnReader(getTurnItem),
+      getCommandByNativeRef: readOnReader(getCommandByNativeRef),
       getMessagesById: readOnReader(getMessagesById),
       getThreadRecords: (threadId, fields, filter) =>
         getThreadRecords(threadId, fields, filter).pipe(NodeSqliteClient.readOnly),

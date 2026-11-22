@@ -1,8 +1,9 @@
 import { useGT } from "gt-react-native";
 import { useEffect, useState } from "react";
-import { useNavigation, useNavigationState } from "@react-navigation/native";
-import { BackHandler, Keyboard } from "react-native";
+import { useIsFocused, useNavigation, useNavigationState } from "@react-navigation/native";
+import { BackHandler, Keyboard, StatusBar } from "react-native";
 
+import { useEnvironmentIdentification } from "../../../state/environmentIdentification";
 import { AppBar } from "../../../components/ui/AppBar";
 import { useWorkspaceConnectionState } from "../../../state/workspace";
 import { useHardwareKeyboardCommand } from "../../keyboard/hardwareKeyboardCommands";
@@ -15,6 +16,8 @@ import {
 
 export function WorkspaceListHeader(props: WorkspaceListHeaderProps) {
   const gt = useGT();
+  const { artworkStage } = useEnvironmentIdentification();
+  const isFocused = useIsFocused();
   const navigation = useNavigation();
   const workspace = useWorkspaceTabs();
   const isTabActive = workspace?.isTabActive;
@@ -59,34 +62,38 @@ export function WorkspaceListHeader(props: WorkspaceListHeaderProps) {
   }, [closeSearch, searching, listFocused, navigation, isTabActive]);
 
   return (
-    <AppBar
-      title="T3 Code"
-      titleContent={
-        <WorkspaceBrandTitle
-          accessibilityLabel={props.accessibilityLabel}
-          onOpenEnvironments={props.onOpenEnvironments}
-        />
-      }
-      search={{
-        value: search.value,
-        onChangeText: onSearchQueryChange,
-        placeholder: search.placeholder,
-        accessibilityLabel: search.accessibilityLabel,
-        active: searching,
-        onOpen: openSearch,
-        onClose: closeSearch,
-      }}
-      menus={
-        connectionState.hasConnections
-          ? [
-              {
-                title: gt("Filter threads"),
-                icon: workspaceListFilterIcon(props.filter.customized),
-                items: props.filter.items,
-              },
-            ]
-          : undefined
-      }
-    />
+    <>
+      {artworkStage && isFocused ? <StatusBar barStyle="light-content" /> : null}
+      <AppBar
+        title="T3 Code"
+        titleContent={
+          <WorkspaceBrandTitle
+            accessibilityLabel={props.accessibilityLabel}
+            onOpenEnvironments={props.onOpenEnvironments}
+          />
+        }
+        search={{
+          value: search.value,
+          onChangeText: onSearchQueryChange,
+          placeholder: search.placeholder,
+          accessibilityLabel: search.accessibilityLabel,
+          active: searching,
+          onOpen: openSearch,
+          onClose: closeSearch,
+        }}
+        menus={
+          connectionState.hasConnections
+            ? [
+                {
+                  title: gt("Filter threads"),
+                  icon: workspaceListFilterIcon(props.filter.customized),
+                  items: props.filter.items,
+                  renderActionIcon: props.filter.renderActionIcon,
+                },
+              ]
+            : undefined
+        }
+      />
+    </>
   );
 }

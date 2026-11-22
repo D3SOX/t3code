@@ -138,17 +138,72 @@ function persistedLink(
 }
 
 describe("isAutoSettlementCandidate", () => {
-  it("settles a thread whose only background work is a command left running", () => {
+  it("keeps a watched thread active until its merge wake has been delivered", () => {
+    const thread = shell({
+      pullRequests: [
+        {
+          host: "github.com",
+          repository: "owner/repo",
+          number: 29,
+          url: "https://github.com/owner/repo/pull/29",
+          source: "agent",
+          linkedAt: DateTime.formatIso(at(-DAY_MS)),
+          snapshot: {
+            state: "merged",
+            title: "Release prerequisite",
+            headBranch: "fix",
+            baseBranch: "main",
+            isDraft: false,
+            updatedAt: DateTime.formatIso(at(-1)),
+            syncedAt: DateTime.formatIso(at(-1)),
+            mergedAt: DateTime.formatIso(at(-1)),
+          },
+          stack: null,
+          watch: {
+            startedAt: DateTime.formatIso(at(-DAY_MS)),
+            headSha: "head",
+            failedChecks: [],
+            passed: true,
+            passedChecks: [],
+            remarksThrough: DateTime.formatIso(at(-DAY_MS)),
+            remarkIds: [],
+            conflicting: false,
+            wakes: 0,
+          },
+        },
+      ],
+    });
+    expect(ThreadSettlementService.isAutoSettlementCandidate(thread, NOW_MS)).toBe(false);
+    expect(
+      ThreadSettlementService.resolveAutoSettlementAt({
+        thread,
+        pullRequest: null,
+        nowMs: NOW_MS,
+        autoSettleAfterDays: 1,
+        autoSettleOnMerge: true,
+      }),
+    ).toBeNull();
+    const { watch: _watch, ...unwatched } = thread.pullRequests![0]!;
+    expect(
+      ThreadSettlementService.isAutoSettlementCandidate(
+        { ...thread, pullRequests: [unwatched] },
+        NOW_MS,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a thread while any background work runs, awaited or not", () => {
+    // Settling would stop the process, and with it a command the agent is still waiting on.
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({
           pendingBackgroundTasks: [
-            { taskId: "dev", kind: "command", description: "vp run dev --share" },
+            { taskId: "watch", kind: "command", description: "gh run watch 1 --exit-status" },
           ],
         }),
         NOW_MS,
       ),
-    ).toBe(true);
+    ).toBe(false);
     // A pull request watch whose checks finished holds nothing, yet still keeps the thread.
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(

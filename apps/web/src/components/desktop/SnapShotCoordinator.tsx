@@ -23,7 +23,8 @@ import {
   lastUsedProjectKeySchema,
   useHandleNewThread,
 } from "../../hooks/useHandleNewThread";
-import { scopedProjectKey } from "@t3tools/client-runtime/environment";
+import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { useUiStateStore } from "../../uiStateStore";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { getClientSettings, useClientSettings } from "../../hooks/useSettings";
@@ -55,7 +56,6 @@ function isSameCaptureTarget(a: CaptureTarget, b: CaptureTarget): boolean {
   if (typeof a === "string" || typeof b === "string") return a === b;
   return a.environmentId === b.environmentId && a.threadId === b.threadId;
 }
-
 export function resolveExistingSnapShotTarget(
   target: CaptureTarget,
   routeThreadRef: ScopedThreadRef | null,
@@ -90,7 +90,6 @@ export function resolveSnapShotAttachmentTarget(
 }
 
 const NEXT_PAINT_FALLBACK_MS = 100;
-
 export async function beginSnapShotAnimationWhenReady(
   id: string,
   target: Promise<CaptureTarget | null>,
@@ -106,7 +105,6 @@ export async function beginSnapShotAnimationWhenReady(
     pendingStarts.delete(id);
   }
 }
-
 export function dismissFailedSnapShot(
   id: string | undefined,
   soundedIds: Set<string>,
@@ -122,9 +120,10 @@ export function dismissFailedSnapShot(
     dismissAllSnapShotAnimations();
   }
 }
-
 function resolveSnapShotTargetOnce(
-  resolutionRef: { current: Promise<CaptureTarget | null> | null },
+  resolutionRef: {
+    current: Promise<CaptureTarget | null> | null;
+  },
   resolveTarget: () => Promise<CaptureTarget | null>,
 ): Promise<CaptureTarget | null> {
   if (resolutionRef.current) return resolutionRef.current;
@@ -134,7 +133,6 @@ function resolveSnapShotTargetOnce(
   resolutionRef.current = resolution;
   return resolution;
 }
-
 export function resolveSnapShotDeliveryTarget(
   targets: Map<string, Promise<CaptureTarget | null>>,
   id: string,
@@ -149,7 +147,6 @@ export function resolveSnapShotDeliveryTarget(
   });
   return target;
 }
-
 async function afterNextPaint(): Promise<void> {
   await new Promise<void>((resolve) => {
     const fallback = window.setTimeout(resolve, NEXT_PAINT_FALLBACK_MS);
@@ -161,7 +158,6 @@ async function afterNextPaint(): Promise<void> {
     });
   });
 }
-
 export async function deliverSnapShot(
   bridge: DesktopBridge,
   item: DesktopPendingSnapShot,
@@ -228,11 +224,11 @@ export async function deliverSnapShot(
   await bridge.acknowledgeSnapShot(capture.id);
   dispatchSnapShotComposerFocus();
 }
-
 export function SnapShotCoordinator() {
   const {
     activeDraftThread,
     activeThread,
+    preferredProjectRef,
     defaultProjectRef,
     defaultProjectFallbackReady,
     handleNewThread,
@@ -253,6 +249,12 @@ export function SnapShotCoordinator() {
     : null;
   const rememberProject = useEffectEvent((projectKey: string) => {
     if (projectKey !== lastUsedProjectKey) setLastUsedProjectKey(projectKey);
+    if (!currentProject) return;
+    const { lastNewThreadProjectRef, setLastNewThreadProjectRef } = useUiStateStore.getState();
+    if (lastNewThreadProjectRef && scopedProjectKey(lastNewThreadProjectRef) === projectKey) return;
+    setLastNewThreadProjectRef(
+      scopeProjectRef(currentProject.environmentId, currentProject.projectId),
+    );
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Persist route changes without overwriting project choices from other tabs.
   useEffect(() => {
@@ -293,9 +295,11 @@ export function SnapShotCoordinator() {
     return settled && settled.routeTarget === routeTarget ? settled.target : routeTarget;
   };
   const settleTarget = (routeTarget: CaptureTarget | null, target: CaptureTarget | null) => {
-    settledTargetRef.current = { routeTarget, target };
+    settledTargetRef.current = {
+      routeTarget,
+      target,
+    };
   };
-
   const resolveTarget = async (): Promise<CaptureTarget | null> => {
     const routeTarget = readLastRouteTarget();
     const lastTarget = readSettledTarget(routeTarget);
@@ -310,6 +314,7 @@ export function SnapShotCoordinator() {
     const projectRef = resolveThreadActionProjectRef({
       activeDraftThread,
       activeThread: activeThread ?? undefined,
+      preferredProjectRef,
       defaultProjectRef,
       handleNewThread,
     });
@@ -319,9 +324,7 @@ export function SnapShotCoordinator() {
     settleTarget(routeTarget, created.draftId);
     return created.draftId;
   };
-
   const resolveCaptureTarget = () => resolveSnapShotTargetOnce(targetResolutionRef, resolveTarget);
-
   const playCaptureSound = (id: string) => {
     if (!captureSound || soundedCaptureIdsRef.current.has(id)) return;
     soundedCaptureIdsRef.current.add(id);
@@ -351,7 +354,6 @@ export function SnapShotCoordinator() {
       rerunRequestedRef.current = true;
       return drainingRef.current;
     }
-
     const operation = (async () => {
       do {
         rerunRequestedRef.current = false;
@@ -382,7 +384,6 @@ export function SnapShotCoordinator() {
             );
             continue;
           }
-
           try {
             // Pending captures may have arrived without a requested event; pin before reading.
             resolveSnapShotAttachmentTarget(questionPinsRef.current, item.id, target);
@@ -533,6 +534,5 @@ export function SnapShotCoordinator() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
-
   return null;
 }

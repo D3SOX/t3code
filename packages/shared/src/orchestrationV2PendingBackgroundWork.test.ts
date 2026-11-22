@@ -10,6 +10,11 @@ describe("backgroundWorkHoldsCompletion", () => {
   it.each([
     ["a dev server", false, [{ taskId: "dev", kind: "command" }]],
     ["a dev server's watchdog monitor", false, [{ taskId: "watch", kind: "monitor" }]],
+    [
+      "a PR watch with finished checks",
+      true,
+      [{ taskId: "pull-request-watch:github.com/acme/app#1", kind: "monitor" }],
+    ],
     ["a command the agent waits on", true, [{ taskId: "tests", kind: "command", awaited: true }]],
     ["a subagent", true, [{ taskId: "review", kind: "subagent" }]],
   ] as const)("with %s pending, holds completion: %s", (_case, holds, tasks) => {
@@ -468,7 +473,7 @@ describe("derivePendingBackgroundWork kinds", () => {
       ]);
     });
 
-    it("stops a watch whose checks all finished from holding the thread, while still listing it", () => {
+    it("keeps a watch holding completion after its checks finish", () => {
       const tasks = derivePendingBackgroundWork({
         latestRun: { id: "run-1" as never, ordinal: 1, status: "completed" },
         providerThreads: [],
@@ -480,10 +485,10 @@ describe("derivePendingBackgroundWork kinds", () => {
           taskId: "pull-request-watch:github.com/acme/app#1",
           description: "Watching pull request #1",
           kind: "monitor",
+          awaited: true,
         },
       ]);
-      expect(backgroundWorkHoldsCompletion(tasks)).toBe(false);
-      // Unlike a monitor that wakes per line, it lets a comment wake's run complete too.
+      expect(backgroundWorkHoldsCompletion(tasks)).toBe(true);
       expect(
         monitorHoldsWakeCompletion({
           latestRunBackgroundWake: true,

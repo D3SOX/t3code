@@ -63,9 +63,12 @@ export function useThreadListV2(input: {
   readonly shelfPreferencesLoaded: boolean;
   readonly workingShelfEnabled: boolean;
   readonly workingShelfExpanded: boolean;
+  readonly watchingShelfExpanded?: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly selectedThreadKey: string | null;
+  readonly pinnedShelfExpanded: boolean;
+  readonly activeShelfExpanded: boolean;
 }) {
   const { threads, workingShelfEnabled } = input;
   const layoutTime = useMemo(
@@ -98,12 +101,12 @@ export function useThreadListV2(input: {
           settlementEnvironmentIds: input.settlementEnvironmentIds,
           snoozeEnvironmentIds: input.snoozeEnvironmentIds,
           queuedThreadKeys: input.queuedThreadKeys,
+          workingShelfEnabled,
+          isWorking: inbox.isWorking,
+          inboxReturnAt: inbox.returnedAt,
         }),
       });
-    return new Map([
-      ...sectionAvailability("pinned"),
-      ...(workingShelfEnabled ? [] : sectionAvailability("active")),
-    ]);
+    return new Map([...sectionAvailability("pinned"), ...sectionAvailability("active")]);
   }, [
     threads,
     input.pendingOrder,
@@ -114,6 +117,8 @@ export function useThreadListV2(input: {
     input.snoozeEnvironmentIds,
     input.queuedThreadKeys,
     workingShelfEnabled,
+    inbox.isWorking,
+    inbox.returnedAt,
   ]);
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const scopes = useMemo(
@@ -148,6 +153,7 @@ export function useThreadListV2(input: {
         now: layoutTime,
         workingShelfEnabled,
         workingShelfExpanded: input.workingShelfExpanded,
+        watchingShelfExpanded: input.watchingShelfExpanded,
         inboxReturnAt: inbox.returnedAt,
         isWorking: inbox.isWorking,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
@@ -180,6 +186,7 @@ export function useThreadListV2(input: {
       layoutTime,
       workingShelfEnabled,
       input.workingShelfExpanded,
+      input.watchingShelfExpanded,
       inbox.returnedAt,
       inbox.isWorking,
       input.snoozedShelfExpanded,
@@ -216,7 +223,10 @@ export function useThreadListV2(input: {
         items: layout.items,
         pendingTasks,
         workingCount: layout.workingCount,
+        watchingCount: layout.watchingCount,
+        watchingShelfHeaderIndex: layout.watchingShelfHeaderIndex,
         workingShelfExpanded: input.workingShelfExpanded,
+        watchingShelfExpanded: input.watchingShelfExpanded,
         workingShelfHeaderIndex: layout.workingShelfHeaderIndex,
         snoozedCount: layout.snoozedCount,
         snoozedShelfExpanded: input.snoozedShelfExpanded,
@@ -230,11 +240,14 @@ export function useThreadListV2(input: {
         moveAvailability,
         shelfPreferencesLoading: !input.shelfPreferencesLoaded,
         resolve: keepMarked,
+        pinnedShelfExpanded: input.pinnedShelfExpanded,
+        activeShelfExpanded: input.activeShelfExpanded,
       }),
     [
       layout,
       pendingTasks,
       input.workingShelfExpanded,
+      input.watchingShelfExpanded,
       input.snoozedShelfExpanded,
       input.settledShelfExpanded,
       input.now,
@@ -242,6 +255,8 @@ export function useThreadListV2(input: {
       input.queuedThreadKeys,
       moveAvailability,
       input.shelfPreferencesLoaded,
+      input.pinnedShelfExpanded,
+      input.activeShelfExpanded,
     ],
   );
   return { layout, items, contentOnlyThreadKeys, olderSettledShelf };

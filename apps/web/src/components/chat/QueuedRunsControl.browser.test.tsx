@@ -1,5 +1,3 @@
-import { RegistryContext } from "@effect/atom-react";
-import type { EnvironmentThreadState } from "@t3tools/client-runtime/state/threads";
 import {
   CommandId,
   EnvironmentId,
@@ -14,14 +12,13 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
-import { AsyncResult, type Atom, AtomRegistry } from "effect/reactivity";
-import { Profiler, useState, type ComponentProps } from "react";
+import { AsyncResult } from "effect/reactivity";
+import type { ComponentProps } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
 const state = vi.hoisted(() => ({
-  threadState: null as unknown as Atom.Writable<AsyncResult.AsyncResult<EnvironmentThreadState>>,
+  projection: null as unknown,
   workflow: null as unknown,
   commandResult: undefined as unknown,
 }));
@@ -33,6 +30,7 @@ vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importO
 
 vi.mock(import("../../state/entities"), async (importOriginal) => ({
   ...(await importOriginal()),
+  useQuietThreadProjection: (() => state.projection) as never,
   // The linked environment is connected, but its thread is not in the loaded shell.
   useQuietThreadShell: ((target: { readonly environmentId: string } | null) =>
     target === null || target.environmentId === "environment:linked"
@@ -53,25 +51,6 @@ vi.mock(import("../../state/query"), async (importOriginal) => ({
   })) as never,
 }));
 
-// The thread detail atoms are real, fed by one state atom the test writes.
-vi.mock(import("../../state/threads"), async (importOriginal) => {
-  const { createEnvironmentThreadDetailAtoms, EMPTY_ENVIRONMENT_THREAD_STATE } =
-    await import("@t3tools/client-runtime/state/threads");
-  const { AsyncResult, Atom } = await import("effect/reactivity");
-  const Option = await import("effect/Option");
-  const { makeThreadProjectionFixture } = await import("../../test-fixtures");
-  state.threadState = Atom.make<AsyncResult.AsyncResult<EnvironmentThreadState>>(
-    AsyncResult.success({
-      ...EMPTY_ENVIRONMENT_THREAD_STATE,
-      data: Option.some(makeThreadProjectionFixture()),
-    }),
-  ).pipe(Atom.keepAlive);
-  return {
-    ...(await importOriginal()),
-    environmentThreadDetails: createEnvironmentThreadDetailAtoms(() => state.threadState),
-  };
-});
-
 vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({
   ...(await importOriginal()),
   useAtomCommand: (() => async () => state.commandResult) as never,
@@ -84,16 +63,12 @@ vi.mock(import("../../assets/assetUrls"), async (importOriginal) => ({
 }));
 
 import "~/index.css";
-import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/threads";
-
-import { act, render as renderUi } from "../../../test/render";
-import { makeStreamingTimelineFixture, makeThreadProjectionFixture } from "../../test-fixtures";
+import { render as renderUi } from "../../../test/render";
 import { ToastProvider } from "../ui/toast";
 import { QueuedRunsControl } from "./QueuedRunsControl";
-import { ExpandedImageDialog } from "./ExpandedImageDialog";
-import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
 function setup() {
+  state.projection = null;
   state.workflow = null;
   state.commandResult = undefined;
 }
@@ -106,6 +81,7 @@ const baseProps = {
   editBlockedReason: null,
   onEditQueuedRun: () => undefined,
   onCancelEdit: () => undefined,
+  onRemoveQueuedRun: async () => undefined,
   timestampFormat: "locale",
   onOpenThread: () => undefined,
   onImageExpand: () => undefined,
@@ -114,71 +90,6 @@ const baseProps = {
 async function renderQueue(props: Partial<ComponentProps<typeof QueuedRunsControl>> = {}) {
   return renderUi(<QueuedRunsControl {...baseProps} {...props} />);
 }
-
-it.each([false, true])(
-  "opens queued images in the existing gallery, pending=%s",
-  async (pending) => {
-    setup();
-    const attachments = ["first.png", "second.png"].map((name) => ({
-      type: "image" as const,
-      id: name,
-      name,
-      mimeType: "image/png",
-      sizeBytes: 128,
-    }));
-    state.workflow = {
-      activeRun: null,
-      queuedRuns: pending
-        ? []
-        : [
-            {
-              run: { id: "run:queued", userMessageId: "message:queued" },
-              text: "Later",
-              attachments,
-            },
-          ],
-    };
-    function QueueWithGallery() {
-      const [preview, setPreview] = useState<ExpandedImagePreview | null>(null);
-      return (
-        <>
-          <QueuedRunsControl
-            {...baseProps}
-            optimisticMessages={
-              pending
-                ? [
-                    {
-                      id: MessageId.make("message:pending"),
-                      inputIntent: "queued_turn",
-                      text: "Later",
-                      attachments: attachments.map((attachment) => ({
-                        ...attachment,
-                        previewUrl: `https://assets.test/${attachment.id}`,
-                      })),
-                    },
-                  ]
-                : []
-            }
-            onImageExpand={setPreview}
-          />
-          {preview ? (
-            <ExpandedImageDialog preview={preview} onClose={() => setPreview(null)} />
-          ) : null}
-        </>
-      );
-    }
-    await using _screen = await renderUi(<QueueWithGallery />);
-
-    await page.getByRole("button", { name: "Preview second.png", exact: true }).click();
-    await expect.element(page.getByRole("dialog")).toBeVisible();
-    await expect.element(page.getByText("second.png (2/2)", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Previous media", exact: true }).click();
-    await expect.element(page.getByText("first.png (1/2)", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back, close image preview", exact: true }).click();
-    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-    await expect.element(page.getByText("Later", { exact: true })).toBeVisible();
-  },
-);
 
 it("previews assistant quotes as readable text and preserves the citation when editing", async () => {
   setup();
@@ -200,6 +111,7 @@ it("previews assistant quotes as readable text and preserves the citation when e
     contextId: toComposerContextId("header"),
     label: "header.png",
   });
+  state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
     canPromoteToSteer: true,
@@ -248,6 +160,7 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
     createdAt: DateTime.makeUnsafe("2026-10-27T12:00:00.000Z"),
     ...fields,
   });
+  state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
     canPromoteToSteer: true,
@@ -299,8 +212,6 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
   };
   const onOpenThread = vi.fn();
   await using _screen = await renderQueue({ onOpenThread });
-  // Four rows collapse the queue.
-  await page.getByRole("button", { name: "Show all 4 queued" }).click();
 
   const automation = page.getByRole("button", { name: /PR dispatcher/ });
   await expect.element(automation).toHaveAttribute("aria-expanded", "false");
@@ -321,98 +232,61 @@ it("shows who sent a queued message and folds automation and agent prompts", asy
   await expect.element(page.getByText("Continue where you left off.")).toBeVisible();
 });
 
-it("stays inside the timeline scroller instead of growing the chat column", async () => {
+it.each([false, true])("opens queued images in the image viewer, pending=%s", async (pending) => {
   setup();
+  const attachments = ["first.png", "second.png"].map((name) => ({
+    type: "image" as const,
+    id: name,
+    name,
+    mimeType: "image/png",
+    sizeBytes: 128,
+  }));
+  state.projection = { projection: { messages: [] } };
   state.workflow = {
-    activeRun: { id: "run:active" },
-    canPromoteToSteer: true,
-    queuedRuns: [
-      {
-        run: { id: "run:queued", userMessageId: "message:queued" },
-        text: "Later",
-        attachments: [],
-      },
-    ],
+    activeRun: null,
+    queuedRuns: pending
+      ? []
+      : [
+          {
+            run: { id: "run:queued", userMessageId: "message:queued" },
+            text: "Later",
+            attachments,
+          },
+        ],
   };
-  // Mirrors ChatView: a scrollable column, a positioned wrapper, then a non-positioned scroller.
-  await using screen = await renderUi(
-    <div data-testid="column" style={{ height: 200, overflowY: "auto" }}>
-      <div style={{ position: "relative", height: "100%" }}>
-        <div style={{ height: "100%", overflowY: "auto" }}>
-          <div style={{ height: 1000 }} />
-          <QueuedRunsControl {...baseProps} />
-        </div>
-      </div>
-    </div>,
+  const onImageExpand = vi.fn();
+  await using _screen = await renderQueue({
+    onImageExpand,
+    optimisticMessages: pending
+      ? [
+          {
+            id: MessageId.make("message:pending"),
+            inputIntent: "queued_turn",
+            text: "Later",
+            attachments: attachments.map((attachment) => ({
+              ...attachment,
+              previewUrl: `https://assets.test/${attachment.id}`,
+            })),
+          },
+        ]
+      : [],
+  });
+  await page.getByRole("button", { name: "Preview second.png" }).click();
+  expect(onImageExpand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      index: 1,
+      images: [
+        expect.objectContaining({ src: "https://assets.test/first.png" }),
+        expect.objectContaining({ src: "https://assets.test/second.png" }),
+      ],
+    }),
   );
-  await expect.element(page.getByText("Later", { exact: true })).toBeInTheDocument();
-  const column = screen.getByTestId("column").element();
-  expect(column.scrollHeight).toBe(column.clientHeight);
 });
 
-it("does not re-render while assistant text streams into the thread", async () => {
-  setup();
-  state.workflow = {
-    activeRun: { id: "run:active" },
-    canPromoteToSteer: true,
-    canReorder: true,
-    queuedRuns: [
-      {
-        run: { id: "run:queued", userMessageId: "message:queued" },
-        text: "Run the tests next",
-        attachments: [],
-      },
-    ],
-  };
-  const base = makeThreadProjectionFixture();
-  // Each delta replaces only the streaming reply; every other item keeps its identity.
-  const timeline = makeStreamingTimelineFixture().visibleTurnItems;
-  const thread = (text: string, done = false) => {
-    const items = timeline.map((entry) =>
-      entry.item.type === "assistant_message" && entry.item.streaming
-        ? {
-            ...entry,
-            item: done
-              ? { ...entry.item, text, streaming: false, status: "completed" as const }
-              : { ...entry.item, text },
-          }
-        : entry,
-    );
-    return AsyncResult.success<EnvironmentThreadState>({
-      ...EMPTY_ENVIRONMENT_THREAD_STATE,
-      data: Option.some({
-        ...base,
-        turnItems: items.map(({ item }) => item),
-        visibleTurnItems: items,
-      }),
-    });
-  };
-  const registry = AtomRegistry.make();
-  await using stack = new AsyncDisposableStack();
-  stack.defer(() => registry.dispose());
-  registry.set(state.threadState, thread("Hel"));
-  let renders = 0;
-  await using _screen = await renderUi(
-    <RegistryContext.Provider value={registry}>
-      <Profiler id="queue" onRender={() => (renders += 1)}>
-        <QueuedRunsControl {...baseProps} />
-      </Profiler>
-    </RegistryContext.Provider>,
-  );
-  await expect.element(page.getByText("Run the tests next", { exact: true })).toBeVisible();
-  const settled = renders;
-
-  await act(() => registry.set(state.threadState, thread("Hello")));
-  await act(() => registry.set(state.threadState, thread("Hello there")));
-  expect(renders).toBe(settled);
-
-  await act(() => registry.set(state.threadState, thread("Hello there", true)));
-  expect(renders).toBeGreaterThan(settled);
-});
-
-it("tells the user why Send now was rejected", async () => {
+it("tells the user why a steer was rejected", async () => {
   setup();
   const reason = "Target run run:active is stopping and cannot be steered.";
+  state.projection = { projection: { messages: [] } };
   state.workflow = {
     activeRun: { id: "run:active" },
     canPromoteToSteer: true,
@@ -440,6 +314,6 @@ it("tells the user why Send now was rejected", async () => {
     </ToastProvider>,
   );
 
-  await page.getByRole("button", { name: "Send now" }).click();
+  await page.getByRole("button", { name: "Steer" }).click();
   await vi.waitFor(() => expect(page.getByText(reason).element()).toBeVisible());
 });

@@ -14,7 +14,12 @@ import {
 } from "./adaptive-workspace-context";
 import { threadSelectionDeferral } from "./deferred-navigation";
 import { uuidv4 } from "../../lib/uuid";
-import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type ScopedProjectRef,
+  type SidebarProjectGroupingMode,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
 import {
@@ -243,6 +248,7 @@ export function AdaptiveWorkspaceLayout(props: {
       {...props}
       projectGroupingMode={groupingSettings.sidebarProjectGroupingMode}
       savedThreadListFilters={preferencesResult.value.threadListFilters}
+      lastNewThreadProjectRef={preferencesResult.value.lastNewThreadProjectRef}
     />
   );
 }
@@ -256,6 +262,7 @@ function AdaptiveWorkspaceLayoutContent(
   } & {
     readonly projectGroupingMode: SidebarProjectGroupingMode;
     readonly savedThreadListFilters?: ThreadListFilters | undefined;
+    readonly lastNewThreadProjectRef?: ScopedProjectRef | undefined;
   },
 ) {
   const gt = useGT();
@@ -640,10 +647,10 @@ function AdaptiveWorkspaceLayoutContent(
               filteredScope,
               listEnvironmentId,
               connectedEnvironmentIds,
-              saved?.lastThreadProject,
+              saved?.lastNewThreadProjectRef ?? saved?.lastThreadProject ?? undefined,
             )
           : undefined,
-        lastProject: saved?.lastThreadProject,
+        lastProject: saved?.lastNewThreadProjectRef ?? saved?.lastThreadProject ?? undefined,
       }),
     );
   };

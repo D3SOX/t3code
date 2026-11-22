@@ -473,6 +473,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("sort projects sidebar manual created recent")],
   },
   {
+    id: "sidebar-thread-branches",
+    title: msg("Show thread branches"),
+    to: "/settings/appearance",
+    searchTerms: [msg("sidebar compact density hide branch names rows")],
+  },
+  {
     id: "snooze-options",
     title: msg("Snooze options"),
     to: "/settings/threads",
@@ -812,10 +818,28 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("enter return command ctrl multiline prompt new line composer")],
   },
   {
+    id: "start-threads-in-background",
+    title: msg("Start threads in background"),
+    to: "/settings/general",
+    searchTerms: [msg("new thread enter send stay draft foreground")],
+  },
+  {
+    id: "no-project-machine",
+    title: msg("Machine for threads without a project"),
+    to: "/settings/general",
+    searchTerms: [
+      msg("default preferred machine environment no project scratch desktop laptop remote"),
+    ],
+  },
+  {
     id: "follow-up-behavior",
     title: msg("Follow-up behavior"),
     to: "/settings/chat",
-    searchTerms: [msg("queue steer running turn send default behavior composer")],
+    searchTerms: [
+      msg(
+        "queue follow up steer next tool call after current turn immediately send default composer",
+      ),
+    ],
   },
   {
     id: "side-thread-open-target",
@@ -969,7 +993,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "mobile-app",
     title: msg("Mobile app"),
     to: "/settings/about",
-    searchTerms: [msg("phone tablet iPhone iPad iOS Android App Store Google Play QR")],
+    searchTerms: [msg("phone tablet Android nightly APK Obtainium")],
   },
   {
     id: "welcome-page",
@@ -1002,6 +1026,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: msg("Open source licenses"),
     to: "/settings/about",
+  },
+  {
+    id: "legacy-plan-mode",
+    title: msg("Plan mode (legacy)"),
+    to: "/settings/labs",
+    searchTerms: [msg("build plan composer old")],
+  },
+  {
+    id: "legacy-context-window-indicator",
+    title: msg("Context window indicator (legacy)"),
+    to: "/settings/labs",
+    searchTerms: [msg("composer meter usage tokens circle old")],
   },
   {
     id: "keybindings",
@@ -1194,8 +1230,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("address bar duckduckgo google bing brave kagi ecosia custom url")],
   },
   {
-    id: "pull-request-links-open-in-app",
-    title: msg("Open pull requests in T3 Code"),
+    id: "pull-request-link-target",
+    title: msg("Open pull requests in"),
     to: "/settings/diffs",
     searchTerms: [
       `pr commit links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
@@ -1256,6 +1292,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
     environmentOnly: true,
     scope: "environment-defaults",
+  },
+  {
+    id: "automatic-thread-titles",
+    title: msg("Automatic thread titles"),
+    to: "/settings/source-control",
+    searchTerms: [msg("disable generate first message rename thread")],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
+    id: "automatic-branch-names",
+    title: msg("Automatic branch names"),
+    to: "/settings/source-control",
+    searchTerms: [msg("disable generate rename worktree temporary feature branch")],
+    environmentOnly: true,
+    scope: "project-defaults",
   },
   {
     id: "worktree-branch-naming",

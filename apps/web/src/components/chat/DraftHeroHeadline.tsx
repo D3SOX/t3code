@@ -48,6 +48,7 @@ import { InlineButton } from "../ui/button";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { TriageDraftHero } from "./TriageDraftHero";
+import { useUiStateStore } from "~/uiStateStore";
 
 const ADD_PROJECT_VALUE = "add-project";
 
@@ -179,6 +180,7 @@ export function DraftHeroHeadline({
     }
     pendingScratchRef.current = null;
     const projectRef = scopeProjectRef(project.environmentId, project.id);
+    useUiStateStore.getState().setLastNewThreadProjectRef(projectRef);
     if (!composerDraftHasUserContent(getComposerDraft(draftId))) {
       void openProjectDraft(projectRef);
       return;
@@ -242,6 +244,11 @@ export function DraftHeroHeadline({
             />
           }
         >
+          {activeProjectGroup && !isScratchDraft ? (
+            <span aria-hidden="true" className="inline-flex shrink-0">
+              <ProjectFavicon project={activeProjectGroup} className="size-[0.8em] shrink-0" />
+            </span>
+          ) : null}
           <DraftProjectName
             value={
               isScratchDraft ? gt("No project") : (activeProjectTitle ?? gt("Choose a project"))

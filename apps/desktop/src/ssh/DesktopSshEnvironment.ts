@@ -92,7 +92,8 @@ export const resolveDesktopSshCliRunner = (
   }
   const releaseBaseUrl = env[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined;
   return {
-    archiveVersion: environment.appVersion,
+    // Source packages pick a published archive when their commit version has no release assets.
+    archiveVersion: env.T3CODE_SSH_ARCHIVE_VERSION?.trim() || environment.appVersion,
     ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
   };
 };

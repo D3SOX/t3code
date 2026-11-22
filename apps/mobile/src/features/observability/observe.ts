@@ -1,11 +1,21 @@
 import Constants from "expo-constants";
-import { Observe } from "expo-observe";
 
-// Importing expo-observe installs its global JS error handler; reports leave only through the relay.
 const relayUrl: unknown = Constants.expoConfig?.extra?.relay?.url;
+const projectId: unknown = Constants.expoConfig?.extra?.eas?.projectId;
 const appVariant: unknown = Constants.expoConfig?.extra?.appVariant;
 
-export const crashReportingAvailable = typeof relayUrl === "string" && relayUrl.trim() !== "";
+const hasProjectId = typeof projectId === "string" && projectId.trim() !== "";
+export const crashReportingAvailable =
+  hasProjectId && typeof relayUrl === "string" && relayUrl.trim() !== "";
+
+// Unconfigured builds must not install the SDK's global error handlers.
+const Observe = hasProjectId
+  ? (require("expo-observe") as typeof import("expo-observe")).Observe
+  : null;
+
+export function reportRenderError(error: unknown) {
+  Observe?.reportError(error);
+}
 
 interface PromiseRejectionTracker {
   readonly enablePromiseRejectionTracker?: (options: {
@@ -15,7 +25,7 @@ interface PromiseRejectionTracker {
 }
 
 // React Native tracks unhandled rejections only in development, for LogBox; Observe has no hook.
-if (!__DEV__) {
+if (Observe && !__DEV__) {
   const hermes: PromiseRejectionTracker | undefined = Reflect.get(globalThis, "HermesInternal");
   hermes?.enablePromiseRejectionTracker?.({
     allRejections: true,
@@ -28,6 +38,7 @@ let latestConfiguration = 0;
 // While sending is off, a dispatch pass drops what it finds, so one runs before turning it back on.
 // Best effort: Observe skips the pass while it is backing off from a failed send.
 export async function setCrashReportsEnabled(enabled: boolean) {
+  if (Observe === null) return;
   const configuration = ++latestConfiguration;
   const dispatchingEnabled = crashReportingAvailable && enabled;
   if (dispatchingEnabled) {

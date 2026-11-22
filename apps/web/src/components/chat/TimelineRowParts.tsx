@@ -1,9 +1,20 @@
-import { useMessages } from "gt-react";
+import { useGT } from "gt-react";
+import {
+  resolveViewedImageAsset,
+  workEntriesViewedImagePaths,
+} from "@t3tools/client-runtime/work-log/presentation";
+import { use, useState } from "react";
+import { useAssetUrls } from "~/assets/assetUrls";
+import { workGroupImageGallery } from "./markdownImageGallery";
+import { assetMediaActionsSource, ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
+import { TimelineRowCtx, type TimelineRow } from "./timelineRowContext";
+import { ToolActivityIconView } from "./TimelineToolActivityIcon";
+import { ChevronRightIcon } from "lucide-react";
+import { Spinner } from "../ui/spinner";
+import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { type ReactNode } from "react";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { TimelineRowTimestamp } from "./UserMessagePresentation";
 import { cn } from "~/lib/utils";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
 export const MESSAGE_HEADING_LEVEL = 3;
 
@@ -11,37 +22,7 @@ export function MessageAuthorHeading({ children }: { children: string }) {
   return <h3 className="sr-only select-none">{children}</h3>;
 }
 
-export function TimelineRowTimestamp({
-  createdAt,
-  timestampFormat,
-  className,
-  alwaysVisible = false,
-}: {
-  createdAt: string;
-  timestampFormat: TimestampFormat;
-  className?: string;
-  alwaysVisible?: boolean;
-}) {
-  const m = useMessages();
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
-              alwaysVisible && "pointer-events-auto static opacity-100",
-              className,
-            )}
-          />
-        }
-      >
-        {formatDayAwareTimestamp(createdAt, timestampFormat, undefined, undefined, m)}
-      </TooltipTrigger>
-      <TooltipPopup>{formatChatTimestampTooltip(createdAt, timestampFormat, m)}</TooltipPopup>
-    </Tooltip>
-  );
-}
+export { TimelineRowTimestamp } from "./UserMessagePresentation";
 
 export function ActivityShimmerOverlay({
   children,
@@ -61,5 +42,127 @@ export function ActivityShimmerOverlay({
         </span>
       </span>
     </span>
+  );
+}
+
+export function ViewedImageTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "viewed-image" }>;
+}) {
+  const { threadRef, workspaceRoot, timestampFormat } = use(TimelineRowCtx);
+  const gt = useGT();
+  const [expanded, setExpanded] = useState(false);
+  const image = threadRef
+    ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
+    : null;
+  const displayPath = formatWorkspaceRelativePath(row.imagePath, workspaceRoot);
+  return (
+    <div className="group/timeline-row rounded-md px-0.5 py-0.5">
+      <button
+        type="button"
+        disabled={!image}
+        aria-expanded={image ? expanded : undefined}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full min-w-0 cursor-pointer select-none items-center gap-1.5 rounded-md text-start transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+          {row.active ? (
+            <Spinner size="xs" />
+          ) : (
+            <ToolActivityIconView
+              icon={undefined}
+              fallbackName="eye"
+              muted={false}
+              className="size-4 stroke-2"
+            />
+          )}
+        </span>
+        <span className="shrink-0 text-sm text-secondary-label">
+          {row.active ? gt("Viewing image") : gt("Viewed image")}
+        </span>
+        <span className="min-w-0 flex-1 break-words text-sm text-secondary-label">
+          {displayPath}
+        </span>
+        <TimelineRowTimestamp createdAt={row.createdAt} timestampFormat={timestampFormat} />
+        {image ? (
+          <ChevronRightIcon
+            aria-hidden
+            className={cn(
+              "size-3.5 shrink-0 text-icon-muted transition-transform",
+              expanded && "rotate-90",
+            )}
+          />
+        ) : null}
+      </button>
+      {expanded && image && threadRef ? (
+        <div className="mt-1 ms-7">
+          <ViewedImagePreview row={row} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ViewedImagePreview({ row }: { row: Extract<TimelineRow, { kind: "viewed-image" }> }) {
+  const { timelineEntries, threadRef, workspaceRoot, activeThreadEnvironmentId, onImageExpand } =
+    use(TimelineRowCtx);
+  const gt = useGT();
+  const fallbackName = gt("image", { $context: "fallback name of an image without alt text" });
+  const paths = workEntriesViewedImagePaths(
+    timelineEntries.flatMap((entry) =>
+      entry.kind === "work" && entry.entry.runId === row.entry.runId ? [entry.entry] : [],
+    ),
+  );
+  const viewed = threadRef
+    ? paths.flatMap((path) => {
+        const asset = resolveViewedImageAsset(path, {
+          threadId: threadRef.threadId,
+          workspaceRoot,
+        });
+        return asset ? [{ path, asset }] : [];
+      })
+    : [];
+  const environmentId = threadRef?.environmentId ?? activeThreadEnvironmentId;
+  const urls = useAssetUrls(
+    environmentId,
+    viewed.map(({ asset }) => asset.resource),
+  );
+  const images = viewed.map(({ path, asset }, index) => {
+    const url = urls[index];
+    if (!url) return { path, item: null };
+    const src = url + asset.srcFragment;
+    return {
+      path,
+      item: {
+        src,
+        name: asset.alt.trim() || fallbackName,
+        actionsSource: assetMediaActionsSource({
+          environmentId,
+          resource: asset.resource,
+          kind: "image",
+          name: asset.alt || fallbackName,
+          src,
+          workspaceRoot,
+        }),
+      },
+    };
+  });
+  const image = threadRef
+    ? resolveViewedImageAsset(row.imagePath, { threadId: threadRef.threadId, workspaceRoot })
+    : null;
+  if (!image || !threadRef) return null;
+  return (
+    <ChatMarkdownAssetImage
+      environmentId={threadRef.environmentId}
+      resource={image.resource}
+      alt={image.alt}
+      srcFragment={image.srcFragment}
+      workspaceRoot={workspaceRoot}
+      maxHeightRem={16}
+      onImageExpand={(preview) =>
+        onImageExpand(workGroupImageGallery(images, row.imagePath, preview))
+      }
+    />
   );
 }

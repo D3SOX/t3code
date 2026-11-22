@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   writeText: vi.fn(),
   serverConfig: vi.fn(),
   openScratch: vi.fn(),
+  savePreferences: vi.fn(async () => ({ _tag: "Success", value: {} })),
+  saveMobilePreferencesCommand: { label: "mobile:preferences:save" },
   prepareTriage: vi.fn(),
 }));
 vi.mock("../../state/atom-registry", () => ({
@@ -70,8 +72,14 @@ vi.mock("../../state/olderSettledShelf", () => ({ useOlderSettledCount: () => 0 
 vi.mock("../../state/project-grouping", () => ({
   useMobileProjectGroupingSettings: () => ({ sidebarProjectGroupingMode: "none" }),
 }));
+vi.mock("./use-legacy-plan-mode-enabled", () => ({
+  useLegacyPlanModeState: () => ({ enabled: false, loaded: true }),
+}));
 vi.mock("../../components/ui/Dialog", () => ({ alert: vi.fn() }));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => mocks.openScratch }));
+vi.mock("../../state/use-atom-command", () => ({
+  useAtomCommand: (command: unknown) =>
+    command === mocks.saveMobilePreferencesCommand ? mocks.savePreferences : mocks.openScratch,
+}));
 vi.mock("../triage/usePrepareTriage", () => ({ usePrepareTriage: () => mocks.prepareTriage }));
 vi.mock("../../state/use-remote-environment-registry", () => ({
   useSavedRemoteConnections: () => ({ savedConnectionsById: {} }),
@@ -111,6 +119,9 @@ vi.mock("../../state/workspace", () => ({
 }));
 vi.mock("../../state/shell", () => ({ useEnvironmentShellReadiness: () => ({}) }));
 vi.mock("../../lib/clock", () => ({ useNowMinuteMs: () => 0 }));
+vi.mock("../../state/preferences", () => ({
+  saveMobilePreferences: mocks.saveMobilePreferencesCommand,
+}));
 
 import { NewTaskFlowProvider, useNewTaskFlow } from "./new-task-flow-provider";
 
