@@ -50,7 +50,7 @@ function isActionableRemark(remark: PullRequestComment) {
   return (
     body.length > 0 &&
     !BOT_STATUS_PREFIXES.some((prefix) => body.startsWith(prefix)) &&
-    !/^(?:<details>\s*<summary>\s*)?(?:✅\s*)?action (?:performed|not completed)\b/.test(body) &&
+    !/^(?:<details>\s*<summary>\s*)?(?:✅\s*)?actions? (?:performed|not completed)\b/.test(body) &&
     !/^(?:\*\*)?review skipped\b/.test(body) &&
     !(body.includes("revix") && /^(?:\[)?!\[[^\]]*\]\([^)]*\)(?:\]\([^)]*\))?$/.test(body)) &&
     !/^(?:lgtm|looks good(?: to me)?|thanks|thank you)[.!]*$/.test(body)

@@ -75,7 +75,7 @@ import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
-import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { readPendingWorkspaceDefault, useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
@@ -1721,11 +1721,14 @@ export function useComposerSend(input: ComposerSendInput) {
               backgroundDraftOpened = Boolean(
                 await handleNewThread(
                   scopeProjectRef(activeProject.environmentId, activeProject.id),
-                  resolveBackgroundDraftWorkspaceOptions({
-                    envMode: sendEnvMode,
-                    branch: activeThreadBranch,
-                    startFromOrigin,
-                  }),
+                  {
+                    ...resolveBackgroundDraftWorkspaceOptions({
+                      envMode: sendEnvMode,
+                      branch: activeThreadBranch,
+                      startFromOrigin,
+                    }),
+                    rememberProject: false,
+                  },
                 ),
               );
             } catch (error) {
@@ -1960,8 +1963,7 @@ export function useComposerSend(input: ComposerSendInput) {
     });
   };
   const onSendLatest = useStableCallback(onSend);
-  const onSendWithRouting = async (...args: Parameters<typeof onSend>) => {
-    args[0]?.preventDefault();
+  const sendWithEnvironmentRefresh = async (...args: Parameters<typeof onSend>) => {
     const refresh =
       args[3] || sendInFlightRef.current || readPendingEnvironmentChange() !== null
         ? null
@@ -1972,6 +1974,18 @@ export function useComposerSend(input: ComposerSendInput) {
       sendInFlightRef.current = false;
     });
     if (ready) return onSendLatest(...args);
+  };
+  const sendWithEnvironmentRefreshLatest = useStableCallback(sendWithEnvironmentRefresh);
+  const onSendWithRouting = async (...args: Parameters<typeof onSend>) => {
+    args[0]?.preventDefault();
+    const workspaceDefault =
+      draftId && !sendInFlightRef.current ? readPendingWorkspaceDefault(draftId) : null;
+    if (workspaceDefault === null) return sendWithEnvironmentRefresh(...args);
+    sendInFlightRef.current = true;
+    await workspaceDefault.finally(() => {
+      sendInFlightRef.current = false;
+    });
+    return sendWithEnvironmentRefreshLatest(...args);
   };
   // No load-balancing refresh: it bails once the draft is no longer displayed, which is the
   // only time a detached send runs, so the draft keeps the environment it was dictated for.

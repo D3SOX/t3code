@@ -20,6 +20,7 @@ import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import {
   parseGoalCommand,
   type ChatAttachment as ContractChatAttachment,
@@ -331,7 +332,9 @@ export function QueuedRunsControl({
               const previewText = isAttachmentOnlyBootstrapPrompt(item.text)
                 ? ""
                 : assistantCitationsToPlainText(
-                    replaceComposerContextReferences(item.text, (reference) => reference.label),
+                    composerFileLinksToPlainText(
+                      replaceComposerContextReferences(item.text, (reference) => reference.label),
+                    ),
                   ).trim();
               const rowRunId = item.runId;
               const rowServerIndex = item.serverIndex;
