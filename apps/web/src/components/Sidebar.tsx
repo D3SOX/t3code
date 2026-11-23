@@ -1699,7 +1699,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (readRouteThreadKey(router) !== threadKey) return null;
     const shell = threadByKeyRef.current.get(threadKey);
     return shell
-      ? () => void handleNewThread(scopeProjectRef(shell.environmentId, shell.projectId))
+      ? () =>
+          void handleNewThread(scopeProjectRef(shell.environmentId, shell.projectId), {
+            rememberProject: false,
+          })
       : () =>
           void router.navigate({
             to: "/",

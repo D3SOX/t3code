@@ -23,8 +23,7 @@ import {
   lastUsedProjectKeySchema,
   useHandleNewThread,
 } from "../../hooks/useHandleNewThread";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { useUiStateStore } from "../../uiStateStore";
+import { scopedProjectKey } from "@t3tools/client-runtime/environment";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { getClientSettings, useClientSettings } from "../../hooks/useSettings";
@@ -249,12 +248,6 @@ export function SnapShotCoordinator() {
     : null;
   const rememberProject = useEffectEvent((projectKey: string) => {
     if (projectKey !== lastUsedProjectKey) setLastUsedProjectKey(projectKey);
-    if (!currentProject) return;
-    const { lastNewThreadProjectRef, setLastNewThreadProjectRef } = useUiStateStore.getState();
-    if (lastNewThreadProjectRef && scopedProjectKey(lastNewThreadProjectRef) === projectKey) return;
-    setLastNewThreadProjectRef(
-      scopeProjectRef(currentProject.environmentId, currentProject.projectId),
-    );
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Persist route changes without overwriting project choices from other tabs.
   useEffect(() => {
