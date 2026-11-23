@@ -348,6 +348,7 @@ describe("sidebar thread click", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
+      preferredProjectRef: null,
       defaultProjectRef: {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,

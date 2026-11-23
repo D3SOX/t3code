@@ -96,15 +96,6 @@ const isFinishedReview = (check: PullRequestCheck) =>
   (check.status === "success" || check.status === "skipped" || check.status === "neutral");
 const reviewKey = (check: PullRequestCheck) => `${check.name}:${check.status}`;
 
-function isReviewAcknowledgement(remark: PullRequestComment): boolean {
-  return (
-    remark.author?.login.toLowerCase().replace(/\[bot\]$/, "") === "coderabbitai" &&
-    /<!-- This is an auto-generated reply by CodeRabbit -->[\s\S]*?<summary>[^\p{L}<]*Actions? performed<\/summary>\s*(?:<dl>\s*<dd>\s*<br>\s*)?(?:Full review|Review) triggered\./u.test(
-      remark.body.slice(0, 1_000),
-    )
-  );
-}
-
 /** Report failures immediately, then required and remaining CI completion separately. Own replies never wake the agent; unread remarks wait for a later pass. */
 export function evaluatePullRequestWatch(
   watch: ThreadPullRequestWatch,
@@ -280,22 +271,19 @@ export function evaluatePullRequestWatch(
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
   const through = Date.parse(watch.remarksThrough);
-  const activeAt = (remark: PullRequestComment) => remark.editedAt ?? remark.createdAt;
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
   const unread = (remarks ?? []).filter((remark) => {
-    const at = Date.parse(activeAt(remark));
+    const at = Date.parse(remark.createdAt);
     return (
       (at > through || (at === through && !watch.remarkIds.includes(remark.id))) &&
       remark.author?.login.toLowerCase() !== own
     );
   });
-  const fresh = unread.filter(
-    (remark) => isActionableRemark(remark) && !isReviewAcknowledgement(remark),
-  );
+  const fresh = unread.filter(isActionableRemark);
   if (fresh.length > 0) changes.push({ kind: "remarks", remarks: fresh });
-  const latest = Math.max(through, ...unread.map((remark) => Date.parse(activeAt(remark))));
-  const atLatest = unread.filter((remark) => Date.parse(activeAt(remark)) === latest);
-  const remarksThrough = latest === through ? watch.remarksThrough : activeAt(atLatest[0]!);
+  const latest = Math.max(through, ...unread.map((remark) => Date.parse(remark.createdAt)));
+  const atLatest = unread.filter((remark) => Date.parse(remark.createdAt) === latest);
+  const remarksThrough = latest === through ? watch.remarksThrough : atLatest[0]!.createdAt;
   const remarkIds = [
     ...(latest === through ? watch.remarkIds : []),
     ...atLatest.map((remark) => remark.id),
