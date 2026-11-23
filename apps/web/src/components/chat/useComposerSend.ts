@@ -1721,11 +1721,14 @@ export function useComposerSend(input: ComposerSendInput) {
               backgroundDraftOpened = Boolean(
                 await handleNewThread(
                   scopeProjectRef(activeProject.environmentId, activeProject.id),
-                  resolveBackgroundDraftWorkspaceOptions({
-                    envMode: sendEnvMode,
-                    branch: activeThreadBranch,
-                    startFromOrigin,
-                  }),
+                  {
+                    ...resolveBackgroundDraftWorkspaceOptions({
+                      envMode: sendEnvMode,
+                      branch: activeThreadBranch,
+                      startFromOrigin,
+                    }),
+                    rememberProject: false,
+                  },
                 ),
               );
             } catch (error) {

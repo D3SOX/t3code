@@ -891,6 +891,7 @@ describe("evaluatePullRequestWatch", () => {
       "<details>\n<summary>Action performed</summary>Review requested.</details>",
       "<details><summary>Action not completed</summary>Try again later.</details>",
       "✅ Action performed\nReview requested.",
+      "<details>\n<summary>✅ Actions performed</summary>\n\nReview triggered.\n\n</details>",
       "Your [plan](https://docs.coderabbit.ai/plans) has reached its rate limit.",
       "## Greptile Summary\nThis PR updates the sidebar.",
       "## Performance comparison\nResults for the latest commit.",

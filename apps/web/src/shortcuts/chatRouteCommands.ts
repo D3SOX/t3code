@@ -74,6 +74,18 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       ? selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, threadRef) === "preview"
       : false;
   };
+  const readLivePreferredProjectRef = () => {
+    const preferred = useUiStateStore.getState().lastNewThreadProjectRef;
+    return preferred &&
+      readProjects().some(
+        (project) =>
+          project.environmentId === preferred.environmentId &&
+          project.id === preferred.projectId &&
+          project.archivedAt == null,
+      )
+      ? preferred
+      : null;
+  };
   const readThreadContext = () => {
     const lastUsedProjectKey = readLastUsedProjectKey();
     const target = readRouteTarget();
@@ -87,7 +99,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     return {
       activeDraftThread,
       activeThread: activeThread ?? undefined,
-      preferredProjectRef: useUiStateStore.getState().lastNewThreadProjectRef,
+      preferredProjectRef: readLivePreferredProjectRef(),
       defaultProjectRef: resolveDefaultProjectRef(
         readProjects(),
         useUiStateStore.getState().projectOrder,
