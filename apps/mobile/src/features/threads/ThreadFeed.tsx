@@ -11,7 +11,7 @@ import { collectMobileAssistantTextSelectors } from "../../lib/assistantCitation
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ASSISTANT_CITATION_MAX_TEXT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
-import { useOpenPullRequest } from "../../native/useOpenPullRequest";
+import { useOpenPullRequest, pullRequestLinkContextMenu } from "../../native/useOpenPullRequest";
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
 import { useVisibleSecondClock } from "./use-visible-second-clock";
 import {
@@ -108,6 +108,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { classifyMarkdownImageSource } from "@t3tools/client-runtime/markdown-images";
+import { citedMediaPaths } from "@t3tools/client-runtime/cited-media";
 import {
   contextCompactionTokenCounts,
   resolveViewedImageAsset,
@@ -201,7 +202,6 @@ import {
   type NativeMarkdownTextStyle,
   type SelectableMarkdownSkill,
 } from "../../native/SelectableMarkdownText";
-
 import { AppText as Text } from "../../components/ui/AppText";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/ui/VideoPreviewModal";
 import { markdownFileEmbedLabel, resolveMarkdownMediaPreview } from "../../lib/markdownMedia";
@@ -311,7 +311,8 @@ import {
   environmentThreadShells,
   threadEnvironment,
 } from "../../state/threads";
-import { ThreadWorkflowOpening, useWorkflowOpening } from "./thread-workflow-opening";
+import { ThreadWorkflowOpening } from "./thread-workflow-opening";
+import { useWorkflowOpening } from "./use-workflow-opening";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useV2ItemSupport } from "../../state/v2-item-support";
 import {
@@ -349,10 +350,8 @@ const WIDE_MARKDOWN_BLOCK_OPTIONS = {
   includeBlockquotes: Platform.OS === "ios",
   includeOrderedLists: Platform.OS === "android",
 } as const;
-
 const TURN_FOLD_HEIGHT = 42;
 const FEED_PADDING_TOP = 12;
-const VIEWED_IMAGE_GAP = 8;
 const USER_BUBBLE_HORIZONTAL_PADDING = 3.5 * 3.5;
 const ASSISTANT_ROW_HORIZONTAL_PADDING = 3.5;
 // Virtualization remounts old rows; only newly created content should replay an entrance.
@@ -361,7 +360,6 @@ function isFreshTimestamp(input: string): boolean {
   const timestamp = Date.parse(input);
   return Number.isFinite(timestamp) && Date.now() - timestamp < FRESH_ENTRY_WINDOW_MS;
 }
-
 export interface ThreadFeedHistoryControls {
   readonly hasMoreHistory: boolean;
   readonly loading: boolean;
@@ -405,7 +403,10 @@ export interface ThreadFeedProps {
   readonly contentBottomInset?: number;
   readonly historyControls?: ThreadFeedHistoryControls;
   readonly contentMaxWidth?: number;
-  readonly contentSideInsets?: { readonly left: number; readonly right: number };
+  readonly contentSideInsets?: {
+    readonly left: number;
+    readonly right: number;
+  };
   readonly layoutVariant?: LayoutVariant;
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
@@ -414,11 +415,9 @@ export interface ThreadFeedProps {
   readonly onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   readonly onCiteAssistantText?: (citation: AssistantCitation) => void;
 }
-
 const USER_MESSAGE_COPY_MENU_ACTIONS = [
   { id: "copy-prompt-link", title: msg("Copy prompt link"), image: "link" },
 ];
-
 function UserMessageCopyButton(props: {
   readonly text: string;
   readonly onCopy: (() => Promise<void>) | undefined;
@@ -453,7 +452,6 @@ function UserMessageCopyButton(props: {
     </Menu>
   );
 }
-
 function AssistantForkButton(props: {
   readonly environmentId: EnvironmentId;
   readonly iconColor: ColorValue;
@@ -476,9 +474,7 @@ function AssistantForkButton(props: {
     capabilities: support.providerSession?.capabilities,
   });
   const runId = props.projectedItem.item.runId;
-
   if (!canFork || runId === null) return null;
-
   return (
     <Pressable
       accessibilityRole="button"
@@ -652,7 +648,6 @@ function MessageAttachmentImage(props: {
       </View>
     );
   }
-
   return (
     <PresentationSource identifier={sourceIdentifier}>
       <MessageImage
@@ -678,11 +673,9 @@ function MessageAttachmentImage(props: {
     </PresentationSource>
   );
 }
-
 function isImageAttachment(attachment: ChatAttachment): attachment is ChatImageAttachment {
   return attachment.type === "image" || imageMimeType(attachment) !== null;
 }
-
 function isFileAttachment(attachment: ChatAttachment): attachment is ChatFileAttachment {
   return attachment.type === "file";
 }
@@ -736,7 +729,6 @@ function MessageAttachmentFile(props: {
       // oxlint-disable-next-line react/memo-dependencies -- Changing the attachment or connection cancels the previous file open even while this screen stays focused.
     }, [props.environmentId, attachment.id, httpBaseUrl]),
   );
-
   const shareFile = (sourceIdentifier?: string) => {
     if (props.available === false || httpBaseUrl === null || openingRef.current) return;
     const controller = new AbortController();
@@ -1167,7 +1159,6 @@ function MessageAttachmentList(props: {
     ),
   );
 }
-
 function MessageAttachmentUnknown(props: { readonly name: string }) {
   return (
     <View className="flex-row items-center gap-2 py-1">
@@ -1234,16 +1225,13 @@ interface MarkdownLinkHandlers {
   readonly fileEmbedLabel?: (href: string, standalone: boolean) => string | null;
   readonly linkCustomization?: (href: string) => MarkdownLinkCustomization | undefined;
 }
-
 interface MarkdownStyleSets {
   readonly user: MarkdownStyleSet;
   readonly assistant: MarkdownStyleSet;
 }
-
 interface MarkdownStyleSet {
   readonly nativeTextStyle: NativeMarkdownTextStyle;
 }
-
 const ARTIFACT_TEMPLATE_SYMBOL_BY_KIND: Record<
   CodexArtifactTemplate["artifactKind"],
   AppSymbolName
@@ -1259,7 +1247,6 @@ const ARTIFACT_TEMPLATE_SYMBOL_BY_KIND: Record<
   email: "text.bubble",
   slack: "text.bubble",
 };
-
 function ArtifactTemplateCard(props: {
   readonly template: CodexArtifactTemplate;
   readonly onUse?: ((template: CodexArtifactTemplate) => void) | undefined;
@@ -1299,7 +1286,6 @@ function ArtifactTemplateCard(props: {
     </View>
   );
 }
-
 const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly markdown: string;
   readonly environmentId: EnvironmentId;
@@ -1531,6 +1517,31 @@ function MarkdownDetailsFold(props: {
     </View>
   );
 }
+
+const AssistantCitedMedia = function AssistantCitedMedia(props: {
+  readonly markdown: string;
+  readonly streaming: boolean;
+  readonly availableWidth: number;
+  readonly renderImage: MarkdownImageRenderer;
+}) {
+  const paths = props.streaming ? [] : citedMediaPaths(props.markdown);
+  if (paths.length === 0) return null;
+  return (
+    <MarkdownImageAvailableWidthContext value={props.availableWidth}>
+      <View className="mt-2 gap-2">
+        {paths.map((path) => (
+          <View key={path}>
+            {props.renderImage({
+              href: path,
+              alt: null,
+              title: null,
+            })}
+          </View>
+        ))}
+      </View>
+    </MarkdownImageAvailableWidthContext>
+  );
+};
 
 function useMarkdownStyles(): MarkdownStyleSets {
   const { appearance } = useAppearancePreferences();
@@ -2088,7 +2099,6 @@ function renderFeedEntry(
       </View>
     );
   }
-
   if (entry.type === "thinking") {
     return (
       <ThreadThinkingRow
@@ -2100,7 +2110,6 @@ function renderFeedEntry(
       />
     );
   }
-
   if (entry.type === "html-render") {
     return (
       <ThreadHtmlRender
@@ -2131,19 +2140,6 @@ function renderFeedEntry(
     );
   }
 
-  if (entry.type === "viewed-images") {
-    const thumbnailWidth = Math.floor((props.contentWidth - VIEWED_IMAGE_GAP) / 2);
-    return (
-      <View className="flex-row flex-wrap pb-2" style={{ gap: VIEWED_IMAGE_GAP }}>
-        {entry.paths.map((path) => (
-          <View key={path} style={{ width: thumbnailWidth }}>
-            {props.renderViewedImage({ href: path, alt: null, title: null })}
-          </View>
-        ))}
-      </View>
-    );
-  }
-
   if (entry.type === "mcp-app") {
     return (
       <ThreadMcpApp
@@ -2158,7 +2154,6 @@ function renderFeedEntry(
       />
     );
   }
-
   if (entry.type === "work-toggle") {
     return (
       <ThreadWorkGroupToggle
@@ -2188,7 +2183,6 @@ function renderFeedEntry(
       />
     );
   }
-
   if (entry.type === "activity-group" && isContextHandoffActivityGroup(entry)) {
     return (
       <ThreadHandoffRow
@@ -2199,7 +2193,63 @@ function renderFeedEntry(
       />
     );
   }
-
+  if (entry.type === "viewed-image") {
+    const expanded = props.expandedWorkRows[entry.id] ?? false;
+    return (
+      <View className="mb-2 px-0.5">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={m(msg("Viewed image: {path}", { path: entry.imagePath }))}
+          accessibilityState={{ expanded }}
+          accessibilityHint={
+            expanded
+              ? m(msg("Double tap to hide the image preview."))
+              : m(msg("Double tap to show the image preview."))
+          }
+          onPress={() => {
+            void Haptics.selectionAsync();
+            props.onToggleWorkRow(entry.id, entry.id);
+          }}
+          className="min-h-8 flex-row items-center gap-1.5"
+        >
+          <View className="h-6 w-6 shrink-0 items-center justify-center">
+            <SymbolView
+              name={{
+                ios: "eye",
+                android: "visibility",
+              }}
+              size={14}
+              tintColor={iconSubtleColor}
+              type="monochrome"
+            />
+          </View>
+          <Text className="shrink-0 text-sm text-foreground-muted">
+            <T>Viewed image</T>
+          </Text>
+          <Text className="min-w-0 flex-1 text-sm text-foreground-muted" numberOfLines={1}>
+            {entry.imagePath}
+          </Text>
+          <ThreadDisclosureChevron
+            expanded={expanded}
+            collapsedDirection="right"
+            size={12}
+            tintColor={iconSubtleColor}
+          />
+        </Pressable>
+        {expanded ? (
+          <MarkdownImageAvailableWidthContext value={Math.max(0, props.markdownContentWidth - 28)}>
+            <View className="ml-7 pb-1">
+              {props.renderViewedImage({
+                href: entry.imagePath,
+                alt: null,
+                title: null,
+              })}
+            </View>
+          </MarkdownImageAvailableWidthContext>
+        ) : null}
+      </View>
+    );
+  }
   if (entry.type === "activity-group" && isSecretRequestActivityGroup(entry)) {
     return (
       <SecretRequestCard
@@ -2229,7 +2279,6 @@ function renderFeedEntry(
       />
     );
   }
-
   if (entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) {
     const label = entry.activities[0]!.summary;
     const item = entry.activities[0]!.projectedItem.item;
@@ -2258,7 +2307,6 @@ function renderFeedEntry(
       />
     );
   }
-
   if (entry.type === "message") {
     const { message } = entry;
     const isUser = message.role === "user";
@@ -2279,7 +2327,6 @@ function renderFeedEntry(
       props.terminalAssistantMessageIds.has(message.id) &&
       !assistantTurnStillInProgress &&
       !message.streaming;
-
     if (isUser && props.workflowOpening?.messageId === message.id) {
       return (
         <ThreadWorkflowOpening
@@ -2657,11 +2704,9 @@ function renderFeedEntry(
         </Animated.View>
       );
     }
-
     if (renderedText.trim().length === 0 && attachments.length === 0) {
       return null;
     }
-
     const enterAnimated = isFreshTimestamp(message.createdAt);
     return (
       <Animated.View
@@ -2671,7 +2716,11 @@ function renderFeedEntry(
             : "mb-1 px-1",
           hasWideBlock && "w-full",
         )}
-        {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
+        {...(enterAnimated
+          ? {
+              entering: FadeIn.duration(220),
+            }
+          : {})}
       >
         {renderedText.trim().length > 0 ? (
           <MarkdownImageAvailableWidthContext value={props.markdownContentWidth}>
@@ -2689,6 +2738,12 @@ function renderFeedEntry(
             />
           </MarkdownImageAvailableWidthContext>
         ) : null}
+        <AssistantCitedMedia
+          markdown={renderedText}
+          streaming={Boolean(message.streaming)}
+          availableWidth={props.markdownContentWidth}
+          renderImage={props.renderViewedImage}
+        />
         <MessageAttachmentList
           attachments={attachments}
           environmentId={props.environmentId}
@@ -2728,7 +2783,6 @@ function renderFeedEntry(
       </Animated.View>
     );
   }
-
   return (
     <ThreadWorkLog
       activities={entry.activities}
@@ -2816,7 +2870,6 @@ type UserMessageContentProps = {
   readonly linkHandlers: MarkdownLinkHandlers;
   readonly renderImage: MarkdownImageRenderer;
 };
-
 function UserMessageContent(props: UserMessageContentProps) {
   const gt = useGT();
   const [selected, setSelected] = useState<{ contextId: string; label: string } | null>(null);
@@ -2852,7 +2905,11 @@ function UserMessageContent(props: UserMessageContentProps) {
     if (document) {
       navigation.navigate("ThreadAttachment", {
         environmentId: String(props.environmentId),
-        ...(selectedThread ? { threadId: String(selectedThread.id) } : {}),
+        ...(selectedThread
+          ? {
+              threadId: String(selectedThread.id),
+            }
+          : {}),
         attachmentId: document.attachmentId,
         name: document.name,
         mimeType: document.mimeType,
@@ -2902,7 +2959,9 @@ function UserMessageContent(props: UserMessageContentProps) {
                 }),
                 {
                   version: 1,
-                  source: { environmentId: props.environmentId },
+                  source: {
+                    environmentId: props.environmentId,
+                  },
                   records: [record],
                 },
               )
@@ -2932,7 +2991,6 @@ function UserMessageContent(props: UserMessageContentProps) {
     </>
   );
 }
-
 function UserMessageMarkdownContent(props: UserMessageContentProps) {
   const text = props.text;
   const models = useModelMentions(props.environmentId, text);
@@ -2942,7 +3000,9 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
   const contextClipboardFragment = props.context
     ? (encodeComposerContextFragment({
         version: 1,
-        source: { environmentId: props.environmentId },
+        source: {
+          environmentId: props.environmentId,
+        },
         records: props.context.records,
       }) ?? undefined)
     : undefined;
@@ -2960,7 +3020,6 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
       />
     );
   }
-
   return (
     <View className="w-full gap-2">
       {segments.map((segment) => {
@@ -2973,12 +3032,10 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
             />
           );
         }
-
         const text = segment.text.trim();
         if (text.length === 0) {
           return null;
         }
-
         return (
           <SelectableMarkdownText
             key={segment.id}
@@ -2996,7 +3053,6 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
     </View>
   );
 }
-
 function ThreadFeedPlaceholder(props: {
   readonly bottomInset: number;
   readonly detail: string;
@@ -3158,6 +3214,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const deviceType = useDeviceType();
   const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
+  const pullRequestLinkMenu = pullRequestLinkContextMenu(openPullRequest);
   const navigation = useNavigation();
   const openThreadLink = useOpenThreadLink(props.environmentId);
   const openLocalPreview = useOpenLocalPreview();
@@ -3489,9 +3546,15 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           appAtomRegistry,
           projectEnvironment.fileMetadata({
             environmentId: props.environmentId,
-            input: { path: mediaPath },
+            input: {
+              path: mediaPath,
+            },
           }),
-          { signal: request.signal, reportFailure: false, reportDefect: false },
+          {
+            signal: request.signal,
+            reportFailure: false,
+            reportDefect: false,
+          },
         ).then((result) => {
           if (request.signal.aborted) return;
           if (result._tag === "Success" && result.value?.kind === "directory") {
@@ -3505,7 +3568,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       } else openMediaPreview();
       return;
     }
-
     const presentation = resolveMarkdownLinkPresentation(href);
     if (presentation.kind === "file") {
       const path = resolveFileLinkPath(props.workspaceRoot, presentation.path);
@@ -3517,12 +3579,15 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           environmentId: String(props.environmentId),
           threadId: String(props.threadId),
           path: fileRoutePathSegments(target),
-          ...(presentation.line ? { line: String(presentation.line) } : {}),
+          ...(presentation.line
+            ? {
+                line: String(presentation.line),
+              }
+            : {}),
         });
       });
       return;
     }
-
     if (presentation.href) {
       if (/^https?:\/\//i.test(presentation.href) && isPdfFile({ name: presentation.href })) {
         openPreview(markdownLinkScope, {
@@ -3591,7 +3656,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         };
       }
       const target = resolveFileChipTarget(href, props.workspaceRoot);
-      return target ? fileChipMenu(target) : undefined;
+      return target ? fileChipMenu(target) : pullRequestLinkMenu.fileContextMenu(href);
     },
     onFileContextMenuAction: (href, actionId, reply) => {
       const skill = enrichedSkillReference(href, props.skills);
@@ -3619,7 +3684,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         return;
       }
       const target = resolveFileChipTarget(href, props.workspaceRoot);
-      if (!target) return;
+      if (!target) {
+        pullRequestLinkMenu.onFileContextMenuAction(href, actionId);
+        return;
+      }
       switch (actionId) {
         case "copy-full-path":
         case "copy-relative-path": {
@@ -3759,11 +3827,23 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       ? resolveMarkdownMediaPreview(image.href, {
           environmentId: props.environmentId,
           threadId: props.threadId,
-          workspaceRoot: props.workspaceRoot,
+          workspaceRoot: props.workspaceRoot ?? ".",
           imageEmbed: true,
         })
       : null;
     const actionsSource = media?.source.actionsSource;
+    if (media?.kind === "video" && viewedImage) {
+      return (
+        <ThreadMarkdownVideo
+          key={image.href}
+          source={{
+            ...media.source,
+            environmentId: props.environmentId,
+            resource: viewedImage.resource,
+          }}
+        />
+      );
+    }
     return viewedImage ? (
       <ThreadMarkdownImage
         environmentId={props.environmentId}
@@ -3772,7 +3852,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         srcFragment={viewedImage.srcFragment}
         actionsSource={
           actionsSource && "resource" in actionsSource
-            ? { ...actionsSource, resource: viewedImage.resource }
+            ? {
+                ...actionsSource,
+                resource: viewedImage.resource,
+              }
             : undefined
         }
         onPressPreview={onPressPreview}
@@ -3977,12 +4060,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     setViewportWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
     setViewportHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
   };
-
   const anchoredEndSpace = resolveChatListAnchoredEndSpace(
     presentedFeed,
     props.anchorMessageId,
     (entry) => (entry.type === "message" ? entry.id : null),
-    { anchorOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET },
+    {
+      anchorOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET,
+    },
   );
   const failedRunIds = failedFeedRunIds(props.feed, props.latestRun);
   const terminalAssistantMessageIds = (() => {
@@ -4032,7 +4116,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     },
     [],
   );
-
   const settleDisclosureAfterLayout = () => {
     if (disclosureSettleFrameRef.current !== null) {
       cancelAnimationFrame(disclosureSettleFrameRef.current);
@@ -4116,18 +4199,25 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       target: "thread-work-row",
       feedback: "selection",
     });
-    setInteractionState((current) => ({ ...current, copiedRowId: rowId }));
+    setInteractionState((current) => ({
+      ...current,
+      copiedRowId: rowId,
+    }));
     if (copyFeedbackTimeoutRef.current) {
       clearTimeout(copyFeedbackTimeoutRef.current);
     }
     copyFeedbackTimeoutRef.current = setTimeout(() => {
       setInteractionState((current) =>
-        current.copiedRowId === rowId ? { ...current, copiedRowId: null } : current,
+        current.copiedRowId === rowId
+          ? {
+              ...current,
+              copiedRowId: null,
+            }
+          : current,
       );
       copyFeedbackTimeoutRef.current = null;
     }, 1200);
   };
-
   const onToggleWorkGroup = (groupId: string, anchorKey?: string) => {
     preserveDisclosurePosition(anchorKey ?? `work-toggle:${groupId}`);
     setInteractionState((current) => ({
@@ -4146,10 +4236,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       const expanded = !(current.expandedWorkRows[rowId] ?? false);
       return {
         ...current,
-        expandedWorkRows: { ...current.expandedWorkRows, [rowId]: expanded },
+        expandedWorkRows: {
+          ...current.expandedWorkRows,
+          [rowId]: expanded,
+        },
         ...(groupId === undefined
           ? {}
-          : { expandedWorkGroups: { ...current.expandedWorkGroups, [groupId]: expanded } }),
+          : {
+              expandedWorkGroups: {
+                ...current.expandedWorkGroups,
+                [groupId]: expanded,
+              },
+            }),
       };
     });
   };
@@ -4177,10 +4275,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       } else {
         next.add(runId);
       }
-      return { ...current, expandedTurnIds: next };
+      return {
+        ...current,
+        expandedTurnIds: next,
+      };
     });
   };
-
   const onPressPreview = (source: FilePreviewSource) => {
     markdownLinkRequest.current?.abort();
     openPreview(markdownLinkScope, { file: source });
@@ -4347,7 +4447,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       </MessageImageGalleryScope>
     </DisclosureRow>
   );
-
   if (props.contentPresentation.kind === "unavailable" && props.queuedMessages.length === 0) {
     return (
       <View style={{ flex: 1, marginLeft: contentLeftInset, marginRight: contentRightInset }}>
@@ -4361,7 +4460,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       </View>
     );
   }
-
   return (
     <PresentationSource identifier={fileShareSourceIdentifier} style={{ flex: 1 }}>
       <View className="flex-1" onLayout={handleViewportLayout}>
@@ -4423,7 +4521,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             keyboardLiftBehavior={props.sendingWithKeyboard ? "persistent" : "whenAtEnd"}
             // Seed the initial viewport before native onLayout.
             {...(viewportHeight > 0 && viewportWidth > 0
-              ? { estimatedListSize: { height: viewportHeight, width: viewportWidth } }
+              ? {
+                  estimatedListSize: {
+                    height: viewportHeight,
+                    width: viewportWidth,
+                  },
+                }
               : {})}
             scrollToOverflowEnabled
             estimatedItemSize={180}
@@ -4441,7 +4544,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             scrollEventThrottle={16}
             ListHeaderComponent={
               <>
-                {usesNativeAutomaticInsets ? null : <View style={{ height: topContentInset }} />}
+                {usesNativeAutomaticInsets ? null : (
+                  <View
+                    style={{
+                      height: topContentInset,
+                    }}
+                  />
+                )}
                 {setupAnchorIndex < 0 && props.worktreeSetup ? (
                   <WorktreeSetupCard
                     key={props.threadId}
@@ -4489,7 +4598,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         props.contentPresentation.kind === "ready" ? (
           <View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { left: contentLeftInset, right: contentRightInset }]}
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                left: contentLeftInset,
+                right: contentRightInset,
+              },
+            ]}
           >
             <ThreadFeedPlaceholder
               title={gt("No conversation yet")}
@@ -4514,7 +4629,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     </PresentationSource>
   );
 });
-
 function ThreadFeedLoadEarlierControl(props: ThreadFeedHistoryControls) {
   const gt = useGT();
   const theme = useUniwindTheme();
@@ -4538,14 +4652,18 @@ function ThreadFeedLoadEarlierControl(props: ThreadFeedHistoryControls) {
         </View>
       ) : null}
       {props.error !== null ? (
-        <Text className="text-center text-xs" style={{ color: mutedColor }}>
+        <Text
+          className="text-center text-xs"
+          style={{
+            color: mutedColor,
+          }}
+        >
           {props.error}
         </Text>
       ) : null}
     </View>
   );
 }
-
 function MessageImageGalleryScope(props: {
   entry: ThreadFeedRow;
   environmentId: EnvironmentId;

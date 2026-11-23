@@ -3,6 +3,7 @@ import {
   collectLimitAccounts,
   collectLimitPools,
   displayLimitWindows,
+  formatCreditBalance,
   type LimitAccount,
   type LimitPool,
   type LimitPoolMember,
@@ -206,6 +207,9 @@ function SegmentPopover({
         ) : null}
         {timeLeft !== null ? (
           <Row label={gt("Even pace")}>{gt("{timeLeft}% left by now", { timeLeft })}</Row>
+        ) : null}
+        {account.limits.credits ? (
+          <Row label={gt("Credits")}>{formatCreditBalance(account.limits.credits)}</Row>
         ) : null}
         {reset && reset.restoresPercent > 0 ? (
           <Row label={gt("Restores", { $context: "a reset credit restores part of the pool" })}>
@@ -667,6 +671,25 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
           />
         );
       })}
+      {pool.accounts.flatMap((account) =>
+        account.limits.credits
+          ? [
+              <div
+                key={account.key}
+                className="flex items-center justify-between gap-4 rounded-xl border p-4 text-sm"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <AccountAvatar account={account} />
+                  {pool.accounts.length > 1 ? <AccountName account={account} /> : null}
+                  <T>Credits remaining</T>
+                </span>
+                <span className="font-medium tabular-nums">
+                  {formatCreditBalance(account.limits.credits)}
+                </span>
+              </div>,
+            ]
+          : [],
+      )}
     </section>
   );
 }

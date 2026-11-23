@@ -70,6 +70,9 @@ const handleMethod = (message: Record<string, unknown>) => {
       });
       return;
     }
+    case "test/exit": {
+      process.exit(0);
+    }
     case "account/read": {
       respond(message.id as number | string, {
         account: {

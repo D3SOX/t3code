@@ -22,6 +22,7 @@ import {
   matchRestorableQueuedAttachment,
   prepareQueuedEditAttachments,
   recoverQueuedMessageEdit,
+  restoreQueuedMessage,
 } from "./queuedMessageEdit";
 
 const environmentId = EnvironmentId.make("remote-environment");
@@ -76,6 +77,22 @@ const uploadedFile = {
 describe("queued message file edits", () => {
   beforeEach(() => {
     useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
+  });
+
+  it("returns a removed message and its attachments to the composer alongside an existing draft", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadTarget, "Current draft");
+    expect(
+      restoreQueuedMessage({
+        threadId: threadTarget.threadId,
+        target: threadTarget,
+        text: "Queued message",
+        images: [image],
+        files: [file],
+      }),
+    ).toBe("Current draft\n\nQueued message");
+    expect(store.getComposerDraft(threadTarget)?.images).toEqual([image]);
+    expect(store.getComposerDraft(threadTarget)?.files).toEqual([file]);
   });
 
   it.each([

@@ -1,8 +1,4 @@
-import {
-  backgroundWorkHoldsCompletion,
-  isPullRequestWatchTask,
-  turnItemUpdateCanEndBackgroundWork,
-} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { turnItemUpdateCanEndBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveProjectScripts, settleProjectScript } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -155,6 +151,11 @@ export function threadHasQueuedTurnStart(
   ].every((value) => value === null || value < messageAtMs);
 }
 
+/**
+ * A merged or closed pull request settles the thread unless the user wrote to
+ * it afterwards. Completed runs started by background work or another agent
+ * do not count; active PR watches block settlement until their final wake.
+ */
 function pullRequestSettles(
   thread: Pick<
     ProjectionStore.ProjectionSettlementCandidate,
@@ -178,20 +179,26 @@ function pullRequestSettles(
   return pullRequestAtMs >= userAnchorMs;
 }
 
+/** Cheap checks that run before any source control lookup. */
 export function isAutoSettlementCandidate(
   thread: Omit<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">,
   nowMs: number,
 ): boolean {
   if (thread.archivedAt !== null || thread.settledOverride !== null) return false;
   if (thread.pinnedAt != null || thread.autoSettleDisabledAt != null) return false;
+  if (
+    visibleThreadPullRequests(thread.pullRequests ?? []).some((link) => link.watch !== undefined)
+  ) {
+    return false;
+  }
+  // Blocked-on-you work must never park behind a settled override.
   if (thread.pendingRuntimeRequest !== null) return false;
   // A guest is waiting on the owner; settling would hide the Request.
   if ((thread.pendingGuestMessageCount ?? 0) > 0) return false;
   if (thread.activityRunStatus != null) return false;
-  const pendingTasks = thread.pendingBackgroundTasks ?? [];
-  if (backgroundWorkHoldsCompletion(pendingTasks)) return false;
-  // Settling ends a watch, which would silently drop a reviewer's later comments.
-  if (pendingTasks.some(isPullRequestWatchTask)) return false;
+  // Settling stops the provider process, killing any command the agent may still be waiting on
+  // without marking it awaited. A leftover dev server settles once the idle release ends it.
+  if ((thread.pendingBackgroundTasks ?? []).length > 0) return false;
   if (threadHasQueuedTurnStart(thread, nowMs)) return false;
   // Interrupted runs must keep the same snooze protection the sidebar shows.
   return !isSnoozed(thread, nowMs);
@@ -301,6 +308,7 @@ function autoSettlementConfigured(settings: import("@t3tools/contracts").ServerS
   );
 }
 
+/** Identity of every settlement input, so unrelated settings edits do not trigger a sweep. */
 /** @internal Exported for tests. */
 export function autoSettlementSettingsKey(
   settings: import("@t3tools/contracts").ServerSettings,
@@ -309,6 +317,9 @@ export function autoSettlementSettingsKey(
     settings.sidebarAutoSettleOnMerge,
     settings.sidebarAutoSettleAfterDays,
     settings.sidebarAutoSettleKeepPullRequests,
+    // Only entries that touch settlement, in a stable order, so a project
+    // override on an unrelated key does not queue a sweep. JSON drops
+    // undefined, so inherit (absent) and never (null) need distinct marks.
     Object.entries(settings.projectSettingsOverrides)
       .filter(
         ([, entry]) =>
@@ -624,6 +635,8 @@ export const make = Effect.gen(function* () {
         } satisfies SettlementPullRequest;
         const cwd = lookupCwdByThreadId.get(thread.id);
         if (summary.state !== "open" && thread.branch !== null && cwd !== undefined) {
+          // Recheck reused branches only when this sweep would settle a thread.
+          // Eligibility that changes after this check waits for the next sweep.
           if (!(yield* wouldSettle(group, terminal))) return undefined;
           const current = yield* git.branchPullRequest(
             { cwd, branch: thread.branch },
@@ -793,6 +806,7 @@ export const make = Effect.gen(function* () {
   // Skip settle scripts in shared checkouts where other threads may still work.
   const cleanUpSettledThread = Effect.fn("ThreadSettlementServiceV2.cleanUpSettledThread")(
     function* (threadId: ThreadId) {
+      // A thread re-engaged before this event ran keeps its shells.
       const settled = yield* projections.getThread(threadId);
       if (settled.deletedAt !== null || settled.settledOverride !== "settled") return;
       yield* terminals.closeOnSettle({ threadId });
@@ -835,8 +849,10 @@ export const make = Effect.gen(function* () {
         projectId: thread.projectId,
         worktreePath,
         trigger: "settle",
+        // A clean exit closes the script's shell so it does not hold the worktree.
         observeCompletion: {},
       });
+      // Recorded after a successful start, so a failed start retries on the next event.
       settleActionRunAt.set(threadId, settledAtMs);
       if (run.status === "started" && run.completion) {
         yield* run.completion.pipe(Effect.forkDetach);
@@ -874,7 +890,7 @@ export const make = Effect.gen(function* () {
           ? Effect.void
           : enqueueThread(event.threadId);
       case "provider-thread.updated":
-        return backgroundWorkHoldsCompletion(event.payload.pendingBackgroundTasks ?? [])
+        return (event.payload.pendingBackgroundTasks ?? []).length > 0
           ? Effect.void
           : enqueueThread(event.threadId);
       case "turn-item.updated": {

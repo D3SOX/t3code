@@ -70,6 +70,7 @@ import {
   type OpenMediaFile,
 } from "./MediaFile.ts";
 import * as WorkspacePreviewRevisions from "./WorkspacePreviewRevisions.ts";
+import { captureImageSnapshot, resolveImageSnapshot } from "./ImageSnapshots.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 export const ASSET_ROUTE_PREFIX = "/api/assets";
@@ -150,6 +151,7 @@ const AssetClaimsSchema = Schema.Union([
     version: Schema.Literal(1),
     kind: Schema.Literal("media-file-exact"),
     filePath: Schema.String,
+    snapshotPath: Schema.optional(Schema.String),
     download: Schema.optionalKey(Schema.Boolean),
     device: Schema.String,
     inode: Schema.String,
@@ -222,6 +224,7 @@ export type ResolvedAsset =
       readonly fileName?: string;
       readonly mimeType?: string;
       readonly file?: OpenMediaFile;
+      readonly mutable?: boolean;
       readonly renderIntent?: "mcp-app" | "file-preview";
     }
   | {
@@ -408,6 +411,7 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
     readonly workspaceRoot: string | undefined;
     readonly resource: AssetResource;
     readonly expiresAt: number;
+    readonly threadId?: ThreadId;
   }) {
     const path = yield* Path.Path;
     // Resolving a network path makes Windows sign in to its host with the
@@ -425,11 +429,28 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
         checkedPath: input.requestedPath,
       });
     }
-    const canonicalFile = yield* resolveCanonicalFile(requestedPath).pipe(
+    const sourceFile = yield* resolveCanonicalFile(requestedPath).pipe(
       Effect.mapError(
         (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
       ),
     );
+    const fallback =
+      !sourceFile && input.threadId !== undefined
+        ? yield* resolveImageSnapshot({
+            threadId: input.threadId,
+            sourcePath: input.requestedPath,
+          }).pipe(Effect.orElseSucceed(() => null))
+        : null;
+    const canonicalFile =
+      sourceFile ??
+      (fallback
+        ? yield* resolveCanonicalFile(fallback).pipe(
+            Effect.mapError(
+              (cause) =>
+                new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+            ),
+          )
+        : null);
     // The workspace caller pins its containment-checked path; never follow a
     // replacement symlink to a different file during this second resolution.
     if (
@@ -460,10 +481,10 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
                 identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
                 fileRevision: mediaFileRevision(file.info),
                 dimensions,
+                file,
               }),
             ),
       ),
-      Effect.scoped,
       Effect.mapError(
         (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
       ),
@@ -474,20 +495,36 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
         checkedPath: input.requestedPath,
       });
     }
+    const snapshotPath =
+      sourceFile &&
+      input.threadId !== undefined &&
+      hostPreviewMimeTypeFromExtension(path.extname(canonicalFile))?.startsWith("image/")
+        ? yield* captureImageSnapshot({
+            threadId: input.threadId,
+            sourcePath: input.requestedPath,
+            extension: path.extname(canonicalFile),
+            file: opened.file,
+          }).pipe(Effect.orElseSucceed(() => null))
+        : fallback
+          ? canonicalFile
+          : null;
+    const filePath = sourceFile ?? input.requestedPath;
     return {
       claims: {
         version: 1 as const,
         kind: "media-file-exact" as const,
-        filePath: canonicalFile,
+        filePath,
+        ...(snapshotPath ? { snapshotPath } : {}),
         ...(download ? { download: true } : {}),
         ...opened.identity,
         expiresAt: input.expiresAt,
       },
-      fileName: path.basename(canonicalFile),
+      fileName: path.basename(filePath),
       fileRevision: opened.fileRevision,
       imageDimensions: opened.dimensions,
     };
   },
+  Effect.scoped,
 );
 
 const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileAsset")(
@@ -644,6 +681,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         workspaceRoot: input.workspaceRoot,
         resource: input.resource,
         expiresAt,
+        threadId: input.resource.threadId,
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
@@ -1083,7 +1121,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
   const path = yield* Path.Path;
   if (claims.kind === "media-file-exact") {
     if (decodedPath !== path.basename(claims.filePath)) return null;
-    const canonicalFile = yield* resolveCanonicalFile(claims.filePath).pipe(
+    let canonicalFile = yield* resolveCanonicalFile(claims.filePath).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Failed to resolve canonical media path.", {
           filePath: claims.filePath,
@@ -1092,12 +1130,20 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       ),
       Effect.orElseSucceed(() => null),
     );
-    if (canonicalFile !== claims.filePath) return null;
+    if (canonicalFile === null && claims.snapshotPath) {
+      canonicalFile = yield* resolveCanonicalFile(claims.snapshotPath).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (canonicalFile !== claims.snapshotPath) return null;
+    } else if (canonicalFile !== claims.filePath) return null;
     const mimeType = claims.download
       ? "application/octet-stream"
       : hostPreviewMimeTypeFromExtension(path.extname(canonicalFile));
     if (!mimeType) return null;
-    const file = yield* openMediaFile(canonicalFile, claims).pipe(
+    const file = yield* openMediaFile(
+      canonicalFile,
+      canonicalFile === claims.filePath ? claims : undefined,
+    ).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Failed to open canonical media file.", { filePath: canonicalFile, cause }),
       ),
@@ -1121,7 +1167,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     });
     // Checked again here: a link can be repointed after its URL was issued.
     return exactWorkspaceFile && isWorkspacePreviewEntryPath(exactWorkspaceFile)
-      ? ({ kind: "file", path: exactWorkspaceFile } satisfies ResolvedAsset)
+      ? ({ kind: "file", path: exactWorkspaceFile, mutable: true } satisfies ResolvedAsset)
       : null;
   }
   if (!isPreviewDependencyPath(decodedPath, path)) return null;
@@ -1144,6 +1190,11 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     previewBaseRelativePath: claims.baseRelativePath,
   });
   return workspaceFile
-    ? ({ kind: "file", path: workspaceFile, renderIntent: "file-preview" } satisfies ResolvedAsset)
+    ? ({
+        kind: "file",
+        path: workspaceFile,
+        mutable: true,
+        renderIntent: "file-preview",
+      } satisfies ResolvedAsset)
     : null;
 });

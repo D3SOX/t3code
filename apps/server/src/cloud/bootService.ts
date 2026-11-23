@@ -37,6 +37,7 @@ import {
 import {
   SERVICE_LAUNCHER_PROTOCOL,
   SERVICE_RESTART_PENDING_FILE,
+  SERVICE_RESTART_INTENT_FILE,
   SERVICE_STATE_FILE,
   SERVICE_UNIT_ENV,
   compareExactServiceVersions,
@@ -121,10 +122,13 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
       : [`Environment=T3CODE_INSTALL_BIN_DIR=${quoteSystemdValue(plan.installBinDir)}`]),
     `Environment=${SERVICE_UNIT_ENV}=${BOOT_SERVICE_UNIT_FILE}`,
     `ExecStart=${plan.program.map(quoteSystemdValue).join(" ")}`,
-    // Let the launcher mark an explicit stop before it signals the server.
-    // systemd still SIGKILLs the whole cgroup if graceful shutdown times out.
-    "KillMode=mixed",
-    // Helpers share this cgroup; default OOMPolicy=stop would stop the unit if one is OOM-killed.
+    // The pinned launcher forwards shutdown after marking an explicit stop.
+    // An AppImage's desktop shim has no supervisor, so its server needs SIGTERM too.
+    `KillMode=${plan.program.includes("__service-launcher") ? "mixed" : "control-group"}`,
+    // Agents and terminals run in their own scopes in app-t3code-agents.slice
+    // (see process/agentScope.ts). Short helper commands still share this
+    // cgroup, and with the systemd default of OOMPolicy=stop, the kernel
+    // killing one of them stops the whole unit.
     "OOMPolicy=continue",
     "Restart=always",
     "RestartSec=5",
@@ -811,11 +815,16 @@ export interface BootServiceHost {
   readonly execPath: string;
 }
 
+export function isDesktopCliInvocation(args: ReadonlyArray<string>, runAsNode: string | undefined) {
+  return runAsNode === "1" && args[1]?.replaceAll("\\", "/").includes("/app.asar/") === true;
+}
+
 export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   readonly baseDir: string;
   readonly logsDir: string;
   readonly cliVersion: string;
   readonly host?: BootServiceHost;
+  readonly preferBundledCli?: boolean;
 }) {
   const hostExecPath = yield* HostProcess.ExecutablePath;
   const platform = yield* HostProcess.Platform;
@@ -857,6 +866,16 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
             processRunner.run({ ...request, env: { ...userManagerEnv, ...request.env } }),
         };
   const host = input.host ?? { execPath: hostExecPath };
+  const args = yield* HostProcess.Arguments;
+  const runAsNode = yield* Config.String("ELECTRON_RUN_AS_NODE").pipe(Config.withDefault(""));
+  const cliPath = yield* Config.String("T3CODE_CLI_PATH").pipe(Config.withDefault(""));
+  // Desktop forks can share a release version while containing different code.
+  // The stable shim follows app updates; an AppImage's asar path lasts only
+  // for this invocation and must never be written into a boot service.
+  const desktopLauncher =
+    platform !== "win32" && input.preferBundledCli && isDesktopCliInvocation(args, runAsNode)
+      ? cliPath.trim() || path.join(input.baseDir, "bin", "t3")
+      : undefined;
   const runtimePaths = pinnedRuntimePaths(path, input.baseDir, input.cliVersion, platform);
   const versionsDir = pinnedRuntimeVersionsDir(path, input.baseDir);
   const xmlSafeInstallerDirectories = installerPath.split(":").filter(
@@ -1013,7 +1032,10 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     });
     const unitPath = manager?.unitPath ?? "";
     const plan: BootServicePlan = {
-      program: [runtimePaths.entryPath, "__service-launcher"],
+      program:
+        desktopLauncher === undefined
+          ? [runtimePaths.entryPath, "__service-launcher"]
+          : [desktopLauncher, "serve"],
       baseDir: input.baseDir,
       logPath,
       unitPath,
@@ -1034,6 +1056,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       ? Effect.undefined
       : Effect.map(isThisHome(installedBaseDir), (same) => (same ? undefined : installedBaseDir));
   };
+  const restartIntentPath = path.join(input.baseDir, "runtime", SERVICE_RESTART_INTENT_FILE);
   const writeDurably = (filePath: string, contents: string | Uint8Array) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1290,56 +1313,70 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       }
     }
 
-    yield* ensurePinnedRuntimeInstalled({
-      baseDir: input.baseDir,
-      version: input.cliVersion,
-      fs,
-      path,
-      runner,
-      httpClient,
-      platform,
-      arch,
-      releaseBaseUrl,
-      validate: (runtime) =>
-        runner
-          .run({
-            command: pinnedRuntimeCommand(runtime).command,
-            args: [...pinnedRuntimeCommand(runtime).args, "--version"],
-            timeout: Duration.seconds(30),
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new PinnedRuntimeInstallError({
-                  step: "verifying the pinned t3 runtime",
-                  cause,
-                }),
-            ),
-            Effect.flatMap((result) => {
-              const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
-              return result.code === 0 && reportedVersion === input.cliVersion
-                ? Effect.void
-                : Effect.fail(
-                    new PinnedRuntimeInstallError({
-                      step: "verifying the pinned t3 runtime",
-                      exitCode: Number(result.code),
-                      stdoutLength: result.stdout.length,
-                      stderrLength: result.stderr.length,
-                    }),
-                  );
-            }),
+    const validateRuntime = (command: string, args: ReadonlyArray<string>) =>
+      runner
+        .run({
+          command,
+          args: [...args, "--version"],
+          timeout: Duration.seconds(30),
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new PinnedRuntimeInstallError({ step: "verifying the pinned t3 runtime", cause }),
           ),
+          Effect.flatMap((result) => {
+            const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
+            return result.code === 0 && reportedVersion === input.cliVersion
+              ? Effect.void
+              : Effect.fail(
+                  new PinnedRuntimeInstallError({
+                    step: "verifying the pinned t3 runtime",
+                    exitCode: Number(result.code),
+                    stdoutLength: result.stdout.length,
+                    stderrLength: result.stderr.length,
+                  }),
+                );
+          }),
+        );
+    yield* Effect.gen(function* () {
+      if (desktopLauncher !== undefined) {
+        if (!(yield* fs.exists(desktopLauncher))) {
+          return yield* new BootServiceCommandError({
+            step: "finding the desktop CLI launcher; open the desktop app once to restore it",
+          });
+        }
+        return yield* validateRuntime(desktopLauncher, []);
+      }
+      yield* ensurePinnedRuntimeInstalled({
+        baseDir: input.baseDir,
+        version: input.cliVersion,
+        fs,
+        path,
+        runner,
+        httpClient,
+        platform,
+        arch,
+        releaseBaseUrl,
+        validate: (runtime) =>
+          validateRuntime(
+            pinnedRuntimeCommand(runtime).command,
+            pinnedRuntimeCommand(runtime).args,
+          ),
+      });
     }).pipe(
       Effect.mapError((error) =>
-        error._tag === "PinnedRuntimeInstallError"
-          ? new BootServiceCommandError({
-              step: error.step,
-              exitCode: error.exitCode,
-              stdoutLength: error.stdoutLength,
-              stderrLength: error.stderrLength,
-              cause: error,
-            })
-          : new BootServiceInstallError({ cause: error }),
+        error._tag === "BootServiceCommandError"
+          ? error
+          : error._tag === "PinnedRuntimeInstallError"
+            ? new BootServiceCommandError({
+                step: error.step,
+                exitCode: error.exitCode,
+                stdoutLength: error.stdoutLength,
+                stderrLength: error.stderrLength,
+                cause: error,
+              })
+            : new BootServiceInstallError({ cause: error }),
       ),
     );
     const installed = yield* fs
@@ -1359,7 +1396,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
         `--property=StandardOutput=append:${logPath}`,
         `--property=StandardError=append:${logPath}`,
         `--setenv=${SERVICE_UNIT_ENV}=`,
-        runtimePaths.entryPath,
+        desktopLauncher ?? runtimePaths.entryPath,
         "service",
         "install",
         "--base-dir",
@@ -1379,6 +1416,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
         ? manager.handoff
         : undefined;
     if (installed && start && handoff === undefined) {
+      yield* writeDurably(restartIntentPath, "");
       yield* stopForRestart(manager.stop);
     }
 
@@ -1485,6 +1523,11 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
           ? runSteps(manager.restart).pipe(Effect.ignore)
           : Effect.void,
       ),
+      Effect.ensuring(
+        installed && start
+          ? fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)
+          : Effect.void,
+      ),
     );
     return handoff !== undefined ? { ...installedPlan, handedOff: true } : installedPlan;
   });
@@ -1497,16 +1540,22 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     if (installedBaseDir === undefined || !(yield* isThisHome(installedBaseDir))) {
       return "skipped" as const;
     }
-    // Writes no state, and the launcher lets an update transition in flight
-    // finish before the queued stop tears it down.
+    // Leave launcher state unchanged so an update in flight can finish before
+    // the queued stop tears it down.
     if (runningInsideService && manager.handoff !== undefined) {
-      yield* handOffRestart(manager.handoff);
+      yield* writeDurably(restartIntentPath, "");
+      yield* handOffRestart(manager.handoff).pipe(
+        Effect.onError(() => fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)),
+      );
       return "queued" as const;
     }
-    yield* stopForRestart(manager.stop);
-    yield* runSteps(manager.activate).pipe(
-      Effect.tapError(() => runSteps(manager.restart).pipe(Effect.ignore)),
-    );
+    yield* writeDurably(restartIntentPath, "");
+    yield* Effect.gen(function* () {
+      yield* stopForRestart(manager.stop);
+      yield* runSteps(manager.activate).pipe(
+        Effect.tapError(() => runSteps(manager.restart).pipe(Effect.ignore)),
+      );
+    }).pipe(Effect.ensuring(fs.remove(restartIntentPath, { force: true }).pipe(Effect.ignore)));
     yield* fs.remove(restartPendingPath, { force: true });
     return "restarted" as const;
   }).pipe(
@@ -1595,14 +1644,13 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     }
     const [unit, runtimeEntryExists, runtimeSentinel, stateText] = yield* Effect.all([
       readUnit(),
-      fs.exists(runtimePaths.entryPath),
+      desktopLauncher === undefined
+        ? fs.exists(runtimePaths.entryPath)
+        : fs.exists(desktopLauncher),
       fs.readFileString(runtimePaths.sentinelPath).pipe(Effect.option),
       fs.readFileString(statePath).pipe(Effect.option),
     ]);
     const state = Option.isSome(stateText) ? parseServiceState(stateText.value) : undefined;
-    const installedVersion = Option.isSome(stateText)
-      ? serviceStateActiveVersion(stateText.value)
-      : undefined;
     const installedBaseDir = bootServiceBaseDirOf(unit);
     const otherBaseDir = yield* otherBaseDirOf(unit);
     // Another spelling of this home is current; repairing it would flip the unit between spellings.
@@ -1614,6 +1662,13 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       manager.kind === "launchd"
         ? contents.replace(/(<key>PATH<\/key>\n\s*<string>)[^<]*(<\/string>)/, "$1$2")
         : contents;
+    const unitCurrent = normalizeUnit(unit) === normalizeUnit(manager.render(planForUnit(unit)));
+    const installedVersion =
+      desktopLauncher !== undefined && unitCurrent
+        ? input.cliVersion
+        : Option.isSome(stateText)
+          ? serviceStateActiveVersion(stateText.value)
+          : undefined;
     const problems: BootServiceProblem[] =
       manager.kind === "systemd"
         ? [...(yield* readSystemdProblems(true))]
@@ -1633,10 +1688,11 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
         !(manager.kind === "systemd" && systemdUnsafeValue(planForUnit(unit))) &&
         normalizeUnit(thisHomeUnit) === normalizeUnit(manager.render(planForUnit(unit))) &&
         runtimeEntryExists &&
-        Option.isSome(runtimeSentinel) &&
-        runtimeSentinel.value.trim() === input.cliVersion &&
-        state?.activeVersion === input.cliVersion &&
-        state?.update?.status !== "pending",
+        (desktopLauncher !== undefined ||
+          (Option.isSome(runtimeSentinel) &&
+            runtimeSentinel.value.trim() === input.cliVersion &&
+            state?.activeVersion === input.cliVersion &&
+            state?.update?.status !== "pending")),
       unitPath,
       logPath,
     };
@@ -1653,4 +1709,5 @@ export const layer = (input: {
   readonly logsDir: string;
   readonly cliVersion: string;
   readonly host?: BootServiceHost;
+  readonly preferBundledCli?: boolean;
 }) => Layer.effect(BootService, make(input));

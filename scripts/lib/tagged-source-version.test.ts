@@ -34,7 +34,7 @@ it("reports the single stable tag on HEAD unless a release manifest was edited",
   repo.git("commit", "--quiet", "--no-gpg-sign", "-m", "source");
   const resolve = () => resolveTaggedSourceVersion(repo.root, "0.1.5");
 
-  repo.git("tag", "v0.1.6-nightly.20261031.3977");
+  repo.git("tag", "--no-sign", "v0.1.6-nightly.20261031.3977");
   expect(resolve()).toBe("0.1.5");
 
   repo.git("tag", "--no-sign", "-a", "v0.1.6", "-m", "release");
@@ -46,7 +46,7 @@ it("reports the single stable tag on HEAD unless a release manifest was edited",
   repo.writeManifest("apps/web/package.json", "0.1.5");
   expect(resolve()).toBe("0.1.6");
 
-  repo.git("tag", "v0.1.7");
+  repo.git("tag", "--no-sign", "v0.1.7");
   expect(resolve()).toBe("0.1.5");
 
   repo.git("commit", "--quiet", "--no-gpg-sign", "--allow-empty", "-m", "after release");

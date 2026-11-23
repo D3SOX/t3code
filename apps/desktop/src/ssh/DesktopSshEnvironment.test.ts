@@ -44,4 +44,16 @@ describe("resolveDesktopSshCliRunner", () => {
       });
     }),
   );
+
+  it.effect("uses a packager-provided archive version without changing the app version", () =>
+    Effect.gen(function* () {
+      const environment = yield* packagedEnvironment;
+
+      const runner = resolveDesktopSshCliRunner(environment, {
+        T3CODE_SSH_ARCHIVE_VERSION: " 0.0.41-nightly.20260915.1752 ",
+      });
+
+      assert.deepStrictEqual(runner, { archiveVersion: "0.0.41-nightly.20260915.1752" });
+    }),
+  );
 });
