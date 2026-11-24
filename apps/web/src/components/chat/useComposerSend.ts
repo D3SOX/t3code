@@ -58,7 +58,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
-import { type SetStateAction, useLayoutEffect, useRef, useState } from "react";
+import { createElement, type SetStateAction, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   isAtomCommandInterrupted,
@@ -73,6 +73,7 @@ import {
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { ThreadShellTitle } from "./ThreadShellTitle";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { readPendingWorkspaceDefault, useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -1773,7 +1774,11 @@ export function useComposerSend(input: ComposerSendInput) {
                   stackedThreadToast({
                     type: "success",
                     title: m(msg("Started in background")),
-                    timeout: 5_000,
+                    description: createElement(ThreadShellTitle, {
+                      threadRef: backgroundThreadRef,
+                      fallback: title,
+                    }),
+                    timeout: 10_000,
                     actionProps: {
                       children: m(msg("Open", { $context: "verb, opens the background thread" })),
                       onClick: () => {
