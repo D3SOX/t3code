@@ -29,6 +29,7 @@ import {
 import { queuedThreadKeysAtom } from "../../state/use-thread-outbox";
 import { useThreadListActions } from "../home/useThreadListActions";
 import {
+  activeRowAnchor,
   createThreadMovePlanner,
   threadDragAction,
   type ThreadMoveDestination,
@@ -246,13 +247,14 @@ function ThreadArrangementSheet(props: { onClose: () => void }) {
         ordered: sections[section],
         allThreads: threads,
         section,
+        activeAnchor: activeRowAnchor(workingShelfEnabled, threadListInboxReturns.returnedAt),
         reorderableEnvironmentIds:
           section === "pinned"
             ? listEnvironments.pinReorderEnvironmentIds
             : listEnvironments.activeReorderEnvironmentIds,
       });
     return { pinned: planner("pinned"), active: planner("active") };
-  }, [sections, threads, listEnvironments]);
+  }, [sections, threads, listEnvironments, workingShelfEnabled]);
   const rows = useMemo(() => {
     const result: Row[] = [];
     let offset = 0;

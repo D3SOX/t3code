@@ -112,18 +112,23 @@ export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
   observedReturnAt?: (thread: T) => number | undefined,
 ): T[] {
   const timestamps = new Map(
-    threads.map((thread) => [
-      thread,
-      Math.max(
-        toSortableTimestamp(thread.createdAt) ?? 0,
-        toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
-        toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined) ?? 0,
-        toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ?? 0,
-        observedReturnAt?.(thread) ?? 0,
-      ),
-    ]),
+    threads.map((thread) => [thread, inboxReturnAtMs(thread, observedReturnAt)]),
   );
   return sortActiveThreadsByOrderKey(threads, (thread) => timestamps.get(thread)!);
+}
+
+/** The anchor `sortInboxThreadsByReturn` orders by; moves derive implied keys from it too. */
+export function inboxReturnAtMs<T extends InboxThreadInput>(
+  thread: T,
+  observedReturnAt?: (thread: T) => number | undefined,
+): number {
+  return Math.max(
+    toSortableTimestamp(thread.createdAt) ?? 0,
+    toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ?? 0,
+    observedReturnAt?.(thread) ?? 0,
+  );
 }
 
 type WorkingSortInput = Pick<

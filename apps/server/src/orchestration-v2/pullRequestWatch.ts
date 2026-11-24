@@ -206,7 +206,13 @@ export function evaluatePullRequestWatch(
               .filter((check) => check.required !== true && owedChecks.includes(check.name))
               .map((check) => check.name)
           : [];
-    if (reportGate && !checksBaseline) {
+    const settled =
+      failed.length === 0 &&
+      awaitingApproval.length === 0 &&
+      checks.every((check) => check.status !== "pending");
+    // CI running at the start that has since settled green is news. The start rollup can be
+    // pending only on optional checks, so a passed gate alone is not.
+    if (reportGate && (!checksBaseline || (watch.checksPending === true && settled))) {
       changes.push({ kind: "checks-passed", count: gate.length, required: required.length > 0 });
     }
     passed = passedNow;

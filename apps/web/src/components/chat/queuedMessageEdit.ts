@@ -6,6 +6,7 @@ import type {
   ComposerContextId,
   ComposerContextRecord,
   EnvironmentId,
+  ModelSelection,
   OrchestrationMessageContext,
   ResponseContextRecord,
   ThreadId,
@@ -99,6 +100,7 @@ export function discardQueuedEditDraft(target: ComposerThreadTarget): void {
     }
   }
   store.clearComposerContent(target);
+  store.clearDraftThread(target);
 }
 
 /** Return a removed queue entry without overwriting the user's current draft. */
@@ -154,6 +156,7 @@ export function recoverQueuedMessageEdit(input: {
   readonly editTarget: ComposerThreadTarget;
   readonly threadTarget: ComposerThreadTarget;
   readonly originalText: string;
+  readonly originalModelSelection?: ModelSelection;
   readonly originalReplyTo: ResponseContextRecord | null;
   readonly removedExistingAttachment?: boolean;
   readonly existingAttachmentContextIds?: ReadonlyArray<string>;
@@ -171,8 +174,14 @@ export function recoverQueuedMessageEdit(input: {
     draft && strippedPrompt !== undefined && strippedPrompt !== draft.prompt
       ? { ...draft, prompt: strippedPrompt }
       : draft;
+  const modelSelection = draft?.activeProvider
+    ? draft.modelSelectionByProvider[draft.activeProvider]
+    : undefined;
+  const modelChanged =
+    modelSelection !== undefined && !Equal.equals(modelSelection, input.originalModelSelection);
   const recovery = resolveQueuedEditExit({
     editChanged:
+      modelChanged ||
       input.removedExistingAttachment === true ||
       !Equal.equals(draft?.replyTo ?? null, input.originalReplyTo) ||
       (draft !== null &&
@@ -187,7 +196,13 @@ export function recoverQueuedMessageEdit(input: {
       store.setPrompt(input.editTarget, strippedPrompt);
     }
     store.moveComposerContent(input.editTarget, input.threadTarget);
+    if (modelChanged)
+      store.setModelSelection(input.threadTarget, modelSelection, {
+        explicit: true,
+        replaceOptions: true,
+      });
     store.clearComposerContent(input.editTarget);
+    store.clearDraftThread(input.editTarget);
   } else {
     discardQueuedEditDraft(input.editTarget);
   }

@@ -157,8 +157,8 @@ open.
 
 Threads that are working or waiting on work they will resume from move into a collapsed
 **Working** section below the active list.
-That includes subagents, Claude monitors, and background commands or other monitors the agent
-says it is waiting on. A dev server or other process an agent leaves running does not keep a thread
+That includes subagents, Claude monitors and `sleep` timers, and background commands or other
+monitors the agent says it is waiting on. A dev server or other process an agent leaves running does not keep a thread
 there. A thread returns to the top of the active list when it finishes, fails, or needs an approval or
 answer. The Working section lists the thread you last sent work to first. Pinned threads stay in
 the pinned section.
@@ -167,8 +167,8 @@ This is on by default. Turn it off with **Settings → General → Working secti
 or **Settings → General → Working section** on iOS and Android. Each device keeps its own
 choice.
 
-While this is on, the active list is ordered by when each thread last came back to you, so you
-cannot drag or move threads within it. Your saved order returns when you turn it off.
+While this is on, threads you haven't arranged are ordered by when each last came back to you.
+A thread you drag or move keeps the place you give it.
 
 Threads waiting on watched pull requests have a separate **Watching PRs** section, even after all
 checks finish. Expand it to find those threads without mixing them into Active. The selected thread
@@ -221,8 +221,9 @@ prevent automatic settlement. A dev server an agent leaves running holds the thr
 T3 Code stops the idle agent, at most a few hours later. An open pull request does not prevent inactivity
 settlement unless you turn on **Keep threads with a PR** in **Settings → Threads**,
 but an old closed or merged pull request does not settle work you
-resumed after it closed. Only your own messages count as resuming. A turn that
-finished background work or a pull request watch starts on its own does not.
+resumed after it closed. Your own messages count as resuming, and so does a
+message an agent sends with `t3_thread_send` or `t3 thread send`. A turn that finished
+background work or a pull request watch starts on its own does not.
 
 To keep one thread out of the settled shelf no matter how long it sits idle, open its menu,
 choose **Auto-settle behavior**, and pick **Never**. The current option is checked. Pick

@@ -35,6 +35,7 @@ import {
   threadDropBusyAtom,
 } from "../../state/thread-order";
 import {
+  activeRowAnchor,
   createPendingThreadOrder,
   createThreadMovePlanner,
   threadDropLifecycle,
@@ -735,11 +736,12 @@ export function useThreadListActions(): {
       return false;
     }
     const preferences = appAtomRegistry.get(mobilePreferencesAtom);
+    const workingShelfEnabled =
+      AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled !== false;
     const ordered = getThreadListV2OrderedSection({
       threads: shells,
       section,
-      workingShelfEnabled:
-        AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled === true,
+      workingShelfEnabled,
       inboxReturnAt: threadListInboxReturns.returnedAt,
       now: new Date().toISOString(),
       queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
@@ -750,6 +752,7 @@ export function useThreadListActions(): {
       allThreads: shells,
       ordered,
       section,
+      activeAnchor: activeRowAnchor(workingShelfEnabled, threadListInboxReturns.returnedAt),
       reorderableEnvironmentIds: new Set(
         [...configs.keys()].filter((environmentId) => connectedEnvironmentIds.has(environmentId)),
       ),

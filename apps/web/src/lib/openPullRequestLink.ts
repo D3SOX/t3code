@@ -17,6 +17,7 @@ import { canOpenLinksInApp } from "../browser/browserLinkTarget";
 import { useOpenLink } from "../browser/useOpenLink";
 import { readLocalApi } from "../localApi";
 import { showPullRequestLinkContextMenu } from "../components/pullRequest/pullRequestLinkContextMenu";
+import { contextMenuSourceOf } from "../contextMenuSource";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { m } from "../i18n/messages";
@@ -308,7 +309,14 @@ export function usePullRequestLinkContextMenu(threadRef?: ScopedThreadRef) {
   return (
     event: Pick<
       MouseEvent<HTMLElement>,
-      "preventDefault" | "stopPropagation" | "clientX" | "clientY"
+      | "preventDefault"
+      | "stopPropagation"
+      | "clientX"
+      | "clientY"
+      | "type"
+      | "button"
+      | "detail"
+      | "nativeEvent"
     >,
     prUrl: string,
     targetThreadRef?: ScopedThreadRef,
@@ -322,6 +330,7 @@ export function usePullRequestLinkContextMenu(threadRef?: ScopedThreadRef) {
         x: event.clientX,
         y: event.clientY,
       },
+      source: contextMenuSourceOf(event),
       openInApp: () => {
         const opened = openChangeRequest(
           {

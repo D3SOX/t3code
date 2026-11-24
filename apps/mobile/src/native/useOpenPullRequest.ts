@@ -20,7 +20,7 @@ import { AsyncResult } from "effect/reactivity";
 import { msg } from "gt-react-native";
 import { m, type MessageResolver } from "../i18n/messages";
 import { useProjects, useThreadShell } from "../state/entities";
-import { tryOpenExternalUrl } from "../lib/openExternalUrl";
+import { tryOpenWebLink } from "../lib/openExternalUrl";
 import { mobilePreferencesAtom } from "../state/preferences";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
@@ -66,7 +66,7 @@ export function useNavigateToPullRequest(options?: { readonly replace?: boolean 
     context: PullRequestContext | null,
     target: BrowserLinkTarget = linkTarget,
   ) => {
-    if (target === "system") return tryOpenExternalUrl(url, "pull-request");
+    if (target === "system") return tryOpenWebLink(url, "pull-request");
     // Read at press time so a config push does not hand every link a new handler.
     const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
     const destination = nativePullRequestDestination(url, context, projects, (environmentId) =>
@@ -92,7 +92,7 @@ export function useNavigateToPullRequest(options?: { readonly replace?: boolean 
               trackers: connections?._tag === "Success" ? connections.value : undefined,
             })
           : null;
-      if (!issue || !environmentId) return tryOpenExternalUrl(url, "pull-request");
+      if (!issue || !environmentId) return tryOpenWebLink(url, "pull-request");
       const candidate = pullRequestCandidateForIssueLink(url, issue.ref);
       if (candidate) {
         const preview = await readPreview({ environmentId, input: candidate.target });
@@ -108,7 +108,7 @@ export function useNavigateToPullRequest(options?: { readonly replace?: boolean 
           return true;
         }
         // A dropped connection says nothing about what the link names; the browser knows.
-        if (isAtomCommandInterrupted(preview)) return tryOpenExternalUrl(url, "pull-request");
+        if (isAtomCommandInterrupted(preview)) return tryOpenWebLink(url, "pull-request");
       }
       const issueParams = {
         environmentId,

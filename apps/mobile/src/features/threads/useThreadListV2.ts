@@ -13,7 +13,7 @@ import {
   threadListInboxReturns,
   threadListV2LayoutTime,
 } from "./threadListV2";
-import { computeThreadMoveAvailability } from "./threadOrder";
+import { activeRowAnchor, computeThreadMoveAvailability } from "./threadOrder";
 
 /**
  * Screens' select handlers read the content-only key set; a fresh one per list rebuild gave
@@ -91,6 +91,7 @@ export function useThreadListV2(input: {
         allThreads: threads,
         section,
         pendingOrder: input.pendingOrder,
+        activeAnchor: activeRowAnchor(workingShelfEnabled, inbox.returnedAt),
         reorderableEnvironmentIds:
           section === "pinned" ? input.pinReorderEnvironmentIds : input.activeReorderEnvironmentIds,
         ordered: getThreadListV2OrderedSection({

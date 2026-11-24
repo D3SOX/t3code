@@ -37,6 +37,7 @@ import { ScreenContent } from "../../components/ui/ScreenContent";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useAssetUrl } from "../../state/assets";
 import { assetImageSource } from "../../lib/assetImageSource";
+import { appAtomRegistry } from "../../state/atom-registry";
 import {
   beginQueuedRunEdit,
   restoreRemovedQueuedMessage,
@@ -213,6 +214,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
             runId,
             messageId: entry.messageId,
             originalText: entry.text,
+            modelSelection: entry.message?.followsThreadSelection
+              ? (appAtomRegistry.get(environmentThreadDetails.quietThreadAtom(target))?.projection
+                  .thread.modelSelection ?? entry.run.modelSelection)
+              : entry.run.modelSelection,
+            followsThreadSelection: entry.message?.followsThreadSelection === true,
             existingAttachments: entry.attachments,
             ...(entry.context
               ? {

@@ -1,3 +1,4 @@
+import { Toast } from "@base-ui/react/toast";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
@@ -35,9 +36,17 @@ describe("toastManager", () => {
 });
 
 describe("toast auto-dismiss", () => {
-  // Regression: the hidden toast stayed "ending", so leaving the stack never resumed its timers.
-  it("auto-dismisses after a hidden thread-scoped toast closed and the stack was hovered", async () => {
-    await using _screen = await render(<ToastProvider>{null}</ToastProvider>);
+  // Regression: a closed toast the thread filter hid never finished its exit, so it stayed in the
+  // store as "ending" and kept the stack's hover pause, freezing every other toast's timer.
+  it("removes a closed thread-scoped toast that is hidden on this route", async () => {
+    function ToastCount() {
+      return <output aria-label="Toast count">{Toast.useToastManager().toasts.length}</output>;
+    }
+    await using _screen = await render(
+      <ToastProvider>
+        <ToastCount />
+      </ToastProvider>,
+    );
 
     const hiddenId = toastManager.add({
       type: "info",
@@ -49,14 +58,10 @@ describe("toast auto-dismiss", () => {
         },
       },
     });
+    const count = page.getByRole("status", { name: "Toast count" });
+    await expect.element(count).toHaveTextContent("1");
     toastManager.close(hiddenId);
 
-    toastManager.add({ type: "success", title: "Auto dismissed", timeout: 300 });
-    const visible = page.getByText("Auto dismissed");
-    await expect.element(visible).toBeVisible();
-    await visible.hover();
-    await visible.unhover();
-
-    await expect.element(visible).not.toBeInTheDocument();
+    await expect.element(count).toHaveTextContent("0");
   });
 });

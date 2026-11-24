@@ -1255,6 +1255,7 @@ export function firstValidTimestampMs(
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 // The Working section beta folds and orders the inbox the same way on mobile.
 export {
+  inboxReturnAtMs,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "@t3tools/client-runtime/state/thread-inbox";

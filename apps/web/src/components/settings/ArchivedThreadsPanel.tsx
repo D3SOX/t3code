@@ -1,4 +1,6 @@
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import type { ContextMenuSource } from "@t3tools/contracts";
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { m as resolveMessage } from "~/i18n/messages";
 import { SearchIcon, XIcon } from "lucide-react";
 import { createArchivedThreadSearchMatcher } from "@t3tools/client-runtime/state/threads";
@@ -26,7 +28,8 @@ import { useSearchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 
 import { msg, T, useGT, useMessages } from "gt-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { observeIntersection } from "~/lib/observeIntersection";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 
 const ARCHIVE_ACTIONS = [
@@ -46,6 +49,43 @@ const ARCHIVE_ACTIONS = [
   },
 ] as const;
 type ArchiveAction = (typeof ARCHIVE_ACTIONS)[number]["action"];
+
+const ARCHIVED_ROW_CHUNK_SIZE = 50;
+const ESTIMATED_ARCHIVED_ROW_PX = 67;
+
+// Thousands of archived threads would mount at once, so each chunk of rows mounts only near the
+// visible part of the settings scroller and otherwise keeps its last measured height.
+function ArchivedThreadChunk(props: {
+  readonly rowCount: number;
+  readonly initiallyMounted: boolean;
+  readonly renderRows: () => ReactNode;
+}) {
+  const { rowCount } = props;
+  const [view, setView] = useState({
+    near: props.initiallyMounted,
+    rowHeight: ESTIMATED_ARCHIVED_ROW_PX,
+  });
+  return (
+    <div
+      ref={(node) => {
+        if (!node) return;
+        return observeIntersection(
+          node,
+          (entry) =>
+            setView({
+              near: entry.isIntersecting,
+              rowHeight: entry.boundingClientRect.height / rowCount,
+            }),
+          { root: node.closest("[data-settings-page-scroll]"), rootMargin: "1200px 0px" },
+        );
+      }}
+      className="*:not-first:border-t *:not-first:border-border/50"
+      style={view.near ? undefined : { height: view.rowHeight * rowCount }}
+    >
+      {view.near ? props.renderRows() : null}
+    </div>
+  );
+}
 
 export function ArchivedThreadsPanel() {
   const searchableSetting = useSearchableSetting();
@@ -167,20 +207,18 @@ export function ArchivedThreadsPanel() {
     const environmentLabels = new Map(
       environments.map((environment) => [environment.environmentId, environment.label]),
     );
-    return archivedGroups.flatMap(({ threads, ...group }) => {
+    const filtered = [];
+    let firstRow = 0;
+    for (const { threads, ...group } of archivedGroups) {
       const { project } = group;
       const matchingThreads = threads.filter((thread) =>
         matchesSearch(thread, project, environmentLabels.get(project.environmentId) ?? null),
       );
-      return matchingThreads.length > 0
-        ? [
-            {
-              ...group,
-              threads: matchingThreads,
-            },
-          ]
-        : [];
-    });
+      if (matchingThreads.length === 0) continue;
+      filtered.push({ ...group, firstRow, threads: matchingThreads });
+      firstRow += matchingThreads.length;
+    }
+    return filtered;
   })();
 
   type ArchivedThread = (typeof archivedGroups)[number]["threads"][number];
@@ -224,7 +262,11 @@ export function ArchivedThreadsPanel() {
     );
   };
 
-  const handleContextMenu = async (thread: ArchivedThread, position: { x: number; y: number }) => {
+  const handleContextMenu = async (
+    thread: ArchivedThread,
+    position: { x: number; y: number },
+    source: ContextMenuSource,
+  ) => {
     const pending = pendingActionsRef.current;
     if (pending.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))) return;
     const result = await settlePromise(async () => {
@@ -235,12 +277,66 @@ export function ArchivedThreadsPanel() {
           destructive: action === "delete",
         })),
         position,
+        source,
       );
       if (clicked === "unarchive" || clicked === "delete")
         await handleThreadAction(clicked, thread);
     });
     reportFailure(result, gt("Archived thread action failed"));
   };
+
+  const renderRow = (thread: ArchivedThread) => {
+    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    return (
+      <SettingsRow
+        key={`${thread.environmentId}:${thread.id}`}
+        className="rounded-none"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void handleContextMenu(
+            thread,
+            { x: event.clientX, y: event.clientY },
+            contextMenuSourceOf(event),
+          );
+        }}
+        title={thread.title}
+        description={
+          <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
+            {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
+            <T>
+              Archived <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
+              {" \u00b7 Created "}
+              <RelativeTime timestamp={thread.createdAt} />
+            </T>
+          </span>
+        }
+        control={
+          <div className="flex shrink-0 items-center gap-2">
+            {ARCHIVE_ACTIONS.map(({ action, label, threadLabel, Icon }) => (
+              <Tooltip key={action}>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant={action === "delete" ? "destructive-outline" : "outline"}
+                      size="icon-sm"
+                      aria-label={m(threadLabel, { title: thread.title })}
+                      disabled={pendingKeys.has(threadKey)}
+                      onClick={() => void handleThreadAction(action, thread)}
+                    />
+                  }
+                >
+                  <Icon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup>{m(label)}</TooltipPopup>
+              </Tooltip>
+            ))}
+          </div>
+        }
+      />
+    );
+  };
+
   return (
     <SettingsPageContainer>
       <InputGroup>
@@ -308,59 +404,28 @@ export function ArchivedThreadsPanel() {
           />
         </SettingsSection>
       ) : (
-        filteredGroups.map(({ key, project, title, threads: projectThreads }, index) => (
+        filteredGroups.map(({ key, project, title, firstRow, threads: projectThreads }, index) => (
           <SettingsSection
             key={key}
             id={index === 0 ? searchableSetting("archive").id : undefined}
             title={title}
             icon={<ProjectFavicon project={project} />}
           >
-            {projectThreads.map((thread) => {
-              const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-              return (
-                <SettingsRow
-                  key={`${thread.environmentId}:${thread.id}`}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    void handleContextMenu(thread, { x: event.clientX, y: event.clientY });
-                  }}
-                  title={thread.title}
-                  description={
-                    <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
-                      {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
-                      <T>
-                        Archived <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
-                        {" \u00b7 Created "}
-                        <RelativeTime timestamp={thread.createdAt} />
-                      </T>
-                    </span>
-                  }
-                  control={
-                    <div className="flex shrink-0 items-center gap-2">
-                      {ARCHIVE_ACTIONS.map(({ action, label, threadLabel, Icon }) => (
-                        <Tooltip key={action}>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                type="button"
-                                variant={action === "delete" ? "destructive-outline" : "outline"}
-                                size="icon-sm"
-                                aria-label={m(threadLabel, { title: thread.title })}
-                                disabled={pendingKeys.has(threadKey)}
-                                onClick={() => void handleThreadAction(action, thread)}
-                              />
-                            }
-                          >
-                            <Icon className="size-3.5" />
-                          </TooltipTrigger>
-                          <TooltipPopup>{m(label)}</TooltipPopup>
-                        </Tooltip>
-                      ))}
-                    </div>
-                  }
-                />
-              );
-            })}
+            {Array.from(
+              { length: Math.ceil(projectThreads.length / ARCHIVED_ROW_CHUNK_SIZE) },
+              (_, chunkIndex) => {
+                const start = chunkIndex * ARCHIVED_ROW_CHUNK_SIZE;
+                const rows = projectThreads.slice(start, start + ARCHIVED_ROW_CHUNK_SIZE);
+                return (
+                  <ArchivedThreadChunk
+                    key={chunkIndex}
+                    rowCount={rows.length}
+                    initiallyMounted={firstRow + start < ARCHIVED_ROW_CHUNK_SIZE}
+                    renderRows={() => rows.map(renderRow)}
+                  />
+                );
+              },
+            )}
           </SettingsSection>
         ))
       )}
