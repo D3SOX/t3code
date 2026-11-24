@@ -259,8 +259,12 @@ describe("inbox moves", () => {
       createdAt: `2026-01-0${3 - index}T00:00:00.000Z`,
       unsettledAt: null,
     }));
-    const returnedAt = (row: Pick<OrderRow, "id">) =>
-      ({ a: 3_000_000_000_000, b: 2_000_000_000_000, c: 1_000_000_000_000 })[row.id];
+    const returns = new Map([
+      ["a", 3_000_000_000_000],
+      ["b", 2_000_000_000_000],
+      ["c", 1_000_000_000_000],
+    ]);
+    const returnedAt = (row: Pick<OrderRow, "id">) => returns.get(row.id);
     const ordered = sortInboxThreadsByReturn(rows, returnedAt);
     expect(ordered.map((row) => row.id)).toEqual(["a", "b", "c"]);
 

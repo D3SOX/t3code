@@ -167,8 +167,8 @@ This is on by default. Turn it off with **Settings → General → Working secti
 or **Settings → General → Working section** on iOS and Android. Each device keeps its own
 choice.
 
-While this is on, the active list is ordered by when each thread last came back to you, so you
-cannot drag or move threads within it. Your saved order returns when you turn it off.
+While this is on, threads you haven't arranged are ordered by when each last came back to you.
+A thread you drag or move keeps the place you give it.
 
 Threads waiting on watched pull requests have a separate **Watching PRs** section, even after all
 checks finish. Expand it to find those threads without mixing them into Active. The selected thread

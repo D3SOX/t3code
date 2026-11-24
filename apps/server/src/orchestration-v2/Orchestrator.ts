@@ -8374,7 +8374,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(!freshContext &&
         !isSlashCommand(command) &&
         dispatchMode.type === "queue_after_active" &&
-        dispatchMode.afterNextTool === true
+        dispatchMode.afterNextTool === true &&
+        // Delivery after a tool is a parked steer, which a mode limit forbids.
+        !(yield* limitForbidsParkedSteer)
           ? { queueAfterNextTool: true }
           : {}),
         // A restart cancels its run; nobody knows whether the provider read the steer, so a person decides.
@@ -12245,6 +12247,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
 
     if (command.afterNextTool !== undefined) {
+      if (command.afterNextTool && (yield* limitForbidsParkedSteer)) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "A mode limit does not allow delivering this message after the next tool call.",
+        });
+      }
       const now = yield* DateTime.now;
       yield* emit(
         events,
@@ -12765,7 +12774,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ? queuedRun
         : { ...queuedRun, modelSelection, providerInstanceId: modelSelection.instanceId };
     // A command cannot steer, so an edit into one keeps it queued where it is.
-    if (updatedRun.queueAfterNextTool === true && editedIntoCommand) {
+    if (
+      updatedRun.queueAfterNextTool === true &&
+      (editedIntoCommand || (yield* limitForbidsParkedSteer))
+    ) {
       const { queueAfterNextTool: _, ...queued } = updatedRun;
       updatedRun = queued;
     }

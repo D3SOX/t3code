@@ -737,7 +737,7 @@ export function useThreadListActions(): {
     }
     const preferences = appAtomRegistry.get(mobilePreferencesAtom);
     const workingShelfEnabled =
-      AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled === true;
+      AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled !== false;
     const ordered = getThreadListV2OrderedSection({
       threads: shells,
       section,
