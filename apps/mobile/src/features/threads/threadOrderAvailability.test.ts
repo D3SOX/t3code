@@ -3,9 +3,11 @@ import {
   generateSpreadPinOrderKeys,
   pinOrderKeyBetween,
 } from "@t3tools/client-runtime/state/thread-sort";
+import { sortInboxThreadsByReturn } from "@t3tools/client-runtime/state/thread-inbox";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import {
+  activeRowAnchor,
   computeThreadMoveAvailability,
   createThreadMovePlanner,
   type OrderRow,
@@ -20,6 +22,7 @@ function makeRow(id: string, environmentId: string, key: string | null, pinned: 
     createdAt: "2026-01-01T00:00:00.000Z",
     unsettledAt: "2026-01-01T00:00:00.000Z",
     pinnedAt: pinned ? "2026-01-01T00:00:00.000Z" : null,
+    latestRun: null,
   };
 }
 
@@ -245,5 +248,38 @@ describe("computeThreadMoveAvailability matches the reference planner", () => {
     });
     const reference = referenceAvailability(ordered, allThreads, WRITABLE);
     expect(Object.fromEntries(batch)).toEqual(Object.fromEntries(reference));
+  });
+});
+
+describe("inbox moves", () => {
+  it("places a moved thread where it was dropped in the Working section's inbox order", () => {
+    // Return times, years after creation, order the inbox; creation times would misplace the move.
+    const rows = ["a", "b", "c"].map((id, index) => ({
+      ...makeRow(id, "env", null, false),
+      createdAt: `2026-01-0${3 - index}T00:00:00.000Z`,
+      unsettledAt: null,
+    }));
+    const returnedAt = (row: Pick<OrderRow, "id">) =>
+      ({ a: 3_000_000_000_000, b: 2_000_000_000_000, c: 1_000_000_000_000 })[row.id];
+    const ordered = sortInboxThreadsByReturn(rows, returnedAt);
+    expect(ordered.map((row) => row.id)).toEqual(["a", "b", "c"]);
+
+    const assignments = createThreadMovePlanner({
+      ordered,
+      section: "active",
+      reorderableEnvironmentIds: new Set(["env" as EnvironmentId]),
+      activeAnchor: activeRowAnchor(true, returnedAt),
+    })("env:c", { targetId: "env:a", placement: "after" });
+
+    const keys = new Map(assignments?.map(({ id, orderKey }) => [id, orderKey]));
+    const moved = rows.map((row) => ({
+      ...row,
+      activeOrderKey: keys.get(`env:${row.id}`) ?? row.activeOrderKey,
+    }));
+    expect(sortInboxThreadsByReturn(moved, returnedAt).map((row) => row.id)).toEqual([
+      "a",
+      "c",
+      "b",
+    ]);
   });
 });

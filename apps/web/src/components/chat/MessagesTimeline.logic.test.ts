@@ -196,6 +196,58 @@ describe("deriveMessagesTimelineRows", () => {
       );
     },
   );
+  it("keeps viewed images in separate rows outside collapsed tool groups", () => {
+    const at = "2026-10-01T06:19:10Z";
+    const image: TimelineEntry = {
+      kind: "work",
+      id: "view-image",
+      createdAt: at,
+      entry: {
+        id: "view-image",
+        createdAt: at,
+        label: "Viewed image",
+        tone: "tool",
+        viewedImagePath: "/workspace/preview.png",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const tool: TimelineEntry = {
+      kind: "work",
+      id: "tool",
+      createdAt: at,
+      entry: {
+        id: "tool",
+        createdAt: at,
+        label: "Ran command",
+        tone: "tool",
+        command: "ls",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        tool,
+        image,
+        { ...tool, id: "last-tool", entry: { ...tool.entry, id: "last-tool" } },
+      ],
+      runningRunId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    expect(rows.find((row) => row.kind === "viewed-image")).toMatchObject({
+      id: "view-image",
+      imagePath: "/workspace/preview.png",
+      active: false,
+    });
+    expect(
+      rows
+        .filter((row) => row.kind === "work")
+        .flatMap((row) => row.groupedEntries)
+        .some((entry) => entry.id === "view-image"),
+    ).toBe(false);
+  });
 
   it("stops stranded thinking after a steer and follows the next thought or tool", () => {
     const runId = RunId.make("steered-run");
@@ -2346,7 +2398,7 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  it("shows images the agent viewed outside their collapsed tool group", () => {
+  it("keeps viewed images visible outside collapsed turns", () => {
     const threadId = ThreadId.make("viewed-images-thread");
     const runId = RunId.make("viewed-images-run");
     const at = (second: number) =>
@@ -2433,16 +2485,13 @@ describe("deriveMessagesTimelineRows", () => {
         turnDiffSummaries: [],
         supportsConversationRollback: false,
       });
-      return rows.flatMap((row, index) =>
-        row.kind === "viewed-images" ? [{ after: rows[index - 1]?.kind, paths: row.paths }] : [],
-      );
+      return rows.flatMap((row) => (row.kind === "viewed-image" ? [row.imagePath] : []));
     };
-    const paths = ["/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
+    const paths = ["/repo/docs/sidebar.png", "/repo/docs/sidebar.png", "/repo/docs/topbar.png"];
 
-    expect(viewedImages(false)).toEqual([{ after: "work-live", paths }]);
-    // A settled turn's fold keeps hiding its work, images included, until it is opened.
-    expect(viewedImages(true)).toEqual([]);
-    expect(viewedImages(true, new Set([runId]))).toEqual([{ after: "work-toggle", paths }]);
+    expect(viewedImages(false)).toEqual(paths);
+    expect(viewedImages(true)).toEqual(paths);
+    expect(viewedImages(true, new Set([runId]))).toEqual(paths);
   });
 
   it("keeps imported V1 turns folded once the thread's first V2 run starts", () => {
@@ -3116,7 +3165,7 @@ describe("v2 run and attempt history", () => {
     const ended = { ...running, turnEnded: true };
     const rows = (
       timelineEntries: ReadonlyArray<TimelineEntry>,
-      toolCallVisibility: "hideSuccessful" | "hideAll" | "zen",
+      toolCallVisibility: "hideSuccessful" | "hideAll" | "viewedImagesOnly" | "zen",
       latestRun?: typeof ended | typeof running,
     ) =>
       deriveMessagesTimelineRows({
@@ -3138,6 +3187,27 @@ describe("v2 run and attempt history", () => {
       "final",
     ]);
     expect(rows([user, failed, final], "hideAll")).toEqual(["user", "final"]);
+    const image: TimelineEntry = {
+      id: "image",
+      kind: "work",
+      createdAt: at(8),
+      entry: {
+        id: "image",
+        createdAt: at(8),
+        runId,
+        label: "Viewed image",
+        tone: "tool",
+        itemType: "file_search",
+        toolLifecycleStatus: "completed",
+        viewedImagePath: "shot.png",
+      },
+    };
+    expect(rows([user, image, failed, final], "hideAll")).toEqual(["user", "final"]);
+    expect(rows([user, image, failed, final], "viewedImagesOnly")).toEqual([
+      "user",
+      "image",
+      "final",
+    ]);
     expect(rows(turn, "zen")).toEqual(["user", "final"]);
     const [steer, answer] = [
       message("steer", "user", 4, "steer"),

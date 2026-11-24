@@ -23,6 +23,7 @@ export const layer = (config: ServerConfig.ServerConfig["Service"]) =>
     baseDir: config.baseDir,
     logsDir: config.logsDir,
     cliVersion: packageJson.version,
+    preferBundledCli: true,
   }).pipe(Layer.provide(ProcessRunner.layer), Layer.provide(FetchHttpClient.layer));
 
 export type ServiceReconcileResult =

@@ -100,6 +100,7 @@ import {
 } from "./features/layout/workspace/workspace-selection-store";
 import { workspaceDetailLinkAction } from "./features/layout/workspace/workspace-detail-selection";
 import { NativeLayoutMetricsProvider } from "./native/native-layout-metrics";
+import { AndroidNotificationCoordinator } from "./features/agent-awareness/AndroidNotificationCoordinator";
 import {
   attachRootNavigation,
   flushRootNavigationQueue,
@@ -303,6 +304,7 @@ function AppContent() {
       <QuickActionsLanguage />
       <SubscriptionUsageCoordinator />
       <ConnectDeviceApprovalCoordinator />
+      <AndroidNotificationCoordinator />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>

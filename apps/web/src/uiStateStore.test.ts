@@ -1,4 +1,5 @@
-import { ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -20,6 +21,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     sidebarProjectScopeKeys: [],
+    lastNewThreadProjectRef: null,
     threadLastVisitedAtById: {},
     defaultAdvertisedEndpointKey: null,
     pullRequestMergeMethod: "merge",
@@ -94,6 +96,18 @@ describe("uiStateStore pure functions", () => {
 });
 
 describe("parsePersistedState", () => {
+  it("restores a valid new-thread project choice", () => {
+    const projectRef = scopeProjectRef(EnvironmentId.make("env-1"), ProjectId.make("project-1"));
+    expect(
+      parsePersistedState({ lastNewThreadProjectRef: projectRef }).lastNewThreadProjectRef,
+    ).toEqual(projectRef);
+    expect(
+      parsePersistedState({
+        lastNewThreadProjectRef: { environmentId: "", projectId: "project-1" },
+      }).lastNewThreadProjectRef,
+    ).toBeNull();
+  });
+
   it("hydrates raw UI-owned state without server entities", () => {
     const parsed = parsePersistedState({
       projectExpandedById: {
@@ -118,6 +132,7 @@ describe("parsePersistedState", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
+      lastNewThreadProjectRef: null,
       pullRequestMergeMethod: "merge",
     });
   });
@@ -205,6 +220,7 @@ describe("uiStateStore persistence", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKeys: [],
       sidebarProjectScopeKey: null,
+      lastNewThreadProjectRef: null,
       pullRequestMergeMethod: "merge",
     });
     expect(parsePersistedState(persisted)).toEqual({
@@ -253,5 +269,14 @@ describe("uiStateStore persistence", () => {
       parsePersistedState({ sidebarProjectScopeKey: "github.com/pingdotgg/t3code" })
         .sidebarProjectScopeKeys,
     ).toEqual(["github.com/pingdotgg/t3code"]);
+  });
+
+  it("persists the last project used for a new thread", () => {
+    const projectRef = scopeProjectRef(EnvironmentId.make("env-1"), ProjectId.make("project-1"));
+    persistState(makeUiState({ lastNewThreadProjectRef: projectRef }));
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(parsePersistedState(persisted).lastNewThreadProjectRef).toEqual(projectRef);
   });
 });

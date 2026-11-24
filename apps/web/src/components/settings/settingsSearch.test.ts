@@ -54,6 +54,16 @@ const ITEMS: ReadonlyArray<SettingsSearchItem> = [
 ];
 
 describe("searchSettings", () => {
+  it.each(["compact sidebar", "hide branch names", "thread branches"])(
+    "finds thread branch visibility for %s",
+    (query) => {
+      expect(searchSettings(query)[0]).toMatchObject({
+        id: "sidebar-thread-branches",
+        to: "/settings/appearance",
+      });
+    },
+  );
+
   it("matches titles, sections, and remembered setting details", () => {
     expect(searchSettings("word", ITEMS).map((item) => item.id)).toEqual(["word-wrap"]);
     expect(searchSettings("network", ITEMS).map((item) => item.id)).toEqual(["network-access"]);
@@ -131,6 +141,15 @@ describe("searchSettings", () => {
         .slice(0, 2)
         .map((item) => item.id),
     ).toEqual(["network-access", "connections-environment"]);
+  });
+
+  it("lists thread confirmations in panel order", () => {
+    expect(searchSettings("confirmation").map((item) => item.id)).toEqual([
+      "unpin-confirmation",
+      "archive-confirmation",
+      "delete-confirmation",
+      "terminal-close-confirmation",
+    ]);
   });
 
   it("hides desktop-only settings from browser search", () => {
@@ -253,6 +272,13 @@ describe("searchSettings", () => {
   it("keeps catalog result ids unique", () => {
     const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("routes where pull requests open to diffs", () => {
+    expect(searchSettings("open pull requests in")[0]).toMatchObject({
+      id: "pull-request-link-target",
+      to: "/settings/diffs",
+    });
   });
 });
 

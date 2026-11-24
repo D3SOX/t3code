@@ -12,7 +12,9 @@ import {
 } from "react";
 import { Pressable, View } from "react-native";
 
-import { AndroidAnchoredMenu } from "./AndroidAnchoredMenu.android";
+import { AndroidAnchoredMenu, type AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu.android";
+import { EnvironmentArtwork } from "../EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../state/environmentIdentification";
 import { AndroidHeaderIconButton } from "./AndroidScreenHeader.android";
 import { AppText } from "./AppText";
 import { NativeAppBar } from "./NativeAppBar.android";
@@ -41,6 +43,7 @@ export interface WorkspaceAppBarProps {
     readonly accessibilityLabel: string;
     readonly customized: boolean;
     readonly actions: MenuAction[];
+    readonly renderActionIcon?: AndroidAnchoredMenuProps["renderActionIcon"];
     readonly onSelect: (id: string) => void;
   };
 }
@@ -132,12 +135,14 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
   const { search, filter } = props;
   const searching = search?.active === true;
   const { colors } = useControlTheme();
-  const tint = colors["--color-header-foreground"];
+  const { artworkStage } = useEnvironmentIdentification();
+  const tint = artworkStage ? "white" : colors["--color-header-foreground"];
   const { height, paddingTop, paddingBottom } = useToolbarLayout();
   const filterMenu = filter ? (
     <AndroidAnchoredMenu
       actions={filter.actions}
       onPressAction={({ nativeEvent }) => filter.onSelect(nativeEvent.event)}
+      renderActionIcon={filter.renderActionIcon}
     >
       {(open) =>
         searching ? (
@@ -149,6 +154,7 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
                 : "line.3.horizontal.decrease.circle"
             }
             onPress={open}
+            tintColor={artworkStage ? "white" : undefined}
           />
         ) : (
           // The bar draws the icon; this takes the touch so the menu can anchor to the slot.
@@ -165,6 +171,7 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
   ) : null;
   return (
     <View className="bg-header" style={{ paddingTop, paddingBottom }}>
+      {artworkStage ? <EnvironmentArtwork stage={artworkStage} /> : null}
       {searching ? (
         <View
           className="flex-row items-center gap-1"
@@ -174,6 +181,7 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
             accessibilityLabel={gt("Close search")}
             icon="arrow.left"
             onPress={search.onClose}
+            tintColor={artworkStage ? "white" : undefined}
           />
           {search.field}
           {filterMenu}
@@ -181,6 +189,7 @@ function WorkspaceAppBarView(props: WorkspaceAppBarProps) {
       ) : (
         <View>
           <NativeAppBar
+            transparent={artworkStage !== null}
             title={
               <RNHostView matchContents={{ vertical: true }}>
                 <View

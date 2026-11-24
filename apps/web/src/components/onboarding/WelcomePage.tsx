@@ -1456,6 +1456,7 @@ function AgentInstallTerminal({
             terminalId={terminalId}
             terminalLabel={gt("Install {agent}", { agent: driver })}
             cwd={cwd}
+            panelWorkspaceRoot={cwd}
             providerInstanceId={providerInstanceId}
             advancedTypography={advancedTypography}
             onSessionExited={onClose}

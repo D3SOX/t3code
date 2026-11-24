@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 
 import { msg } from "gt-react-native";
 
@@ -29,6 +30,7 @@ export function homeListFilterEnvironments(environments: ReadonlyArray<Workspace
 export interface HomeListFilterMenuProject {
   readonly key: string;
   readonly label: string;
+  readonly project: EnvironmentProject;
 }
 
 export function buildHomeListFilterMenuItems(

@@ -13,6 +13,7 @@ import * as projectsState from "../state/projects";
 import * as session from "../state/session";
 import { Atom } from "effect/reactivity";
 import type { Project } from "../types";
+import { useUiStateStore } from "../uiStateStore";
 import { installChatRouteCommands } from "./chatRouteCommands";
 import * as dispatcher from "./dispatcher";
 
@@ -32,14 +33,16 @@ function project(id: string): Project {
 
 describe("new thread commands", () => {
   it.each([
-    { mode: "normal", count: 2, command: "chat.new", picker: true },
-    { mode: "boring", count: 2, command: "chat.new", picker: true },
+    { mode: "normal", count: 2, command: "chat.new", picker: false },
+    { mode: "boring", count: 2, command: "chat.new", picker: false },
     { mode: "boring", count: 1, command: "chat.new", picker: false },
+    { mode: "legacy", count: 2, command: "chat.new", picker: false },
     { mode: "boring", count: 2, command: "chat.newLocal", picker: false },
   ] as const)("$mode sidebar, $count projects, $command: picker=$picker", (scenario) => {
     using _settings = vi.spyOn(settings, "getClientSettings").mockReturnValue({
       ...DEFAULT_CLIENT_SETTINGS,
       boringSidebarEnabled: scenario.mode === "boring",
+      legacySidebarEnabled: scenario.mode === "legacy",
     });
     using _projects = vi
       .spyOn(entities, "readProjects")
@@ -74,6 +77,36 @@ describe("new thread commands", () => {
         projectId: scenario.count === 1 ? "active" : "idle",
       });
     }
+  });
+});
+
+describe("new thread shortcut project", () => {
+  it("skips a remembered project that was removed", () => {
+    using _projects = vi.spyOn(entities, "readProjects").mockReturnValue([project("active")]);
+    using _ready = vi
+      .spyOn(projectsState, "defaultProjectFallbackReadyAtom")
+      .mockReturnValue(Atom.make(true));
+    using startLocal = vi.spyOn(threadActions, "startNewThreadFromContext").mockResolvedValue(true);
+    using register = vi.spyOn(dispatcher, "registerCommands").mockReturnValue(() => {});
+    const initial = useUiStateStore.getState().lastNewThreadProjectRef;
+    using stack = new DisposableStack();
+    stack.defer(() => useUiStateStore.setState({ lastNewThreadProjectRef: initial }));
+    stack.defer(installChatRouteCommands({ state: { matches: [] } } as unknown as AnyRouter));
+    const event = { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as KeyboardEvent;
+
+    for (const id of ["removed", "active"]) {
+      useUiStateStore.setState({
+        lastNewThreadProjectRef: {
+          environmentId: EnvironmentId.make("local"),
+          projectId: ProjectId.make(id),
+        },
+      });
+      register.mock.calls[0]![0]["chat.new"]!(event);
+    }
+
+    expect(
+      startLocal.mock.calls.map(([context]) => context.preferredProjectRef?.projectId),
+    ).toEqual([undefined, "active"]);
   });
 });
 

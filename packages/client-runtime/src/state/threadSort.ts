@@ -263,15 +263,16 @@ const IMPLIED_KEY_MAX_MS = 26 ** IMPLIED_KEY_WIDTH - 1;
  * anchor time, newest first, in a tier ahead of every arranged key. A move then only writes
  * the moved thread, even beside threads whose server is offline.
  */
-export function activeThreadSortKey(thread: {
-  readonly createdAt: string;
-  readonly unsettledAt?: string | null | undefined;
-  readonly activeOrderKey?: string | null | undefined;
-}): string {
+export function activeThreadSortKey(
+  thread: {
+    readonly createdAt: string;
+    readonly unsettledAt?: string | null | undefined;
+    readonly activeOrderKey?: string | null | undefined;
+  },
+  anchorMs: number = activeThreadAnchorTimestampMs(thread),
+): string {
   if (thread.activeOrderKey != null) return thread.activeOrderKey;
-  let value =
-    IMPLIED_KEY_MAX_MS -
-    Math.min(Math.max(activeThreadAnchorTimestampMs(thread), 0), IMPLIED_KEY_MAX_MS);
+  let value = IMPLIED_KEY_MAX_MS - Math.min(Math.max(anchorMs, 0), IMPLIED_KEY_MAX_MS);
   let digits = "";
   for (let index = 0; index < IMPLIED_KEY_WIDTH; index += 1) {
     digits = String.fromCharCode(97 + (value % 26)) + digits;
@@ -289,9 +290,14 @@ export function sortActiveThreadsByOrderKey<
     readonly activeOrderKey?: string | null | undefined;
     readonly environmentId?: string | undefined;
   },
->(threads: readonly T[]): T[] {
+>(
+  threads: readonly T[],
+  keylessTimestamp: (thread: T) => number = activeThreadAnchorTimestampMs,
+): T[] {
   if (threads.length < 2) return [...threads];
-  const keys = new Map(threads.map((thread) => [thread, activeThreadSortKey(thread)]));
+  const keys = new Map(
+    threads.map((thread) => [thread, activeThreadSortKey(thread, keylessTimestamp(thread))]),
+  );
   return [...threads].sort((left, right) => {
     const leftKey = keys.get(left)!;
     const rightKey = keys.get(right)!;

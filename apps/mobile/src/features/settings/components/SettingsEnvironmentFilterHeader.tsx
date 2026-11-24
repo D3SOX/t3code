@@ -2,6 +2,7 @@ import { useGT } from "gt-react-native";
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 
 import type { AppBarMenu } from "../../../components/ui/AppBar.types";
+import { ProjectFavicon } from "../../../components/ProjectFavicon";
 import { ENVIRONMENT_MACHINE_SYMBOLS } from "../../../components/EnvironmentMachineSymbol";
 import { useSettingsEnvironmentFilter } from "../settings-environment-filter";
 
@@ -24,6 +25,14 @@ export function useSettingsEnvironmentMenu(): AppBarMenu {
       selectedIds === null && selectedProjectKey === null
         ? "line.3.horizontal.decrease"
         : "line.3.horizontal.decrease.circle.fill",
+    renderActionIcon: (action, size) => {
+      const project = selectableProjectGroups.find(
+        (group) => action.id === `project:${group.key}`,
+      )?.representative;
+      return project ? (
+        <ProjectFavicon {...project} projectTitle={project.title} size={size} />
+      ) : null;
+    },
     items: [
       {
         id: "environments",

@@ -1,3 +1,5 @@
+import { Toast } from "@base-ui/react/toast";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
@@ -30,5 +32,36 @@ describe("toastManager", () => {
 
     const anchoredViewport = document.querySelector("[data-slot=toast-viewport-anchored]");
     expect(anchoredViewport).toHaveAttribute("aria-live", "polite");
+  });
+});
+
+describe("toast auto-dismiss", () => {
+  // Regression: a closed toast the thread filter hid never finished its exit, so it stayed in the
+  // store as "ending" and kept the stack's hover pause, freezing every other toast's timer.
+  it("removes a closed thread-scoped toast that is hidden on this route", async () => {
+    function ToastCount() {
+      return <output aria-label="Toast count">{Toast.useToastManager().toasts.length}</output>;
+    }
+    await using _screen = await render(
+      <ToastProvider>
+        <ToastCount />
+      </ToastProvider>,
+    );
+
+    const hiddenId = toastManager.add({
+      type: "info",
+      title: "Scoped to another thread",
+      data: {
+        threadRef: {
+          environmentId: EnvironmentId.make("env-other"),
+          threadId: ThreadId.make("thread-other"),
+        },
+      },
+    });
+    const count = page.getByRole("status", { name: "Toast count" });
+    await expect.element(count).toHaveTextContent("1");
+    toastManager.close(hiddenId);
+
+    await expect.element(count).toHaveTextContent("0");
   });
 });

@@ -28,9 +28,9 @@ import {
   liveActivityToolStatus,
   toolGroupAction,
   resolveWorkEntryToolPresentation,
+  workEntryViewedImagePath,
   summarizeToolGroup,
   toolGroupSummaryKind,
-  workEntriesViewedImagePaths,
   type ToolGroupSummaryKind,
   type WorkLogPresentationEntry,
   type WorkLogToolLifecycleStatus,
@@ -222,6 +222,14 @@ type ThreadFeedEntryContent =
       readonly activities: ReadonlyArray<ThreadFeedActivity>;
     }
   | {
+      readonly type: "viewed-image";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly imagePath: string;
+      readonly activity: ThreadFeedActivity;
+    }
+  | {
       readonly type: "work-toggle";
       readonly id: string;
       readonly createdAt: string;
@@ -238,14 +246,6 @@ type ThreadFeedEntryContent =
       readonly live: boolean;
       readonly shimmer: boolean;
       readonly thought?: string;
-    }
-  | {
-      /** Images the agent opened in the tool group above, kept visible while the group is collapsed. */
-      readonly type: "viewed-images";
-      readonly id: string;
-      readonly createdAt: string;
-      readonly runId: RunId | null;
-      readonly paths: ReadonlyArray<string>;
     }
   | {
       readonly type: "run-fold";
@@ -366,6 +366,10 @@ const localMessageEntriesCache = new WeakMap<
   Extract<RawThreadFeedEntry, { readonly type: "message" }>
 >();
 const activityGroupsCache = new WeakMap<ThreadFeedActivity, ThreadFeedActivityGroup>();
+const viewedImageRowsCache = new WeakMap<
+  ThreadFeedActivity,
+  Extract<ThreadFeedEntry, { type: "viewed-image" }>
+>();
 const failedActivityGroupsCache = new WeakMap<
   ThreadFeedActivityGroup,
   ReadonlyArray<ThreadFeedActivityGroup>
@@ -1049,6 +1053,25 @@ function groupAdjacentActivities(
       continue;
     }
 
+    const imagePath = workEntryViewedImagePath(entry.activity.workEntry);
+    if (imagePath !== null) {
+      flushGroup();
+      let row = viewedImageRowsCache.get(entry.activity);
+      if (!row) {
+        row = {
+          type: "viewed-image",
+          id: entry.id,
+          createdAt: entry.createdAt,
+          runId: entry.runId,
+          imagePath,
+          activity: entry.activity,
+        };
+        viewedImageRowsCache.set(entry.activity, row);
+      }
+      grouped.push(row);
+      continue;
+    }
+
     const isStandaloneActivity =
       entry.activity.workEntry.questionAnswer !== undefined ||
       entry.activity.projectedItem.item.type === "compaction" ||
@@ -1441,10 +1464,7 @@ const supersededReasoningGroups = new WeakMap<ThreadFeedActivityGroup, ThreadFee
 const trailingReasoningGroups = new WeakMap<ThreadFeedActivityGroup, ThreadFeedActivityGroup>();
 
 function settleSupersededReasoning(
-  entry: Exclude<
-    ThreadFeedEntry,
-    { readonly type: "run-fold" | "work-toggle" | "thinking" | "viewed-images" }
-  >,
+  entry: Exclude<ThreadFeedEntry, { readonly type: "run-fold" | "work-toggle" | "thinking" }>,
   tail: boolean,
 ) {
   if (entry.type !== "activity-group") return entry;
@@ -1505,6 +1525,7 @@ function latestRunsEqual(left: ThreadFeedLatestRun | null, right: ThreadFeedLate
 /** Rows a fold leaves in view; the live fold skips them too, so settling keeps its place. */
 function staysOutOfFold(entry: ThreadFeedEntry): boolean {
   return (
+    entry.type === "viewed-image" ||
     entry.type === "html-render" ||
     entry.type === "sent-message" ||
     entry.type === "mcp-app" ||
@@ -1752,10 +1773,7 @@ export function deriveThreadFeedPresentation(
   const lastEntryByRun = new Map<RunId, number>();
 
   const retainedFeed: Array<
-    Exclude<
-      ThreadFeedEntry,
-      { readonly type: "run-fold" | "work-toggle" | "thinking" | "viewed-images" }
-    >
+    Exclude<ThreadFeedEntry, { readonly type: "run-fold" | "work-toggle" | "thinking" }>
   > = [];
   const retainedFeedIndices: number[] = [];
   const { toolCallVisibility, revealedMessageId } = display;
@@ -1768,12 +1786,7 @@ export function deriveThreadFeedPresentation(
     : null;
   for (let index = start; index < feed.length; index += 1) {
     let entry = feed[index]!;
-    if (
-      entry.type === "run-fold" ||
-      entry.type === "work-toggle" ||
-      entry.type === "thinking" ||
-      entry.type === "viewed-images"
-    )
+    if (entry.type === "run-fold" || entry.type === "work-toggle" || entry.type === "thinking")
       continue;
     const runId = feedEntryRunId(entry);
     if (runId !== null) {
@@ -2139,10 +2152,7 @@ function thinkingRow(
 
 function appendPresentedFeedEntry(
   result: ThreadFeedEntry[],
-  entry: Exclude<
-    ThreadFeedEntry,
-    { readonly type: "run-fold" | "work-toggle" | "thinking" | "viewed-images" }
-  >,
+  entry: Exclude<ThreadFeedEntry, { readonly type: "run-fold" | "work-toggle" | "thinking" }>,
   expandedWorkGroupIds: ReadonlySet<string>,
   activeRunId: RunId | null,
   isWorking: boolean,
@@ -2237,16 +2247,6 @@ function appendActivityGroupRows(
       activeTail && isTrailingRun,
       resolve,
     );
-    const paths = workEntriesViewedImagePaths(groupableRun.map((activity) => activity.workEntry));
-    if (paths.length > 0) {
-      result.push({
-        type: "viewed-images",
-        id: `${groupId}:viewed-images`,
-        createdAt: groupableRun[0]!.createdAt,
-        runId: groupableRun[0]!.runId,
-        paths,
-      });
-    }
     groupableRun = [];
   };
   for (const activity of activities) {

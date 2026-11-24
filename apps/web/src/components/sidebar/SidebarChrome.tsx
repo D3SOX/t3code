@@ -178,7 +178,19 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <SidebarBrandMark onBackdrop={onBackdrop} />
+      {/* Center the visible capitals, without the font's ascender/descender space. */}
+      <span className="inline-flex min-w-0 items-baseline gap-1 text-sm font-medium tracking-tight">
+        <T3Wordmark aria-label="T3" className="h-[1cap] w-auto shrink-0" />
+        <span
+          className={cn(
+            "truncate [text-box:trim-both_cap_alphabetic]",
+            onBackdrop ? "text-white/70" : "text-muted-foreground",
+          )}
+        >
+          {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name of this fork */}
+          Code (D3SOX)
+        </span>
+      </span>
     </Link>
   );
 }
@@ -307,7 +319,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
-      <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
   );
@@ -315,9 +326,12 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
-    <SidebarFooter>
-      <SidebarProviderUpdatePill />
-      <SidebarUpdateArchitectureWarning />
+    <SidebarFooter className="relative">
+      <div className="pointer-events-none absolute inset-x-[var(--sidebar-content-inset)] bottom-full z-20 flex flex-col gap-2 pb-2 empty:hidden [&>*]:pointer-events-auto">
+        <SidebarThreadUndoNotice />
+        <SidebarProviderUpdatePill />
+        <SidebarUpdateArchitectureWarning />
+      </div>
       <SidebarUtilityMenu />
     </SidebarFooter>
   );
