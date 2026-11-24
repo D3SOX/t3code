@@ -1,3 +1,4 @@
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
@@ -30,5 +31,32 @@ describe("toastManager", () => {
 
     const anchoredViewport = document.querySelector("[data-slot=toast-viewport-anchored]");
     expect(anchoredViewport).toHaveAttribute("aria-live", "polite");
+  });
+});
+
+describe("toast auto-dismiss", () => {
+  // Regression: the hidden toast stayed "ending", so leaving the stack never resumed its timers.
+  it("auto-dismisses after a hidden thread-scoped toast closed and the stack was hovered", async () => {
+    await using _screen = await render(<ToastProvider>{null}</ToastProvider>);
+
+    const hiddenId = toastManager.add({
+      type: "info",
+      title: "Scoped to another thread",
+      data: {
+        threadRef: {
+          environmentId: EnvironmentId.make("env-other"),
+          threadId: ThreadId.make("thread-other"),
+        },
+      },
+    });
+    toastManager.close(hiddenId);
+
+    toastManager.add({ type: "success", title: "Auto dismissed", timeout: 300 });
+    const visible = page.getByText("Auto dismissed");
+    await expect.element(visible).toBeVisible();
+    await visible.hover();
+    await visible.unhover();
+
+    await expect.element(visible).not.toBeInTheDocument();
   });
 });
