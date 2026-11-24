@@ -90,6 +90,20 @@ jobs:
         with:
           name: github-pages-${{ github.run_attempt }}
           path: site
+      # The artifacts API can take a while to list a fresh upload, and deploy-pages fails if it does not.
+      - name: Wait for the Pages artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            listed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$ARTIFACT_NAME" --jq '.total_count')
+            if [[ "$listed" -gt 0 ]]; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::$ARTIFACT_NAME was never listed for this run."
+          exit 1
       - id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         with:
