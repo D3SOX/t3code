@@ -1,21 +1,15 @@
-import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { useWorkflowOpening } from "./use-workflow-opening";
 import {
-  resolveWorkflowOpening,
   workflowMemberModelSelection,
   workflowOpeningHeadline,
-  workflowOpeningParentThreadId,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
-import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
-import { Atom } from "effect/reactivity";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
-import { environmentThreadDetails } from "../../state/threads";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { SubagentRow } from "./SubagentRow";
@@ -24,41 +18,6 @@ import { useOpenLinkedThread } from "./useOpenLinkedThread";
 import { withTokenStarts } from "../../lib/highlights";
 
 const FOLDED_SCRIPT_LINES = 10;
-
-const NO_THREAD_ATOM = Atom.make<EnvironmentThread | null>(null);
-
-export function useWorkflowOpening(ref: ScopedThreadRef | null) {
-  const messages = useMessages();
-  const threadAtom = ref === null ? NO_THREAD_ATOM : environmentThreadDetails.threadAtom(ref);
-  // Selected as a primitive so an ordinary thread's updates never change the result.
-  const parentId = useAtomValue(threadAtom, (thread) =>
-    thread === null
-      ? null
-      : workflowOpeningParentThreadId({
-          thread: thread.projection.thread,
-          messages: thread.projection.messages,
-        }),
-  );
-  const projection = useAtomValue(threadAtom, (thread) =>
-    parentId === null ? null : (thread?.projection ?? null),
-  );
-  const parentSubagents = useAtomValue(
-    ref === null || parentId === null
-      ? NO_THREAD_ATOM
-      : environmentThreadDetails.threadAtom(scopeThreadRef(ref.environmentId, parentId)),
-    (parent) => (parentId === null ? null : (parent?.projection.subagents ?? null)),
-  );
-  return projection === null
-    ? null
-    : resolveWorkflowOpening(
-        {
-          thread: projection.thread,
-          messages: projection.messages,
-          parentSubagents,
-        },
-        messages,
-      );
-}
 
 function memberRowSubagent(
   member: RuntimeSubagent,

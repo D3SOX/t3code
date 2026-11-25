@@ -14,6 +14,7 @@ import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { LegacyFeaturesSection } from "./SettingsPanels";
 import { Switch } from "../ui/switch";
 import { commitNumberFieldOnEnter } from "./commitNumberFieldOnEnter";
 import { ScopedSwitch } from "./ScopedSwitch";
@@ -49,6 +50,7 @@ export function LabsSettingsPanel() {
         <FastWorktreeCheckoutRow />
         <AgentFeedbackRow />
       </SettingsSection>
+      <LegacyFeaturesSection />
     </SettingsPageContainer>
   );
 }
@@ -67,8 +69,10 @@ function BoringSidebarRow() {
       )}
       control={
         <Switch
-          checked={settings.boringSidebarEnabled}
-          onCheckedChange={(checked) => updateSettings({ boringSidebarEnabled: Boolean(checked) })}
+          checked={settings.boringSidebarEnabled || settings.legacySidebarEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ boringSidebarEnabled: Boolean(checked), legacySidebarEnabled: false })
+          }
           aria-label={gt("Boring sidebar (group by project)")}
         />
       }

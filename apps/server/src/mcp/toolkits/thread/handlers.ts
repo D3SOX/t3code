@@ -402,6 +402,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
               type: "queued-message.promote-to-steer",
               queuedRunId: runId,
               targetRunId,
+              ...(input.afterNextTool === undefined ? {} : { afterNextTool: input.afterNextTool }),
             }));
           }
           default:

@@ -1,6 +1,8 @@
 # Product usage data
 
-The T3 Code server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
+Product usage collection is disabled by default. To opt in, set
+`T3CODE_TELEMETRY_ENABLED=true` in the server's environment before starting it.
+When enabled, the server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
 associated with a hashed random identifier for the installation. To count how many installations one person
 uses, the server also sends a hashed identifier for your T3 Connect account when you are signed in
 to one, and a random identifier for each device that connects. The endpoint keeps a copy of each
@@ -66,20 +68,15 @@ exactly what each one holds.
 
 ## Relay connection diagnostics
 
-T3 Code sends relay connection traces to Axiom to diagnose T3 Connect connectivity. These are
-separate from product events. Traces carry connection timings, request paths, environment and
-thread identifiers, and error types. They omit machine addresses, query strings, log lines,
-error messages, and stack frames.
+When telemetry is enabled, T3 Code sends relay connection traces to Axiom to diagnose T3 Connect
+connectivity. These are separate from product events. Traces carry connection timings, request paths,
+environment and thread identifiers, and error types. They omit machine addresses, query strings, log
+lines, error messages, and stack frames.
 
-To disable product events and relay tracing from the server, set
-`T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` in its environment before starting it.
-`DO_NOT_TRACK=1` wins over `T3CODE_TELEMETRY_ENABLED=true`. Relay tracing also stops
+Product events and relay tracing are off by default. To enable them on the server, set
+`T3CODE_TELEMETRY_ENABLED=true` in its environment before starting it. Unset the variable or set
+it to `false` to stop them. `DO_NOT_TRACK=1` stops them even when `T3CODE_TELEMETRY_ENABLED=true`. Relay tracing also stops
 when `T3CODE_OTEL_SDK_DISABLED` or `OTEL_SDK_DISABLED` turns OpenTelemetry export off.
-
-On a CI runner, the server sends no product events or relay traces by default. It treats a run as
-CI when a common CI variable is set, such as `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, or `JENKINS_URL`.
-`CI=false` and `CI=0` do not count. To send them from CI anyway, set
-`T3CODE_TELEMETRY_ENABLED=true`.
 
 An administrator can turn product events and relay tracing off in the server and desktop app with
 a [managed policy](./managed-policy.md#other-capabilities). This does not control traces sent by

@@ -13,6 +13,7 @@ const NO_TERMINAL_LABELS: ReadonlyMap<string, string> = new Map();
 function DraftBlock(props: {
   routeDraftId?: string | null;
   terminalLabels?: ReadonlyMap<string, string>;
+  onNavigateToDraft?: (draftId: DraftId) => void;
 }) {
   const routeDraftId = props.routeDraftId ?? null;
   const terminalLabels = props.terminalLabels ?? NO_TERMINAL_LABELS;
@@ -26,13 +27,22 @@ function DraftBlock(props: {
       projectByKey={new Map()}
       projectDisplayNameByKey={new Map()}
       routeDraftId={routeDraftId}
-      onNavigateToDraft={vi.fn()}
+      onNavigateToDraft={props.onNavigateToDraft ?? vi.fn()}
       onDraftContextMenu={vi.fn()}
     />
   );
 }
 
 it("keeps draft previews current through edits, promotion and removal", async () => {
+  const expandedKey = "t3code:sidebar:drafts-expanded";
+  const storedExpanded = localStorage.getItem(expandedKey);
+  using _storage = {
+    [Symbol.dispose]: () => {
+      if (storedExpanded === null) localStorage.removeItem(expandedKey);
+      else localStorage.setItem(expandedKey, storedExpanded);
+    },
+  };
+  localStorage.removeItem(expandedKey);
   const initial = useComposerDraftStore.getState();
   using _store = {
     [Symbol.dispose]: () => useComposerDraftStore.setState(initial, true),
@@ -47,15 +57,18 @@ it("keeps draft previews current through edits, promotion and removal", async ()
   const draftId = DraftId.make("draft-preview");
   const threadId = ThreadId.make("draft-preview-thread");
   const onRender = vi.fn();
+  const onNavigateToDraft = vi.fn();
   await using screen = await render(
     <Profiler id="draft-block" onRender={onRender}>
       <ul>
-        <DraftBlock />
+        <DraftBlock onNavigateToDraft={onNavigateToDraft} />
       </ul>
     </Profiler>,
   );
   const row = screen.getByTestId("sidebar-draft-row");
+  const toggle = screen.getByRole("button", { name: /^Drafts/ });
   await expect.element(row).not.toBeInTheDocument();
+  await expect.element(toggle).not.toBeInTheDocument();
 
   await act(() => {
     initial.setProjectDraftThreadId(projectRef, draftId, { threadId });
@@ -96,8 +109,25 @@ it("keeps draft previews current through edits, promotion and removal", async ()
     initial.setPrompt(nextDraftId, "Next draft preview");
   });
   await expect.element(row).toHaveAccessibleName("Next draft preview, Unsent draft");
+  await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+  await toggle.click();
+  await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect.element(row).not.toBeInTheDocument();
+  await act(() => initial.setPrompt(nextDraftId, "Edited while collapsed"));
+  await screen.rerender(
+    <ul>
+      <DraftBlock onNavigateToDraft={onNavigateToDraft} />
+    </ul>,
+  );
+  await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect.element(row).not.toBeInTheDocument();
+  await toggle.click();
+  await expect.element(row).toHaveAccessibleName("Edited while collapsed, Unsent draft");
+  await row.click();
+  expect(onNavigateToDraft).toHaveBeenCalledWith(nextDraftId);
   await act(() => initial.clearDraftThread(nextDraftId));
   await expect.element(row).not.toBeInTheDocument();
+  await expect.element(toggle).not.toBeInTheDocument();
 });
 
 it("lists empty drafts by terminal label while their terminal exists, active or not", async () => {

@@ -1,3 +1,4 @@
+import { AsyncResult } from "effect/reactivity";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   EnvironmentId,
@@ -145,6 +146,9 @@ function Harness(props: {
     ),
     promptRef: { current: "" },
     composerRef: { current: null },
+    createAttachmentAssetUrl: async () =>
+      AsyncResult.success({ relativeUrl: "/attachment", expiresAt: 0 }),
+    setThreadError: vi.fn(),
   });
   useImperativeHandle(props.hookRef, () => result);
   const draft = useComposerThreadDraft(result.draftTarget);
@@ -161,6 +165,8 @@ function Harness(props: {
       pendingAction={null}
       isRunning={false}
       canInterrupt={false}
+      showPlanFollowUpPrompt={false}
+      promptHasText={draft.prompt.trim().length > 0}
       isSendBusy={result.isSaving}
       sendDisabledReason={null}
       isEnvironmentUnavailable={false}
@@ -170,6 +176,7 @@ function Harness(props: {
       onSubmitMessage={() => void result.saveEdit(savedContent(draft.prompt), () => {})}
       onPreviousPendingQuestion={() => {}}
       onInterrupt={() => {}}
+      onImplementPlanInNewThread={() => {}}
     />
   ) : null;
 }
@@ -188,7 +195,7 @@ function view(
 }
 
 function setup() {
-  mocks.editQueuedRun.mockReset();
+  mocks.editQueuedRun.mockReset().mockResolvedValue({ _tag: "Success" });
   mocks.promoteQueuedRun.mockReset();
   useAttachmentUploadStore.setState({ uploadsByImageId: {} });
   useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
@@ -274,6 +281,7 @@ describe("useQueuedRunEdit", () => {
       await act(() => requireHook(hook).beginEdit(request));
       const update = screen.getByRole("button", { name: "Update queued message" });
       await expect.element(update).toBeEnabled();
+      mocks.editQueuedRun.mockClear();
       await update.click();
       await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
       expect(mocks.editQueuedRun).toHaveBeenCalledWith(
@@ -307,6 +315,8 @@ describe("useQueuedRunEdit", () => {
       ]);
       await using _screen = await render(view(THREAD_A, "queued", hook));
       await beginChangedEdit(hook);
+      // Beginning the edit pauses the queue through the same command.
+      mocks.editQueuedRun.mockClear();
       await act(() => requireHook(hook).saveEdit(savedContent("changed"), () => {}, submission));
       expect(mocks.editQueuedRun).toHaveBeenCalledOnce();
       if (!submission.steers) {
@@ -344,6 +354,7 @@ describe("useQueuedRunEdit", () => {
       }),
     );
     await act(() => requireHook(hook).removeEditingAttachment("removed"));
+    mocks.editQueuedRun.mockClear();
     await screen.getByRole("button", { name: "Update queued message" }).click();
     await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
     expect(mocks.editQueuedRun).toHaveBeenCalledWith(
@@ -527,17 +538,19 @@ describe("useQueuedRunEdit", () => {
   it("does not copy a saved edit into the thread draft when the run starts mid-save", async () => {
     const { hook } = setup();
     let finishSave: (result: { readonly _tag: "Success" }) => void = () => {};
-    mocks.editQueuedRun.mockReturnValue(
-      new Promise((resolve) => {
+    mocks.editQueuedRun.mockImplementation((target) => {
+      if ((target as { input: { editing?: boolean } }).input.editing === true)
+        return Promise.resolve({ _tag: "Success" });
+      return new Promise((resolve) => {
         finishSave = resolve;
-      }),
-    );
+      });
+    });
     await using screen = await render(view(THREAD_A, "queued", hook));
     await beginChangedEdit(hook);
 
     // Not inside act(): act would hold the projection update until the save settles.
     const saved = requireHook(hook).saveEdit(savedContent("changed"), () => {});
-    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledTimes(2));
     // The server applied the edit and then started the run; the projection
     // reports the start before the edit's acknowledgement arrives.
     await act(() => setRuns(THREAD_A, "running"));
@@ -565,7 +578,10 @@ describe("useQueuedRunEdit", () => {
       const requested = new Promise<void>((resolve) => {
         started = resolve;
       });
-      mocks.editQueuedRun.mockImplementation(() => {
+      mocks.editQueuedRun.mockImplementation((target) => {
+        // Pausing and resuming the queue answer at once; only the save waits.
+        if ((target as { input: { editing?: boolean } }).input.editing !== undefined)
+          return Promise.resolve({ _tag: "Success" });
         started();
         return saving;
       });
@@ -618,22 +634,26 @@ describe("useQueuedRunEdit", () => {
         const owner = transition === "recover" ? THREAD_A : target;
         expect(useComposerDraftStore.getState().getComposerDraft(owner)?.images).toEqual([image]);
       }
+      // The edit store outlives the render, so close the replacing edit.
+      if (transition === "replace") await act(() => requireHook(hook).cancelEdit());
     },
   );
 
   it("leaves a newer edit alone when a save from before navigation finishes", async () => {
     const { hook } = setup();
     let finishSave: (result: { readonly _tag: "Success" }) => void = () => {};
-    mocks.editQueuedRun.mockReturnValue(
-      new Promise((resolve) => {
+    mocks.editQueuedRun.mockImplementation((target) => {
+      if ((target as { input: { editing?: boolean } }).input.editing === true)
+        return Promise.resolve({ _tag: "Success" });
+      return new Promise((resolve) => {
         finishSave = resolve;
-      }),
-    );
+      });
+    });
     await using screen = await render(view(THREAD_A, "queued", hook));
     await beginChangedEdit(hook);
     // Not inside act(): act would hold the rerenders until the save settles.
     const saved = requireHook(hook).saveEdit(savedContent("changed"), () => {});
-    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.editQueuedRun).toHaveBeenCalledTimes(2));
 
     // Leaving the thread unmounts the chat view; coming back mounts a new one.
     await screen.rerender(<AppAtomRegistryProvider>{null}</AppAtomRegistryProvider>);

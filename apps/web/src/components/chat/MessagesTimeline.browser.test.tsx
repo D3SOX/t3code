@@ -43,7 +43,7 @@ import {
   type PendingApproval,
   deriveTimelineEntriesFromVisibleTurnItems,
 } from "../../session-logic";
-import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
+import { ViewedImageTimelineRow } from "./TimelineRowParts";
 import {
   THOUGHT_PREVIEW_MAX_LENGTH,
   THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
@@ -2032,23 +2032,33 @@ describe("MessagesTimeline attachments", () => {
           {
             threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
             workspaceRoot: "/repo",
+            timelineEntries: [],
             onImageExpand,
           } as never
         }
       >
-        <ViewedImagesTimelineRow
-          row={{
-            kind: "viewed-images",
-            id: "viewed",
-            createdAt: CREATED_AT,
-            images: ["/repo/first.png", "/repo/second.png", "/repo/third.png"].map((path) => ({
-              path,
-              pending: false,
-            })),
-          }}
-        />
+        <div data-image-gallery>
+          {["first.png", "second.png", "third.png"].map((name) => (
+            <ViewedImageTimelineRow
+              key={name}
+              row={{
+                kind: "viewed-image",
+                id: name,
+                createdAt: CREATED_AT,
+                entry: { id: name, tone: "tool", createdAt: CREATED_AT, label: name },
+                imagePath: `/repo/${name}`,
+                active: false,
+              }}
+            />
+          ))}
+        </div>
       </TimelineRowCtx>,
     );
+    for (const name of ["first.png", "second.png", "third.png"]) {
+      await screen
+        .getByRole("button", { name: new RegExp(`Viewed image.*${name.replace(".", "\\.")}`) })
+        .click();
+    }
     await screen.getByRole("button", { name: "Preview second.png" }).click();
     expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -2060,108 +2070,7 @@ describe("MessagesTimeline attachments", () => {
     );
   });
 
-  it("keeps an unavailable viewed image inside the 10rem work-log strip", async () => {
-    stubbedAsset.failed = true;
-    onTestFinished(() => {
-      stubbedAsset.failed = false;
-    });
-    await using screen = await renderElement(
-      <TimelineRowCtx
-        value={
-          {
-            threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
-            workspaceRoot: "/repo",
-          } as never
-        }
-      >
-        <ViewedImagesTimelineRow
-          row={{
-            kind: "viewed-images",
-            id: "viewed",
-            createdAt: CREATED_AT,
-            images: ["/repo/step-1.jpg", "/repo/step-3.jpg"].map((path) => ({
-              path,
-              pending: false,
-            })),
-          }}
-        />
-      </TimelineRowCtx>,
-    );
-    const frame = await vi.waitFor(() => {
-      const element = screen.container.querySelector<HTMLElement>(
-        '[data-image-gallery] [role="alert"]',
-      );
-      expect(element).toBeTruthy();
-      return element!;
-    });
-    const size = await vi.waitFor(() => {
-      const rect = frame.getBoundingClientRect();
-      expect(rect.width).toBeGreaterThan(0);
-      return rect;
-    });
-    expect(size.height).toBeLessThanOrEqual(161);
-    expect(size.width).toBeLessThanOrEqual(285);
-    expect(Math.abs(size.width / size.height - 16 / 9)).toBeLessThan(0.02);
-  });
-
-  it("holds a loading frame for an image a running Read is opening, then shows the image", async () => {
-    // The file does not exist yet, so asking for it would fail.
-    stubbedAsset.failed = true;
-    onTestFinished(() => {
-      stubbedAsset.failed = false;
-      stubbedAsset.url = "";
-    });
-    const strip = (pending: boolean) => (
-      <TimelineRowCtx
-        value={
-          {
-            threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
-            workspaceRoot: "/repo",
-          } as never
-        }
-      >
-        <ViewedImagesTimelineRow
-          row={{
-            kind: "viewed-images",
-            id: "viewed",
-            createdAt: CREATED_AT,
-            images: [{ path: "/repo/later.png", pending }],
-          }}
-        />
-      </TimelineRowCtx>
-    );
-    await using screen = await renderElement(strip(true));
-    const frame = await vi.waitFor(() => {
-      const element = screen.container.querySelector<HTMLElement>(
-        '[data-image-gallery] [role="status"]',
-      );
-      expect(element?.getAttribute("aria-label")).toBe("Loading image");
-      return element!;
-    });
-    expect(screen.container.querySelector('[role="alert"]')).toBeNull();
-    expect(screen.text()).not.toContain("Image unavailable");
-    const size = await vi.waitFor(() => {
-      const rect = frame.getBoundingClientRect();
-      expect(rect.width).toBeGreaterThan(0);
-      return rect;
-    });
-    expect(size.height).toBeLessThanOrEqual(161);
-    expect(Math.abs(size.width / size.height - 16 / 9)).toBeLessThan(0.02);
-
-    stubbedAsset.failed = false;
-    stubbedAsset.url =
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-    await screen.rerender(strip(false));
-    await vi.waitFor(() =>
-      expect(
-        screen.container.querySelector<HTMLImageElement>(
-          '[data-image-gallery] img[alt="later.png"]',
-        )?.className,
-      ).not.toContain("invisible"),
-    );
-  });
-
-  it("opens an image from an expanded tool row as a gallery of the turn's viewed images", async () => {
+  it("opens a viewed image with its collapsed siblings in the gallery", async () => {
     stubbedAsset.url =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     onTestFinished(() => {
@@ -2181,17 +2090,8 @@ describe("MessagesTimeline attachments", () => {
       [read("first.png"), read("second.png"), read("third.png")],
       { onImageExpand, workspaceRoot: "/repo" },
     );
-    await click(screen.button(/^Read 3 files/));
-    await vi.waitFor(() => expect(screen.buttons("Read")).toHaveLength(3));
-    await click(screen.buttons("Read")[1]!);
-    const inRow = await vi.waitFor(() => {
-      const image = [...screen.container.querySelectorAll("img")].find(
-        (img) => img.alt === "second.png" && !img.closest("[data-image-gallery]"),
-      );
-      expect(image).toBeTruthy();
-      return image!;
-    });
-    await click(inRow.closest<HTMLElement>("button, [role=button]")!);
+    await click(screen.button(/^Viewed image.*second\.png/));
+    await screen.getByRole("button", { name: "Preview second.png" }).click();
     expect(onImageExpand).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         index: 1,

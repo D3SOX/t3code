@@ -85,9 +85,9 @@ function project(id: string): Project {
 
 describe("sidebar header new thread", () => {
   it.each([
-    { mode: "normal", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: false, picker: true },
-    { mode: "boring", count: 2, shift: true, picker: false },
+    { mode: "normal", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: false, picker: false },
+    { mode: "boring", count: 2, shift: true, picker: true },
     { mode: "boring", count: 1, shift: false, picker: false },
   ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
     using stack = new DisposableStack();
@@ -108,6 +108,7 @@ describe("sidebar header new thread", () => {
       activeDraftThread: null,
       activeThread: null,
       defaultProjectRef: currentProjectRef,
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: startThread,
       routeDraftId: null,
@@ -175,6 +176,7 @@ describe("sidebar project folder new thread", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: dev1Thread,
+      preferredProjectRef: null,
       defaultProjectRef: dev1ProjectRef,
       defaultProjectFallbackReady: true,
       handleNewThread: startThread,
@@ -212,6 +214,7 @@ describe("sidebar numbered jumps", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
+      preferredProjectRef: null,
       defaultProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn(),
@@ -287,6 +290,7 @@ describe("sidebar render isolation", () => {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
       },
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
       routeDraftId: null,
@@ -365,6 +369,7 @@ describe("sidebar thread rename", () => {
           environmentId: activeProject.environmentId,
           projectId: activeProject.id,
         },
+        preferredProjectRef: null,
         defaultProjectFallbackReady: true,
         handleNewThread: vi.fn().mockResolvedValue(null),
         routeDraftId: null,
@@ -405,6 +410,7 @@ describe("sidebar thread click", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
+      preferredProjectRef: null,
       defaultProjectRef: {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
@@ -454,6 +460,7 @@ describe("sidebar thread menu", () => {
     vi.mocked(useHandleNewThread).mockReturnValue({
       activeDraftThread: null,
       activeThread: null,
+      preferredProjectRef: null,
       defaultProjectRef: {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
@@ -523,6 +530,7 @@ describe("sidebar settled pagination", () => {
         environmentId: activeProject.environmentId,
         projectId: activeProject.id,
       },
+      preferredProjectRef: null,
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
       routeDraftId: null,
@@ -572,5 +580,76 @@ describe("sidebar settled pagination", () => {
     const loadedRows = screen.container.querySelectorAll("[data-thread-item]").length;
     await act(() => moreButton.click());
     expect(screen.container.querySelectorAll("[data-thread-item]")).toHaveLength(loadedRows);
+  });
+});
+
+describe("Watching PRs shelf", () => {
+  it("collapses watched threads while retaining the selected thread and removes the empty shelf", async () => {
+    using stack = new DisposableStack();
+    const style = document.createElement("style");
+    style.textContent = appCss;
+    document.head.append(style);
+    stack.defer(() => style.remove());
+    const settings = getClientSettings();
+    stack.defer(() => __setClientSettingsForTests(settings));
+    __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, boringSidebarEnabled: false });
+    const expansionKey = "t3code:sidebar:watching-expanded";
+    const previous = localStorage.getItem(expansionKey);
+    stack.defer(() =>
+      previous === null
+        ? localStorage.removeItem(expansionKey)
+        : localStorage.setItem(expansionKey, previous),
+    );
+    localStorage.removeItem(expansionKey);
+    const activeProject = project("app");
+    const threads = [1, 2, 3].map((index) => ({
+      ...threadShell(activeProject.id, index),
+      title: `PR watch ${index}`,
+      pendingBackgroundTasks: [
+        { taskId: `pull-request-watch:github.com/acme/app#${index}`, kind: "monitor" as const },
+      ],
+    }));
+    const routeThreadRef = { environmentId: activeProject.environmentId, threadId: threads[0]!.id };
+    vi.mocked(useProjects).mockReturnValue([activeProject]);
+    vi.mocked(useQuietThreadShells).mockReturnValue(threads);
+    vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef: routeThreadRef });
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: {
+        environmentId: activeProject.environmentId,
+        projectId: activeProject.id,
+      },
+      preferredProjectRef: null,
+      defaultProjectFallbackReady: true,
+      handleNewThread: vi.fn().mockResolvedValue(null),
+      routeDraftId: null,
+      routeThreadRef,
+    });
+    const tree = () => (
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>
+    );
+    await using screen = await render(tree());
+    const shelf = screen.container.querySelector<HTMLElement>(
+      '[data-sidebar-row="shelf:watching"]',
+    );
+    expect(shelf).not.toBeNull();
+    expect(shelf).toHaveAttribute("aria-expanded", "false");
+    await expect.element(screen.getByText("PR watch 1").first()).toBeInTheDocument();
+    await expect.element(screen.getByText("PR watch 2")).not.toBeInTheDocument();
+    await act(() => shelf!.click());
+    await expect.element(screen.getByText("PR watch 2").first()).toBeInTheDocument();
+    await act(() => shelf!.click());
+    await expect.element(screen.getByText("PR watch 2")).not.toBeInTheDocument();
+    vi.mocked(useQuietThreadShells).mockReturnValue(
+      threads.map((thread) => ({ ...thread, pendingBackgroundTasks: [] })),
+    );
+    await screen.rerender(tree());
+    await expect
+      .element(screen.getByRole("button", { name: /Watching PRs/ }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByText("PR watch 2").first()).toBeInTheDocument();
   });
 });

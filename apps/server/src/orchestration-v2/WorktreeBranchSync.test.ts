@@ -17,6 +17,66 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 
+it.effect("backfills active and archived worktrees without a branch-change event", () => {
+  const finished = Deferred.makeUnsafe<void>();
+  const commands: OrchestrationV2ServerCommand[] = [];
+  const thread = (id: string, branch: string | null) =>
+    ({ id: ThreadId.make(id), branch, worktreePath: "/worktree" }) as OrchestrationV2ThreadShell;
+  const active = thread("active", "generated");
+  const archived = thread("archived", null);
+  return Effect.gen(function* () {
+    yield* Layer.build(WorktreeBranchSync.layer);
+    yield* Deferred.await(finished);
+    assert.deepEqual(
+      commands.map((command) => {
+        if (command.type !== "thread.metadata.update") throw new Error("Unexpected command");
+        return [command.threadId, command.branch, command.expectedBranch];
+      }),
+      [
+        ["active", "actual", "generated"],
+        ["archived", "actual", null],
+      ],
+    );
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        FileSystem.layerNoop({ realPath: (path) => Effect.succeed(path) }),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThreadWorktreePaths: (input) =>
+            Effect.succeed(
+              (input?.includeArchived ? [active, archived] : [active]).map((thread) => ({
+                threadId: thread.id,
+                worktreePath: "/worktree",
+              })),
+            ),
+        }),
+        Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
+          streamBranchChanges: Stream.empty,
+        }),
+        Layer.mock(GitWorkflowService.GitWorkflowService)({
+          currentBranch: () => Effect.succeed("actual"),
+        }),
+        Layer.mock(ThreadManagement.ThreadManagementService)({
+          getShellSnapshot: () =>
+            Effect.succeed({
+              schemaVersion: 2,
+              snapshotSequence: 0,
+              threads: [active],
+              archivedThreads: [archived],
+            }),
+          dispatch: (command) =>
+            Effect.gen(function* () {
+              commands.push(command);
+              if (commands.length === 2) yield* Deferred.succeed(finished, undefined);
+              return { sequence: commands.length, storedEvents: [] };
+            }),
+        }),
+      ),
+    ),
+    Effect.scoped,
+  );
+});
+
 it.effect.each([false, true])(
   "reconciles shared worktree branches without changing root checkouts or detached HEADs, conflict=%s",
   (conflict) => {
@@ -54,6 +114,7 @@ it.effect.each([false, true])(
           ["generated", "union", "t3/unify-converter-branches", "/worktree"],
           ["shared", "union", "t3/bfc349ae", "/link/worktree"],
           ["archived", "union", "t3/bfc349ae", "/worktree"],
+          ...(conflict ? [["generated", "union", "t3/unify-converter-branches", "/worktree"]] : []),
         ],
       );
     }).pipe(
@@ -82,7 +143,7 @@ it.effect.each([false, true])(
             ),
           }),
           Layer.mock(GitWorkflowService.GitWorkflowService)({
-            currentBranch: () => Effect.succeed("union"),
+            currentBranch: (cwd) => Effect.succeed(cwd === "/other" ? "feature" : "union"),
           }),
           Layer.mock(ThreadManagement.ThreadManagementService)({
             getShellSnapshot: () => Effect.succeed(snapshot),
@@ -99,6 +160,14 @@ it.effect.each([false, true])(
                     commandType: command.type,
                     cause: "Thread moved before branch metadata could be applied.",
                   });
+                }
+                if (command.type === "thread.metadata.update") {
+                  const update = (thread: OrchestrationV2ThreadShell) =>
+                    thread.id === command.threadId
+                      ? { ...thread, branch: command.branch ?? thread.branch }
+                      : thread;
+                  snapshot.threads = snapshot.threads.map(update);
+                  snapshot.archivedThreads = snapshot.archivedThreads.map(update);
                 }
                 return { sequence: commands.length, storedEvents: [] };
               }),

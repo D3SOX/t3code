@@ -357,3 +357,70 @@ it.layer(layerWithCeiling)("runtime mode ceiling", (it) => {
     }),
   );
 });
+
+it.layer(layerTest)("DispatchModeLimit after-next-tool delivery", (it) => {
+  // Delivery after the next tool call steers the running turn later, like a parked steer.
+  it.effect("keeps a limited caller's follow-up waiting for the turn to end", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = ThreadId.make("thread:limit-after-next-tool");
+      yield* createThread(threadId);
+      const message = (
+        id: string,
+        dispatchMode:
+          | { readonly type: "start_immediately" }
+          | { readonly type: "queue_after_active"; readonly afterNextTool: true },
+      ) =>
+        ({
+          type: "message.dispatch",
+          commandId: CommandId.make(`message:${id}`),
+          threadId,
+          messageId: MessageId.make(`message:${id}`),
+          text: id,
+          attachments: [],
+          dispatchMode,
+          createdBy: "agent",
+          creationSource: "mcp",
+        }) as const;
+      yield* orchestrator.dispatch(message("active", { type: "start_immediately" }));
+      yield* orchestrator
+        .dispatch(message("limited", { type: "queue_after_active", afterNextTool: true }))
+        .pipe(Effect.provideService(DispatchModeLimit, supervised));
+      yield* orchestrator.dispatch(
+        message("unlimited", { type: "queue_after_active", afterNextTool: true }),
+      );
+      const runs = (yield* orchestrator.getThreadProjection(threadId)).runs;
+      const runFor = (id: string) =>
+        runs.find((run) => run.userMessageId === MessageId.make(`message:${id}`))!;
+      assert.notEqual(runFor("limited").queueAfterNextTool, true);
+      assert.isTrue(runFor("unlimited").queueAfterNextTool);
+
+      const timing = {
+        type: "queued-message.promote-to-steer",
+        commandId: CommandId.make("limited-timing"),
+        threadId,
+        queuedRunId: runFor("limited").id,
+        targetRunId: runFor("active").id,
+        afterNextTool: true,
+      } as const;
+      const refused = yield* orchestrator
+        .dispatch(timing)
+        .pipe(Effect.provideService(DispatchModeLimit, supervised), Effect.flip);
+      assert.equal(refused._tag, "OrchestratorDispatchError");
+
+      yield* orchestrator
+        .dispatch({
+          type: "queued-run.edit",
+          commandId: CommandId.make("limited-edit"),
+          threadId,
+          runId: runFor("unlimited").id,
+          text: "edited",
+        })
+        .pipe(Effect.provideService(DispatchModeLimit, supervised));
+      const edited = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+        (run) => run.id === runFor("unlimited").id,
+      );
+      assert.notEqual(edited?.queueAfterNextTool, true);
+    }),
+  );
+});

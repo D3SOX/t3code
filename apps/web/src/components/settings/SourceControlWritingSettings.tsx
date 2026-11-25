@@ -99,6 +99,8 @@ export function SourceControlWritingSettingsSection() {
   const instructionsMixed = styleFieldMixed("customInstructions");
   const templatesMixed = styleFieldMixed("followChangeRequestTemplates");
   const writingStyleMixed = modeMixed || instructionsMixed;
+  const automaticTitlesMixed = useScopedSettingsMixed(["autoGenerateThreadTitles"]);
+  const automaticBranchNamesMixed = useScopedSettingsMixed(["autoGenerateBranchNames"]);
   const mixedWriterModel = useScopedSettingsMixed(["sourceControlWriterModelSelection"]);
   const mixedReviewGuideModel = useScopedSettingsMixed(["reviewGuideModelSelection"]);
   const mixedReviewGuideInstructions = useScopedSettingsMixed(["reviewGuideInstructions"]);
@@ -203,6 +205,71 @@ export function SourceControlWritingSettingsSection() {
 
   return (
     <SettingsSection id="source-control-text-generation" title={gt("Commits & pull requests")}>
+      <SettingsRow
+        serverScoped
+        settingKeys={["autoGenerateThreadTitles"]}
+        mixed={automaticTitlesMixed}
+        {...setting("automatic-thread-titles")}
+        description={gt("Generate a concise title from the first message in a new thread.")}
+        resetAction={
+          automaticTitlesMixed ||
+          settings.autoGenerateThreadTitles !==
+            DEFAULT_UNIFIED_SETTINGS.autoGenerateThreadTitles ? (
+            <SettingResetButton
+              ariaLabel={gt("Reset automatic thread titles to default")}
+              onClick={() =>
+                updateSettings({
+                  autoGenerateThreadTitles: DEFAULT_UNIFIED_SETTINGS.autoGenerateThreadTitles,
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Switch
+            mixed={automaticTitlesMixed}
+            checked={automaticTitlesMixed ? false : settings.autoGenerateThreadTitles}
+            onCheckedChange={(checked) =>
+              updateSettings({ autoGenerateThreadTitles: Boolean(checked) })
+            }
+            aria-label={gt("Generate thread titles automatically")}
+          />
+        }
+      />
+
+      <SettingsRow
+        serverScoped
+        settingKeys={["autoGenerateBranchNames"]}
+        mixed={automaticBranchNamesMixed}
+        {...setting("automatic-branch-names")}
+        description={gt(
+          "Rename temporary worktree branches from the first message in a new thread.",
+        )}
+        resetAction={
+          automaticBranchNamesMixed ||
+          settings.autoGenerateBranchNames !== DEFAULT_UNIFIED_SETTINGS.autoGenerateBranchNames ? (
+            <SettingResetButton
+              ariaLabel={gt("Reset automatic branch names to default")}
+              onClick={() =>
+                updateSettings({
+                  autoGenerateBranchNames: DEFAULT_UNIFIED_SETTINGS.autoGenerateBranchNames,
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Switch
+            mixed={automaticBranchNamesMixed}
+            checked={automaticBranchNamesMixed ? false : settings.autoGenerateBranchNames}
+            onCheckedChange={(checked) =>
+              updateSettings({ autoGenerateBranchNames: Boolean(checked) })
+            }
+            aria-label={gt("Generate branch names automatically")}
+          />
+        }
+      />
+
       <SettingsRow
         serverScoped
         settingKeys={["sourceControlWritingStyle"]}
@@ -400,7 +467,9 @@ export function SourceControlWritingSettingsSection() {
                       model={reviewGuideSelection.model}
                       modelOptions={reviewGuideSelection.options ?? []}
                       allowPromptInjectedEffort={false}
-                      includePlanAgent={selectsPlanAgent(reviewGuideSelection.options)}
+                      planModeEnabled={
+                        settings.planModeEnabled || selectsPlanAgent(reviewGuideSelection.options)
+                      }
                       triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                       onModelOptionsChange={(options) =>
                         updateSettings({
@@ -609,7 +678,9 @@ export function SourceControlWritingSettingsSection() {
                     model={activeSelection.model}
                     modelOptions={activeSelection.options ?? []}
                     allowPromptInjectedEffort={false}
-                    includePlanAgent={selectsPlanAgent(activeSelection.options)}
+                    planModeEnabled={
+                      settings.planModeEnabled || selectsPlanAgent(activeSelection.options)
+                    }
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(options) =>
                       updateSettings({

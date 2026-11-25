@@ -1,5 +1,7 @@
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
+import { usePullRequestLinkContextMenu } from "../../lib/openPullRequestLink";
+import { useClientSettings } from "../../hooks/useSettings";
 import { ThreadHoverCard, ThreadHoverCardTrigger } from "../ThreadHoverCard";
 import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
@@ -588,6 +590,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 
 const TOP_STATUS_ICONS = {
   working: CircleDashedIcon,
+  background: TerminalIcon,
   waiting: CircleDotDashedIcon,
   input: MessageCircleQuestionIcon,
   request: UserRoundIcon,
@@ -740,6 +743,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     threadEnvironment.pendingSyncAtom(thread.environmentId),
     (threads) => threads.has(thread.id),
   );
+  const showThreadBranches = useClientSettings((settings) => settings.sidebarShowThreadBranches);
   const { leaseLiveStatus, rowRef: leaseRowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const { revealRef } = props;
   const rowRef = (row: HTMLElement | null) => {
@@ -756,6 +760,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
+  const openPrLinkContextMenu = usePullRequestLinkContextMenu();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,
@@ -768,7 +773,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     event.stopPropagation();
     discardComposerDraft(threadRef);
   };
-
   const gitCwd = thread.worktreePath ?? props.project?.workspaceRoot ?? null;
   const linkedPullRequestStatus = useLinkedThreadPullRequest(
     thread.environmentId,
@@ -800,7 +804,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const currentLinkedPr = supportsMultiplePullRequests
     ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
     : null;
-
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarRowStatus({ ...thread, lastVisitedAt });
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
@@ -817,68 +820,73 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isSelected,
   });
   const topStatus =
-    status === "preparing" || status === "working"
+    status === "background"
       ? {
-          label:
-            status === "preparing"
-              ? gt("Setting up")
-              : thread.goal?.status === "active"
-                ? gt("Goal", { $context: "thread status: working on a goal" })
-                : gt("Working", { $context: "thread status" }),
-          icon: "working" as const,
-          className: "text-info-foreground",
+          label: gt("Background", { $context: "thread status: running in the background" }),
+          icon: "background" as const,
+          className: "text-teal-700 dark:text-teal-300",
         }
-      : status === "waiting"
+      : status === "preparing" || status === "working"
         ? {
-            label: gt("Waiting", { $context: "thread status" }),
-            icon: "waiting" as const,
-            className: "text-muted-foreground",
+            label:
+              status === "preparing"
+                ? gt("Setting up")
+                : thread.goal?.status === "active"
+                  ? gt("Goal", { $context: "thread status: working on a goal" })
+                  : gt("Working", { $context: "thread status" }),
+            icon: "working" as const,
+            className: "text-info-foreground",
           }
-        : status === "approval"
+        : status === "waiting"
           ? {
-              label: gt("Approval", { $context: "thread status: needs approval" }),
-              icon: "approval" as const,
-              className: "text-warning-foreground",
+              label: gt("Waiting", { $context: "thread status" }),
+              icon: "waiting" as const,
+              className: "text-muted-foreground",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: gt("Input", { $context: "thread status: needs user input" }),
-                icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: gt("Approval", { $context: "thread status: needs approval" }),
+                icon: "approval" as const,
+                className: "text-warning-foreground",
               }
-            : status === "request"
+            : status === "input"
               ? {
-                  label: gt("Request", { $context: "thread status: guest request" }),
-                  icon: "request" as const,
-                  className: "text-guest-foreground",
+                  label: gt("Input", { $context: "thread status: needs user input" }),
+                  icon: "input" as const,
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : status === "limited"
+              : status === "request"
                 ? {
-                    label: gt("Limited", { $context: "thread status: usage limited" }),
-                    icon: "failed" as const,
-                    className: "text-warning-foreground",
+                    label: gt("Request", { $context: "thread status: guest request" }),
+                    icon: "request" as const,
+                    className: "text-guest-foreground",
                   }
-                : status === "failed"
+                : status === "limited"
                   ? {
-                      label: gt("Failed", { $context: "thread status" }),
+                      label: gt("Limited", { $context: "thread status: usage limited" }),
                       icon: "failed" as const,
-                      className: "text-error-foreground",
+                      className: "text-warning-foreground",
                     }
-                  : isWoke
+                  : status === "failed"
                     ? {
-                        label: gt("Woke", { $context: "thread status: woke from snooze" }),
-                        icon: "woke" as const,
-                        className: "text-warning-foreground",
+                        label: gt("Failed", { $context: "thread status" }),
+                        icon: "failed" as const,
+                        className: "text-error-foreground",
                       }
-                    : isUnread
+                    : isWoke
                       ? {
-                          label: gt("Done", { $context: "thread status" }),
-                          icon: "done" as const,
-                          className: "text-success-foreground",
+                          label: gt("Woke", { $context: "thread status: woke from snooze" }),
+                          icon: "woke" as const,
+                          className: "text-warning-foreground",
                         }
-                      : null;
+                      : isUnread
+                        ? {
+                            label: gt("Done", { $context: "thread status" }),
+                            icon: "done" as const,
+                            className: "text-success-foreground",
+                          }
+                        : null;
   const isWokeStatus = topStatus?.icon === "woke";
-
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
@@ -916,7 +924,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       terminalProcessCount={terminalProcessCount}
     />
   );
-
   const intentPrefetch = useThreadIntentPrefetch(threadRef);
   const handleClick = (event: ReactMouseEvent) => {
     onThreadClick(event, threadRef);
@@ -1012,7 +1019,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     setSnoozeGateClock({ thread, now: new Date().toISOString() });
   }
   const snoozeGateNow = snoozeGateClock.now;
-  const snoozeGateExpiryMs = hasQueuedTurnStart(thread, { now: snoozeGateNow })
+  const snoozeGateExpiryMs = hasQueuedTurnStart(thread, {
+    now: snoozeGateNow,
+  })
     ? Date.parse(thread.latestUserMessageAt ?? "") + QUEUED_TURN_START_GRACE_MS
     : Number.NaN;
   // A gate still closed past its expiry is held by runtime status, not time,
@@ -1040,7 +1049,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onThreadActivate(threadRef);
     }
   };
-
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" &&
@@ -1094,7 +1102,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {dropVerbBadge[destinationVerb]}
       </span>
     ) : null;
-
   const accessibility = resolveSidebarRowAccessibility({
     title: thread.title,
     statusLabel: pendingSync ? gt("Pending") : (topStatus?.label ?? null),
@@ -1102,49 +1109,50 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isActive: props.isActive,
   });
 
-  const title = isRenaming ? (
-    <ThreadRenameInput
-      title={renamingTitle}
-      onTitleChange={onRenameTitleChange}
-      onCommit={() => onCommitRename(threadRef, renamingTitle)}
-      onCancel={onCancelRename}
-    />
-  ) : (
-    <span
-      ref={isRegeneratingTitle ? observeVisibleAnimation : undefined}
-      className={cn(
-        "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
-        isRegeneratingTitle
-          ? "relative truncate text-muted-foreground"
-          : variant !== "slim"
-            ? cn(
-                "truncate",
-                shouldRecede
-                  ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
-                  : status === "failed" && !isUnread && !isWoke
-                    ? "text-foreground/95"
-                    : "text-foreground",
-              )
-            : cn(
-                "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-                shouldRecede
-                  ? "text-secondary-label"
-                  : props.isActive || isWoke || status === "input" || status === "request"
-                    ? "text-foreground"
-                    : isUnread
-                      ? "text-muted-foreground"
-                      : "text-secondary-label/70",
-              ),
-      )}
-      dir={textDirection(thread.title)}
-    >
-      {thread.title}
-      {isRegeneratingTitle ? (
-        <ActivityShimmerOverlay className="truncate">{thread.title}</ActivityShimmerOverlay>
-      ) : null}
-    </span>
-  );
+  const title =
+    isRenaming && canOperateThread ? (
+      <ThreadRenameInput
+        title={renamingTitle}
+        onTitleChange={onRenameTitleChange}
+        onCommit={() => onCommitRename(threadRef, renamingTitle)}
+        onCancel={onCancelRename}
+      />
+    ) : (
+      <span
+        ref={isRegeneratingTitle ? observeVisibleAnimation : undefined}
+        className={cn(
+          "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
+          shouldRecede ? "font-normal" : "font-medium",
+          isRegeneratingTitle
+            ? "relative truncate text-muted-foreground"
+            : variant !== "slim"
+              ? cn(
+                  "truncate",
+                  shouldRecede
+                    ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
+                    : status === "failed" && !isUnread && !isWoke
+                      ? "text-foreground/95"
+                      : "text-foreground",
+                )
+              : cn(
+                  "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+                  shouldRecede
+                    ? "text-secondary-label"
+                    : props.isActive || isWoke || status === "input" || status === "request"
+                      ? "text-foreground"
+                      : isUnread
+                        ? "text-muted-foreground"
+                        : "text-secondary-label/70",
+                ),
+        )}
+        dir={textDirection(thread.title)}
+      >
+        {thread.title}
+        {isRegeneratingTitle ? (
+          <ActivityShimmerOverlay className="truncate">{thread.title}</ActivityShimmerOverlay>
+        ) : null}
+      </span>
+    );
 
   const prBadgeShape = supportsMultiplePullRequests
     ? resolveThreadPullRequestBadge(thread.pullRequests)
@@ -1164,6 +1172,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         status={prStatus}
         onOpenList={openLinkedItems}
         onOpenPullRequest={handlePrClick}
+        onOpenPullRequestContextMenu={(event) => {
+          const url = pr?.url ?? currentLinkedPr?.url;
+          if (url) {
+            openPrLinkContextMenu(
+              event,
+              url,
+              readOpensPullRequestsInRightPanel() ? threadRef : undefined,
+            );
+          }
+        }}
       />
     ) : null;
   const firstIssue = thread.issues?.[0];
@@ -1257,6 +1275,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           </>
         }
       >
+        {/* Pin marks the pinned state at rest; hover and focus swap in pin-off so the
+            icon reads as the action the button performs. */}
         <PinIcon
           aria-hidden
           className="size-3 shrink-0 group-hover/unpin:hidden group-focus-visible/unpin:hidden"
@@ -1278,53 +1298,73 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const diff = latestRunDiff(thread);
   // Only the trailing icons would remain, so the row moves them to the title line instead.
   const metaLineEmpty =
-    props.environmentLabel === null &&
+    (!showThreadBranches || (!checkoutThread.branch && props.environmentLabel === null)) &&
     prBadge === null &&
     issueBadge === null &&
     diff === null &&
     runningTerminalIds.length === 0;
-  const metaLine = metaLineEmpty ? null : (
-    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-      {props.environmentLabel !== null ? (
-        <>
-          <EnvironmentMachineIcon
-            aria-hidden
-            kind={props.environmentMachine}
-            className="size-3.5 shrink-0 text-icon-muted"
-          />
-          <span className="min-w-0 flex-1 truncate">{props.environmentLabel}</span>
-        </>
-      ) : (
-        <span className="flex-1" />
-      )}
-      {terminalStatusIcon}
-      {prBadge}
-      {issueBadge}
-      {diff ? (
-        <span className="shrink-0 font-mono">
-          <span className="text-diff-addition-foreground">+{formatDiffCount(diff.insertions)}</span>{" "}
-          <span className="text-diff-deletion-foreground">−{formatDiffCount(diff.deletions)}</span>
-        </span>
-      ) : null}
-      <span
-        aria-hidden
-        className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+  const metaLine =
+    showThreadBranches && metaLineEmpty ? null : (
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
+          // Shares the project line with the row actions; items that no longer fit wrap out of
+          // sight instead of sliding under them.
+          showThreadBranches ? "mt-0.5" : "h-4 flex-wrap overflow-hidden",
+        )}
       >
+        {showThreadBranches && checkoutThread.branch ? (
+          <>
+            <GitBranchIcon aria-hidden className="size-3 shrink-0 text-icon-muted" />
+            <span className="flex min-w-0 flex-1">
+              <MiddleTruncate value={checkoutThread.branch} showTitle={false} />
+            </span>
+          </>
+        ) : showThreadBranches && props.environmentLabel !== null ? (
+          <>
+            <EnvironmentMachineIcon
+              aria-hidden
+              kind={props.environmentMachine}
+              className="size-3.5 shrink-0 text-icon-muted"
+            />
+            <span className="min-w-0 flex-1 truncate">{props.environmentLabel}</span>
+          </>
+        ) : showThreadBranches ? (
+          <span className="flex-1" />
+        ) : null}
+        {terminalStatusIcon}
+        {prBadge}
+        {issueBadge}
+        {diff ? (
+          <span className="shrink-0 font-mono">
+            <span className="text-diff-addition-foreground">
+              +{formatDiffCount(diff.insertions)}
+            </span>{" "}
+            <span className="text-diff-deletion-foreground">
+              −{formatDiffCount(diff.deletions)}
+            </span>
+          </span>
+        ) : null}
+        <span
+          aria-hidden
+          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+        >
+          <SidebarProviderStack
+            thread={thread}
+            providerEntryByInstanceId={props.providerEntryByInstanceId}
+          />
+        </span>
+      </div>
+    );
+  const titleLineIcons =
+    showThreadBranches && metaLineEmpty ? (
+      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
         <SidebarProviderStack
           thread={thread}
           providerEntryByInstanceId={props.providerEntryByInstanceId}
         />
       </span>
-    </div>
-  );
-  const titleLineIcons = metaLineEmpty ? (
-    <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
-      <SidebarProviderStack
-        thread={thread}
-        providerEntryByInstanceId={props.providerEntryByInstanceId}
-      />
-    </span>
-  ) : null;
+    ) : null;
 
   if (variant !== "card") {
     const multiline = variant === "folder-multiline";
@@ -1547,8 +1587,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       // The hints are the rendered heights inside py-0.5. Revealing the open thread measures rows
       // that have not rendered yet, so a hint off by a pixel lands it a pixel short per row above.
       className={cn(
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
-        metaLineEmpty && "[contain-intrinsic-size:auto_60px]",
+        // Keep offscreen sizing in sync with the content box below.
+        "list-none py-0.5 [content-visibility:auto]",
+        showThreadBranches && !metaLineEmpty
+          ? "[contain-intrinsic-size:auto_78px]"
+          : "[contain-intrinsic-size:auto_60px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1579,8 +1622,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       >
         <div
           className={cn(
-            "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-            metaLineEmpty && "h-auto",
+            "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+            showThreadBranches ? "h-[4.875rem]" : "flex h-15 flex-col gap-1",
+            showThreadBranches && metaLineEmpty && "h-auto",
           )}
         >
           <div className="flex h-5 min-w-0 items-center gap-1.5">
@@ -1600,6 +1644,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             ) : (
               <span className="flex-1" />
             )}
+            {showThreadBranches ? null : metaLine}
             {sortable?.isDragging ? (
               dragDestination
             ) : (
@@ -1610,6 +1655,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                 )}
               >
+                {/* Read-only status labels yield to the hover actions. Woke is
+                    itself an action, so it stays pointer-enabled and visible
+                    while the other controls appear beside it. */}
                 <span
                   className={cn(
                     isWokeStatus
@@ -1663,7 +1711,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               startedAt={resolveWorkingStartedAt(thread)}
                             />
                           </span>
-                        ) : status === "waiting" ? (
+                        ) : status === "waiting" || status === "background" ? (
                           <span aria-hidden>
                             <WorkingDuration
                               environmentId={thread.environmentId}
@@ -1740,9 +1788,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
               </span>
             )}
+            {/* A sweep hides the slot rather than unmounting it, so the
+                pressed action button stays connected and a cancelled sweep's
+                release click still fires and is consumed. */}
             {props.sweepAction !== null ? dragDestination : null}
           </div>
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <div className={cn("flex min-w-0", showThreadBranches && "mt-1")}>
             {title}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -1751,7 +1802,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             ) : null}
             {titleLineIcons}
           </div>
-          {metaLine}
+          {showThreadBranches ? metaLine : null}
         </div>
       </ThreadHoverCardTrigger>
     </li>

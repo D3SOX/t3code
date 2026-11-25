@@ -97,6 +97,7 @@ const inlineAssetMimeType = (filePath: string, claimed: string | undefined): str
   );
 };
 
+/** RFC 6266 disposition with an ASCII fallback name plus a UTF-8 `filename*`. */
 export function downloadContentDisposition(fileName?: string): string {
   if (fileName === undefined) {
     return "attachment";
@@ -152,6 +153,7 @@ export function assetResponseHeaders(
   };
 }
 
+/** A single byte range for native media readers; unsupported range syntax uses the full file. */
 function assetByteRange(header: string, size: bigint) {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
   if (!match || (!match[1] && !match[2])) return null;
@@ -181,6 +183,7 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     readonly fileName?: string;
     readonly mimeType?: string;
     readonly file?: OpenMediaFile;
+    readonly mutable?: boolean;
     readonly renderIntent?: "mcp-app" | "file-preview";
   },
   rangeHeader?: string,
@@ -231,8 +234,9 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   const mediaFile = asset.file;
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
   const isMedia = /^(?:audio|video)\//i.test(asset.mimeType ?? "");
-  if (isMedia) {
-    // Without file identity, validators cannot guarantee byte equality; attachments must also expire with their URL.
+  if (asset.mutable || mediaFile || isMedia) {
+    // Host files, including images, can change in place. Attachment audio/video
+    // carries no `file`, and must not outlive the signed URL that granted it either.
     headers["Cache-Control"] = "private, no-store";
   }
   let status = 200;
@@ -650,6 +654,7 @@ const loadImmutableBuildAssets = Effect.gen(function* () {
 
 const openStaticFile = Effect.fn("openStaticFile")(function* (filePath: string) {
   const fileSystem = yield* FileSystem.FileSystem;
+  // Reject directories and special files before opening. Response metadata comes from the handle.
   const pathInfo = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
   if (pathInfo?.type !== "File") return null;
   const file = yield* fileSystem.open(filePath, { flag: "r" }).pipe(
@@ -842,6 +847,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
   }),
 );
 
+// Read the installed build's manifest once. Unknown files use revalidation.
 export const layerStaticAndDevRoute = Layer.unwrap(
   loadImmutableBuildAssets.pipe(
     Effect.map((assets) => HttpRouter.add("GET", "*", handleStaticAndDevRequest(assets))),

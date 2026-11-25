@@ -1,10 +1,11 @@
 import { useMessages } from "gt-react";
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   type AssetUrlState as RuntimeAssetUrlState,
   assetUrlStateFromResult,
   blockedAssetUrlState,
   EMPTY_ASSET_URL_ATOM,
+  isMutableAssetResource,
   makeRevisionedAssetUrlFamily,
   resolveAssetUrl,
 } from "@t3tools/client-runtime/state/assets";
@@ -12,6 +13,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 
+import { useContext, useEffect } from "react";
 import { assetEnvironment } from "~/state/assets";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { usePreparedConnection } from "~/state/session";
@@ -32,18 +34,27 @@ export function useAssetUrlState(
   resource: AssetResource | null,
   revision?: string | null,
 ): AssetUrlState {
-  const blocked = blockedAssetUrlState(
-    resource,
-    useFilesystemReadAccess(environmentId, useMessages()),
-  );
+  const registry = useContext(RegistryContext);
+  const fileAccess = useFilesystemReadAccess(environmentId, useMessages());
+  const mutableResource = isMutableAssetResource(resource);
+  const blocked = blockedAssetUrlState(resource, fileAccess);
   const preparedConnection = usePreparedConnection(environmentId);
-  const result = useAtomValue(
+  const query =
     blocked !== null || environmentId === null || resource === null
       ? EMPTY_ASSET_URL_ATOM
       : revision === undefined
         ? assetEnvironment.createUrl({ environmentId, input: { resource } })
-        : revisionedAssetUrl({ environmentId, input: { resource }, revision }),
-  );
+        : revisionedAssetUrl({ environmentId, input: { resource }, revision });
+  const result = useAtomValue(query);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A new mounted image occurrence must invalidate the external URL cache once.
+  useEffect(() => {
+    if (blocked !== null || !mutableResource || revision !== undefined) return;
+    const cached = registry.get(query);
+    // A new image occurrence must not inherit another message's cached file version.
+    // An in-flight request already supplies a fresh URL, so leave it alone.
+    if (cached._tag === "Success" && !cached.waiting) registry.refresh(query);
+  }, [blocked, mutableResource, query, registry, revision]);
   if (blocked !== null) return blocked;
   return {
     ...assetUrlStateFromResult(
@@ -53,7 +64,6 @@ export function useAssetUrlState(
     ...(result.waiting ? { waiting: true } : {}),
   };
 }
-
 export function useAssetUrlRefresh(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
@@ -66,12 +76,16 @@ export function useAssetUrlRefresh(
   });
   return async () => {
     if (environmentId === null || resource === null || httpBaseUrl === null) return null;
-    const result = await refresh({ environmentId, input: { resource } });
+    const result = await refresh({
+      environmentId,
+      input: {
+        resource,
+      },
+    });
     if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     return resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
   };
 }
-
 export function useAssetUrls(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<AssetResource>,

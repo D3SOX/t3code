@@ -1,3 +1,7 @@
+import { citedMediaPaths } from "@t3tools/client-runtime/cited-media";
+import { mediaKindFromPath } from "@t3tools/shared/filePreview";
+import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presentation";
+import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/assistantInsights";
 import { MessageId, type TurnItemId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -25,7 +29,16 @@ import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./time
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
-export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+export function AssistantTimelineRow({
+  row,
+}: {
+  row: Extract<
+    TimelineRow,
+    {
+      kind: "message";
+    }
+  >;
+}) {
   const ctx = use(TimelineRowCtx);
   const gt = useGT();
   // The timeline holds a streaming message's row while only its text grows.
@@ -37,6 +50,8 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
   const messageText =
     text || (row.message.streaming || row.suppressEmptyResponse ? "" : gt("(empty response)"));
 
+  const threadRef = ctx.threadRef;
+  const citedMedia = row.message.streaming ? [] : citedMediaPaths(messageText);
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
@@ -44,7 +59,11 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
         <div data-thread-find-text="true">
           <AssistantCitationSource
             messageId={row.message.id}
-            {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
+            {...(ctx.threadRef
+              ? {
+                  threadRef: ctx.threadRef,
+                }
+              : {})}
             itemKey={row.id}
             request={ctx.citationRequest}
             listRef={ctx.listRef}
@@ -70,6 +89,29 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             />
           </AssistantCitationSource>
         </div>
+        {threadRef && citedMedia.length > 0 ? (
+          <div className="flex flex-wrap gap-2 pt-2">
+            {citedMedia.map((path) => {
+              const image = resolveViewedImageAsset(path, {
+                threadId: threadRef.threadId,
+                workspaceRoot: ctx.workspaceRoot,
+              });
+              return image ? (
+                <ChatMarkdownAssetImage
+                  key={path}
+                  environmentId={threadRef.environmentId}
+                  kind={mediaKindFromPath(path) === "video" ? "video" : "image"}
+                  resource={image.resource}
+                  alt={image.alt}
+                  srcFragment={image.srcFragment}
+                  workspaceRoot={ctx.workspaceRoot}
+                  maxHeightRem={16}
+                  onImageExpand={ctx.onImageExpand}
+                />
+              ) : null;
+            })}
+          </div>
+        ) : null}
         {!row.showAssistantMeta && row.projectedItem?.item.status === "interrupted" ? (
           <div className="mt-1.5 flex">
             <AssistantStatusBadge status="interrupted" />

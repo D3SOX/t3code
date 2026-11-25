@@ -111,6 +111,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           rootNodeId,
           activeAttemptId: null,
           status: "completed",
+          completionSilent: true,
           requestedAt: now,
           startedAt: now,
           completedAt: now,
@@ -362,6 +363,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           assert.equal(runUpdated.payload.status, "completed");
           assert.deepEqual(runUpdated.payload.completedAt, now);
           assert.isFalse(events.some((event) => event.type === "node.updated"));
+          assert.isTrue(runUpdated.payload.completionSilent);
           const capturedEvent = events.find((event) => event.type === "checkpoint.captured");
           assert.equal(
             runUpdated.payload.checkpointId,
