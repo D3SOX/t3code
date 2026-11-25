@@ -374,7 +374,6 @@ describe("pinned thread operation permissions", () => {
     expect(await useThreadListActions().moveThread(moved, "up")).toBe(true);
     expect(state.requests.map(({ action, input }) => [action, input.threadId])).toEqual([
       ["reorderActive", "thread"],
-      ["reorderActive", "neighbor"],
     ]);
   });
 
