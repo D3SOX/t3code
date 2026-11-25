@@ -59,6 +59,7 @@ import { Button, InlineButton } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { m } from "../../i18n/messages";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 export interface EditQueuedRunRequest {
   readonly runId: RunId;
   readonly messageId: MessageId;
@@ -561,32 +562,10 @@ export function QueuedRunsControl({
                               : gt("Edit in the composer")}
                           </TooltipPopup>
                         </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger render={<span className="flex shrink-0" />}>
-                            <Button
-                              size="xs"
-                              variant="ghost-muted"
-                              disabled={
-                                item.runId === null ||
-                                busyRunId !== null ||
-                                !canSendRun(item.freshContext)
-                              }
-                              onClick={() => {
-                                if (item.runId !== null) {
-                                  void sendQueuedMessage(item.runId);
-                                }
-                              }}
-                            >
-                              <CornerUpRightIcon />
-                              {workflow?.canSendNow
-                                ? gt("Send now")
-                                : gt("Steer", {
-                                    $context: "verb, sends a queued message into the running turn",
-                                  })}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipPopup>
-                            {item.serverIndex === 0 && props.steerShortcutLabel
+                        <SharedTooltipTrigger
+                          render={<span className="flex shrink-0" />}
+                          label={
+                            item.serverIndex === 0 && props.steerShortcutLabel
                               ? workflow?.canSendNow
                                 ? gt("Start a turn with this message ({shortcut})", {
                                     shortcut: props.steerShortcutLabel,
@@ -611,9 +590,31 @@ export function QueuedRunsControl({
                                   ? gt("Skip compaction and send this message")
                                   : movesCommandFirst
                                     ? gt("Move this command to the front of the queue")
-                                    : gt("Send as a steer instead")}
-                          </TooltipPopup>
-                        </Tooltip>
+                                    : gt("Send as a steer instead")
+                          }
+                        >
+                          <Button
+                            size="xs"
+                            variant="ghost-muted"
+                            disabled={
+                              item.runId === null ||
+                              busyRunId !== null ||
+                              !canSendRun(item.freshContext)
+                            }
+                            onClick={() => {
+                              if (item.runId !== null) {
+                                void sendQueuedMessage(item.runId);
+                              }
+                            }}
+                          >
+                            <CornerUpRightIcon />
+                            {workflow?.canSendNow
+                              ? gt("Send now")
+                              : gt("Steer", {
+                                  $context: "verb, sends a queued message into the running turn",
+                                })}
+                          </Button>
+                        </SharedTooltipTrigger>
                         <Tooltip>
                           <TooltipTrigger
                             render={
