@@ -18,7 +18,7 @@ import {
   type ThreadPullRequestLink,
   type VcsStatusResult,
 } from "@t3tools/contracts";
-import { msg, T, useGT, useMessages } from "gt-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { TerminalIcon } from "lucide-react";
 import { m, type MessageResolver } from "../i18n/messages";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
@@ -41,6 +41,7 @@ import {
   type ReactElement,
 } from "react";
 import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
 import { revealThreadTerminal } from "../lib/revealThreadTerminal";
 
 import { useEnvironmentQuery } from "../state/query";
@@ -408,6 +409,7 @@ export function ThreadPullRequestBadgeControl({
   status,
   onOpenList,
   onOpenPullRequest,
+  side,
   onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
@@ -418,6 +420,7 @@ export function ThreadPullRequestBadgeControl({
   status: PrStatusIndicator | null;
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
+  side?: ThreadLinkBadgeSide | undefined;
   onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const m = useMessages();
@@ -434,6 +437,7 @@ export function ThreadPullRequestBadgeControl({
       pullRequests={pullRequests}
       onOpenList={onOpenList}
       onOpenPullRequest={onOpenPullRequest}
+      side={side}
       onOpenPullRequestContextMenu={onOpenPullRequestContextMenu}
     />
   );
@@ -449,6 +453,7 @@ function PullRequestBadge({
   pullRequests,
   onOpenList,
   onOpenPullRequest,
+  side,
   onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
@@ -460,6 +465,7 @@ function PullRequestBadge({
   pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
+  side: ThreadLinkBadgeSide | undefined;
   onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const onClick = opensList
@@ -491,11 +497,13 @@ function PullRequestBadge({
       Icon={presentation.Icon}
       toneClassName={presentation.toneClassName}
       text={presentation.text}
+      side={side}
     >
       {visibleThreadPullRequests(pullRequests).length > 0 ? (
         <ThreadPullRequestsMiniList
           pullRequests={pullRequests}
           onOpenPullRequest={onOpenPullRequest}
+          onShowAll={onOpenList}
         />
       ) : number !== undefined && url !== undefined ? (
         <ul className="flex flex-col gap-1">
@@ -512,23 +520,29 @@ function PullRequestBadge({
   );
 }
 
+type ThreadLinkBadgeSide = "top" | "right";
+
 export function ThreadLinkBadge({
   control,
   Icon,
   toneClassName,
   text,
+  side = "top",
   children,
 }: {
   control: ReactElement;
   Icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   toneClassName: string;
   text: string | number;
+  side?: ThreadLinkBadgeSide | undefined;
   children: ReactNode;
 }) {
   return (
     // The shared popup renders at the app root, so a right-click in it never reaches the row.
     <SharedTooltipTrigger
       render={control}
+      side={side}
+      {...(side === "right" ? { align: "start" as const } : {})}
       sideOffset={0}
       variant="glass"
       className="w-80 max-w-[calc(100vw-2rem)] text-left whitespace-normal"
@@ -546,12 +560,54 @@ export function ThreadLinkBadge({
   );
 }
 
+// Hover previews stay short: rendering hundreds of rows froze the page and
+// filled the screen. The full list lives in the Linked items tab.
+export const LINKED_ITEMS_PREVIEW_LIMIT = 8;
+
+export function LinkedItemsOverflow({
+  hidden,
+  onShowAll,
+}: {
+  hidden: number;
+  onShowAll?: (() => void) | undefined;
+}) {
+  if (hidden <= 0) return null;
+  if (!onShowAll) {
+    return (
+      <div className="px-1 pt-1 text-muted-foreground">
+        <T>
+          +<Var>{hidden}</Var> more
+        </T>
+      </div>
+    );
+  }
+  return (
+    <Button
+      variant="ghost-muted"
+      size="xs"
+      className="mt-1 w-full justify-start"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onShowAll();
+      }}
+    >
+      <T>
+        +<Var>{hidden}</Var> more in Linked items
+      </T>
+    </Button>
+  );
+}
+
 export function ThreadPullRequestsMiniList({
   pullRequests,
   onOpenPullRequest,
+  onShowAll,
 }: {
   pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   onOpenPullRequest?: (event: MouseEvent<HTMLAnchorElement>, url: string) => void;
+  onShowAll?: (() => void) | undefined;
 }) {
   const lines = pipe(
     visibleThreadPullRequests(pullRequests),
@@ -560,37 +616,43 @@ export function ThreadPullRequestsMiniList({
   );
   if (lines.length === 0) return null;
   return (
-    <ul className="flex flex-col gap-1">
-      {lines.map((line) => {
-        const snapshot = line.link.snapshot;
-        const presentation =
-          snapshot === null
-            ? null
-            : resolvePullRequestState({ state: snapshot.state, isDraft: snapshot.isDraft });
-        return (
-          <ThreadPullRequestMiniListItem
-            key={`${line.link.host}/${line.link.repository}#${line.link.number}`}
-            number={line.link.number}
-            url={line.link.url}
-            title={snapshot?.title ?? line.link.repository}
-            presentation={presentation}
-            depth={line.depth}
-            onOpenPullRequest={onOpenPullRequest}
-          >
-            {line.stack ? (
-              <span className="ml-auto shrink-0 pl-1 text-3xs">
-                {line.stack.kind === "native" ? (
-                  <T context="a native stack of pull requests">stack</T>
-                ) : (
-                  <T context="a chain of pull requests based on each other">chain</T>
-                )}{" "}
-                · {line.stack.size}
-              </span>
-            ) : null}
-          </ThreadPullRequestMiniListItem>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="flex flex-col gap-1">
+        {lines.slice(0, LINKED_ITEMS_PREVIEW_LIMIT).map((line) => {
+          const snapshot = line.link.snapshot;
+          const presentation =
+            snapshot === null
+              ? null
+              : resolvePullRequestState({ state: snapshot.state, isDraft: snapshot.isDraft });
+          return (
+            <ThreadPullRequestMiniListItem
+              key={`${line.link.host}/${line.link.repository}#${line.link.number}`}
+              number={line.link.number}
+              url={line.link.url}
+              title={snapshot?.title ?? line.link.repository}
+              presentation={presentation}
+              depth={line.depth}
+              onOpenPullRequest={onOpenPullRequest}
+            >
+              {line.stack ? (
+                <span className="ml-auto shrink-0 pl-1 text-3xs">
+                  {line.stack.kind === "native" ? (
+                    <T context="a native stack of pull requests">stack</T>
+                  ) : (
+                    <T context="a chain of pull requests based on each other">chain</T>
+                  )}{" "}
+                  · {line.stack.size}
+                </span>
+              ) : null}
+            </ThreadPullRequestMiniListItem>
+          );
+        })}
+      </ul>
+      <LinkedItemsOverflow
+        hidden={lines.length - LINKED_ITEMS_PREVIEW_LIMIT}
+        onShowAll={onShowAll}
+      />
+    </>
   );
 }
 

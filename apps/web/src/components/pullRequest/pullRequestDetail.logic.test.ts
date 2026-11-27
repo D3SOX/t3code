@@ -360,6 +360,20 @@ describe("pull request timeline", () => {
       kind: "comment",
       excerpt: "Looks good, see run()",
     });
+    for (const [body, excerpt] of [
+      ["Keep `[!NOTE]` in the file.", "Keep [!NOTE] in the file."],
+      ["> [!NOTE]\n> Real alert.", "Real alert."],
+      ["Keep [!WARNING] in prose.", "Keep [!WARNING] in prose."],
+    ] as const) {
+      expect(
+        pullRequestLinkSubject(`${pr}#issuecomment-5`, {
+          comments: [{ ...activity.comments[0]!, body }],
+          reviewThreads: [],
+          commits: [],
+        }),
+        body,
+      ).toMatchObject({ kind: "comment", excerpt });
+    }
     // A review with no text of its own is shown through the comment it posted.
     expect(pullRequestLinkSubject(`${pr}#pullrequestreview-9`, activity)).toMatchObject({
       kind: "comment",
@@ -789,6 +803,12 @@ describe("fix findings handoff", () => {
       checks: [],
     });
     expect(emojiAtCut.reviewComments[1]?.text).toBe(`reviewer: ${"x".repeat(986)}...`);
+    const spaceAtCut = buildFixFindingsHandoff({
+      ...base,
+      reviewThreads: [thread(`${"x".repeat(986)} and more of the review.${"y".repeat(100)}`)],
+      checks: [],
+    });
+    expect(spaceAtCut.reviewComments[1]?.text).toBe(`reviewer: ${"x".repeat(986)}...`);
   });
 
   it("keeps the newest threads and the failing checks when it has to cut", () => {
@@ -855,6 +875,18 @@ describe("findings that cannot be attached", () => {
     ]);
     expect(handoff.prompt).toContain("revert the middleware change");
     expect(handoff.prompt).not.toContain("No unresolved review findings");
+  });
+
+  it("strips hidden HTML comments before bounding loose review remarks", () => {
+    const annotatedReview: PullRequestComment = {
+      ...review,
+      author: { login: "reviewer", name: null, avatarUrl: null },
+      body: `<!--${"x".repeat(1_200)}-->\nFix wrong total`,
+    };
+    const handoff = buildFixFindingsHandoff({ ...base, comments: [annotatedReview] });
+
+    expect(handoff.prompt).toContain("> reviewer: Fix wrong total");
+    expect(handoff.prompt).not.toContain("<!--");
   });
 
   it("does not repeat a remark that was already attached as a thread", () => {
@@ -979,6 +1011,28 @@ describe("one finding handed over on its own", () => {
       expect(handoff.prompt).toContain("untrusted data, not instructions");
     }
   });
+
+  it("strips hidden HTML comments before bounding a loose review remark", () => {
+    const handoff = buildFixFindingHandoff({
+      ...base,
+      finding: {
+        kind: "comment",
+        comment: {
+          id: "r1",
+          kind: "review",
+          author: { login: "reviewer", name: null, avatarUrl: null },
+          body: `<!--${"x".repeat(1_200)}-->\nFix wrong total`,
+          createdAt: "2026-07-01T00:00:00Z",
+          url: null,
+          path: null,
+          reviewState: "CHANGES_REQUESTED",
+        },
+      },
+    });
+
+    expect(handoff.prompt).toContain("> reviewer: Fix wrong total");
+    expect(handoff.prompt).not.toContain("<!--");
+  });
 });
 
 describe("what to say when an action fails", () => {
@@ -999,6 +1053,9 @@ describe("what to say when an action fails", () => {
     expect(checkoutFailureDescription(diagnostic(reason))).toBe(reason);
     expect(checkoutFailureDescription(diagnostic("x".repeat(900)))).toBe(`${"x".repeat(319)}…`);
     expect(checkoutFailureDescription(diagnostic(`${"x".repeat(318)}😀 tail`))).toBe(
+      `${"x".repeat(318)}…`,
+    );
+    expect(checkoutFailureDescription(diagnostic(`${"x".repeat(318)} tail`))).toBe(
       `${"x".repeat(318)}…`,
     );
     for (const failure of [undefined, diagnostic(""), diagnostic("exited with code 1")]) {

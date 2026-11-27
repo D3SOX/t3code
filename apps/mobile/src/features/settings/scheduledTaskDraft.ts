@@ -283,7 +283,7 @@ export function changeDraftProject(
   projectId: ProjectId,
 ): ScheduledTaskDraft {
   if (projectId === draft.projectId) return draft;
-  return { ...unbindDraftFromThread(draft), projectId, baseRef: "" };
+  return { ...unbindDraftFromThread(draft), projectId, baseRef: "", checkoutPath: "" };
 }
 
 export function createDraft(

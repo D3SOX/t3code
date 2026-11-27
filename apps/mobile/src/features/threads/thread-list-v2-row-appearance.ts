@@ -5,7 +5,6 @@ import { m, type MessageResolver } from "../../i18n/messages";
 import type { MobileThemeVariables } from "../../lib/mobileTheme";
 import { flattenThemeColor, themeColorWithAlpha } from "../../lib/mobileTheme";
 
-export const THREAD_LIST_V2_MONO_FONT = "Menlo";
 export const THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME = "min-h-14 justify-center px-5 py-2.5";
 export const THREAD_LIST_V2_ROW_DIVIDERS = true;
 export const THREAD_LIST_V2_SIDEBAR_ROW_STYLE = {

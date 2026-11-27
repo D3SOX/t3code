@@ -733,6 +733,21 @@ describe("resolveChatShortcutCommand", () => {
 });
 
 describe("resolveShortcutCommand", () => {
+  it.each(["constructor", "!constructor"])(
+    "treats inherited object properties in when-condition %s as unset",
+    (when) => {
+      const keybindings = compileResolvedKeybindingsConfig([
+        { key: "mod+j", command: "terminal.toggle", when },
+      ]);
+      assert.strictEqual(
+        resolveShortcutCommand(event({ code: "KeyJ", ctrlKey: true }), keybindings, {
+          platform: "Linux",
+        }),
+        when.startsWith("!") ? "terminal.toggle" : null,
+      );
+    },
+  );
+
   it("routes Ctrl+Shift+W to the terminal and mod+w to the right panel", () => {
     const closeTerminalEvent = event({ key: "W", ctrlKey: true, shiftKey: true });
     const closePanelEvent = event({ key: "w", metaKey: true });

@@ -194,8 +194,10 @@ export function evaluatePullRequestWatch(
     gate.every((check) => check.status !== "pending" && !isFailedCheck(check));
   if (checks.length > 0 && !(checksUnread && passedNow)) {
     const gateNames = gate.map((check) => check.name).sort();
-    const gateChanged = passedChecks.length > 0 && gateNames.join("\n") !== passedChecks.join("\n");
-    const reportGate = passedNow && (!passed || gateChanged);
+    // Checks can start and finish between sweeps; a new name in the gate is news.
+    const gateGrew =
+      passedChecks.length > 0 && gateNames.some((name) => !passedChecks.includes(name));
+    const reportGate = passedNow && (!passed || gateGrew);
     owedChecks =
       reportGate && required.length > 0
         ? checks
@@ -216,7 +218,12 @@ export function evaluatePullRequestWatch(
       changes.push({ kind: "checks-passed", count: gate.length, required: required.length > 0 });
     }
     passed = passedNow;
-    passedChecks = passedNow ? gateNames : [];
+    // Without required checks, told names add up, so a varying check list cannot wake twice.
+    passedChecks = !passedNow
+      ? []
+      : required.length > 0
+        ? gateNames
+        : [...new Set([...passedChecks, ...gateNames])].sort();
     const allPassedNow =
       awaitingApproval.length === 0 &&
       checks.every(
@@ -227,12 +234,14 @@ export function evaluatePullRequestWatch(
     if (
       !checksBaseline &&
       allPassedNow &&
-      allNames.join("\n") !== (allPassedChecks ?? []).join("\n") &&
+      allNames.some((name) => !(allPassedChecks ?? []).includes(name)) &&
       !reportGate
     ) {
       changes.push({ kind: "checks-passed", count: allNames.length, required: false });
     }
-    allPassedChecks = allPassedNow ? allNames : [];
+    allPassedChecks = allPassedNow
+      ? [...new Set([...(allPassedChecks ?? []), ...allNames])].sort()
+      : [];
     if (allPassedNow) owedChecks = [];
     const completed =
       awaitingApproval.length === 0 &&
