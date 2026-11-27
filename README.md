@@ -73,6 +73,7 @@ This is my fork of [T3 Code](https://github.com/pingdotgg/t3code). It stays in s
 ## Privacy
 
 - Product analytics are off unless you set `T3CODE_TELEMETRY_ENABLED=true` on the server.
+- T3 Connect is left out of the nightly builds, so they never contact T3's relay or sign-in service. Connect over your local network or [Tailscale](./docs/user/remote-access.md#tailscale-https) instead.
 - The app doesn't ask you to star its GitHub repository.
 
 ## Android nightly

@@ -83,10 +83,6 @@ build() {
   build_number=$(git rev-list --count HEAD)
   nightly_version="$base_version-nightly.$build_date.$build_number"
 
-  export T3CODE_CLERK_PUBLISHABLE_KEY='pk_live_Y2xlcmsudDMuY29kZXMk'
-  export T3CODE_CLERK_JWT_TEMPLATE='t3-relay'
-  export T3CODE_CLERK_CLI_OAUTH_CLIENT_ID='hzxSgY2cH10sDU2r'
-  export T3CODE_RELAY_URL='https://relay.t3.codes'
   # The package depends on this system's glibc, so its native modules may require it.
   T3CODE_GLIBC_BUILD_CEILING=$(getconf GNU_LIBC_VERSION | cut -d' ' -f2)
   export T3CODE_GLIBC_BUILD_CEILING
