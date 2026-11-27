@@ -1,3 +1,13 @@
+import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import { Link } from "@tanstack/react-router";
+import * as DateTime from "effect/DateTime";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { GuestMessageName } from "./guestMessageStyle";
+import {
+  FoldedMessageHeader,
+  useScheduledTaskTitle,
+  TimelineRowTimestamp,
+} from "./UserMessagePresentation";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -19,68 +29,64 @@ import {
   type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
-import { Link } from "@tanstack/react-router";
 import {
-  ArrowUpIcon,
-  CalendarClockIcon,
-  ChevronDownIcon,
   Clock3Icon,
+  CalendarClockIcon,
   MessagesSquareIcon,
+  CornerUpRightIcon,
+  GripVerticalIcon,
+  ListOrderedIcon,
   PencilIcon,
-  XIcon,
+  HammerIcon,
 } from "lucide-react";
-import * as DateTime from "effect/DateTime";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
-
 import { useAssetUrls } from "../../assets/assetUrls";
 import { threadEnvironment } from "../../state/threads";
-import { useQuietThreadProjection, useQuietThreadShell } from "../../state/entities";
+import {
+  useServerConfigs,
+  useQuietThreadProjection,
+  useQuietThreadShell,
+} from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { isImageAttachment, type ChatImageAttachment, type ChatMessage } from "../../types";
+import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { cn } from "~/lib/utils";
+import { ComposerBanner } from "./ComposerBanner";
 import { Button, InlineButton } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { m } from "../../i18n/messages";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
-import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { GuestMessageName } from "./guestMessageStyle";
-import { TimelineRowTimestamp } from "./TimelineRowParts";
-import { FoldedMessageHeader, useScheduledTaskTitle } from "./TimelineUserMessageRow";
-import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
-
 export interface EditQueuedRunRequest {
   readonly runId: RunId;
   readonly messageId: MessageId;
   readonly text: string;
   readonly attachments: ReadonlyArray<ContractChatAttachment>;
 }
-
-// A longer queue shows its first messages and a button that shows the rest.
-const QUEUE_VISIBLE_ROWS = 3;
-
+const QUEUED_RUN_DRAG_TYPE = "application/x-t3code-queued-run";
 export interface QueuedRunsControlHandle {
   steerNext: (repeat: boolean) => boolean;
   editLatest: (repeat: boolean) => boolean;
 }
-
 type ThreadQueueProjection = Parameters<typeof deriveThreadQueueWorkflowState>[0];
-
 function queuedImageResources(projection: ThreadQueueProjection | undefined) {
   if (!projection) return [];
   return deriveThreadQueueWorkflowState(projection).queuedRuns.flatMap(({ attachments }) =>
     attachments.flatMap((attachment) =>
-      isImageAttachment(attachment)
-        ? [{ _tag: "attachment" as const, attachmentId: attachment.id }]
+      attachment.type === "image"
+        ? [
+            {
+              _tag: "attachment" as const,
+              attachmentId: attachment.id,
+            },
+          ]
         : [],
     ),
   );
 }
-
 export function QueuedRunsControl({
   ref,
   ...props
@@ -94,12 +100,12 @@ export function QueuedRunsControl({
     Pick<ChatMessage, "id" | "inputIntent" | "text" | "attachments">
   >;
   readonly editingRunId: RunId | null;
-  /** Set while something else holds the composer, such as an open question. */
   readonly editBlockedReason: string | null;
-  readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
-  readonly onCancelEdit: () => void;
   readonly timestampFormat: TimestampFormat;
   readonly onOpenThread: (threadId: ThreadId, environmentId?: EnvironmentId) => void;
+  readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
+  readonly onRemoveQueuedRun: (request: EditQueuedRunRequest) => Promise<void>;
+  readonly onCancelEdit: () => void;
   readonly onImageExpand: (preview: ExpandedImagePreview) => void;
 }) {
   const gt = useGT();
@@ -107,12 +113,20 @@ export function QueuedRunsControl({
   const projection = useQuietThreadProjection(
     scopeThreadRef(props.environmentId, props.threadId),
   )?.projection;
+  const supportsNextToolQueue =
+    useServerConfigs().get(props.environmentId)?.environment.capabilities.nextToolQueue === true;
+  const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
-  const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
-  const [showAll, setShowAll] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const queueListId = useId();
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
+  const [dragState, setDragState] = useState<{
+    readonly runId: RunId;
+    readonly insertIndex: number | null;
+  } | null>(null);
+  // Arm from the grip to prevent accidental text drags from reordering queued runs.
+  const dragArmedRunIdRef = useRef<RunId | null>(null);
   const steerInFlightRef = useRef(false);
   // Run-only acknowledgements can resurrect pending rows after cancellation or startup.
   const acknowledgedMessageIds = new Set((projection?.messages ?? []).map((message) => message.id));
@@ -124,6 +138,7 @@ export function QueuedRunsControl({
   const workflow = projection ? deriveThreadQueueWorkflowState(projection, messages) : null;
   const queued = workflow?.queuedRuns ?? [];
   const activeRun = workflow?.activeRun ?? null;
+  const canReorder = workflow?.canReorder === true;
   // A fresh message starts its own turn: it may skip compaction, but not steer into a turn.
   const canSendRun = (freshContext: boolean) =>
     workflow?.canSendNow === true ||
@@ -140,42 +155,62 @@ export function QueuedRunsControl({
   );
   const items = [
     ...queued.map(({ run, text, attachments, context, message }, serverIndex) => ({
-      key: run.id,
       message,
+      key: run.id,
       runId: run.id,
       messageId: run.userMessageId,
       freshContext: run.freshContext === true,
       serverIndex,
       text,
+      afterNextTool: run.queueAfterNextTool === true,
       // A guest's message keeps the guest's words; the owner can cancel it, not rewrite it.
       editable: context?.guest === undefined,
+      guestName: context?.guest?.name,
       attachments,
       thumbnails: attachments.filter(isImageAttachment).map<ChatImageAttachment>((attachment) => {
         const previewUrl = queuedImageUrlById.get(attachment.id);
-        return {
-          ...attachment,
-          type: "image",
-          ...(previewUrl ? { previewUrl } : {}),
-        };
+        return { ...attachment, type: "image", ...(previewUrl ? { previewUrl } : {}) };
       }),
       pending: false,
     })),
     ...optimisticQueued.map((message) => ({
-      key: message.id,
       message: undefined,
+      key: message.id,
       runId: null,
       messageId: null,
       freshContext: false,
       serverIndex: null,
       text: message.text,
+      afterNextTool: false,
       editable: true,
+      guestName: undefined,
       attachments: [] as ReadonlyArray<ContractChatAttachment>,
       thumbnails: (message.attachments ?? []).filter(isImageAttachment),
       pending: true,
     })),
   ];
-
-  const sendQueuedMessage = async (queuedRunId: RunId) => {
+  const move = async (runId: RunId, beforeRunId: RunId | null) => {
+    setBusyRunId(runId);
+    await reorder({
+      environmentId: props.environmentId,
+      input: {
+        threadId: props.threadId,
+        runId,
+        beforeRunId,
+      },
+    });
+    setBusyRunId(null);
+  };
+  const completeDrag = (runId: RunId, insertIndex: number | null) => {
+    setDragState(null);
+    dragArmedRunIdRef.current = null;
+    if (insertIndex === null || busyRunId !== null) return;
+    const draggedIndex = queued.findIndex(({ run }) => run.id === runId);
+    if (draggedIndex === -1) return;
+    if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) return;
+    void move(runId, queued[insertIndex]?.run.id ?? null);
+  };
+  const sendQueuedMessage = async (queuedRunId: RunId, afterNextTool?: boolean) => {
     const freshContext = queued.some(
       ({ run }) => run.id === queuedRunId && run.freshContext === true,
     );
@@ -187,10 +222,15 @@ export function QueuedRunsControl({
           environmentId: props.environmentId,
           input: { threadId: props.threadId, runId: queuedRunId },
         })
-      : activeRun !== null
+      : activeRun !== null && workflow?.canPromoteToSteer
         ? await promote({
             environmentId: props.environmentId,
-            input: { threadId: props.threadId, queuedRunId, targetRunId: activeRun.id },
+            input: {
+              threadId: props.threadId,
+              queuedRunId,
+              targetRunId: activeRun.id,
+              ...(afterNextTool === undefined ? {} : { afterNextTool }),
+            },
           })
         : null;
     steerInFlightRef.current = false;
@@ -207,7 +247,6 @@ export function QueuedRunsControl({
       });
     }
   };
-
   useImperativeHandle(ref, () => ({
     steerNext(repeat) {
       const next = queued[0];
@@ -221,14 +260,14 @@ export function QueuedRunsControl({
       if (
         !latest ||
         latest.context?.guest !== undefined ||
-        props.editingRunId !== null ||
         props.editBlockedReason !== null ||
+        props.editingRunId !== null ||
         busyRunId !== null
       ) {
         return false;
       }
       if (!repeat) {
-        setShowAll(true);
+        setExpanded(true);
         props.onEditQueuedRun({
           runId: latest.run.id,
           messageId: latest.run.userMessageId,
@@ -239,235 +278,379 @@ export function QueuedRunsControl({
       return true;
     },
   }));
-
   if (items.length === 0) return null;
-
   const remove = async (runId: RunId) => {
+    const entry = queued.find(({ run }) => run.id === runId);
+    if (!entry) return;
     setBusyRunId(runId);
-    await cancel({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId, runId },
+    return await (async () => {
+      await props.onRemoveQueuedRun({
+        runId,
+        messageId: entry.messageId,
+        text: entry.text,
+        attachments: entry.attachments,
+      });
+    })().finally(() => {
+      setBusyRunId(null);
     });
-    setBusyRunId(null);
   };
-
-  const collapsible = items.length > QUEUE_VISIBLE_ROWS;
-  const visibleItems = collapsible && !showAll ? items.slice(0, QUEUE_VISIBLE_ROWS - 1) : items;
-
   return (
-    <section
-      aria-label={gt(
-        "{count, plural, one {{count} queued message} other {{count} queued messages}}",
-        { count: items.length },
-      )}
-      data-thread-queue="true"
-      // Anchors the sr-only live region; unanchored, it escapes the timeline scroller and makes the chat column scroll.
-      className="relative mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
-    >
-      <span className="sr-only" aria-live="polite">
-        {gt("{count, plural, one {{count} queued} other {{count} queued}}", {
-          count: items.length,
-        })}
-      </span>
-      <ol className="flex flex-col items-end gap-3" id={queueListId}>
-        {visibleItems.map((item, position) => {
-          const previewText = isAttachmentOnlyBootstrapPrompt(item.text)
-            ? ""
-            : assistantCitationsToPlainText(
-                composerFileLinksToPlainText(
-                  replaceComposerContextReferences(item.text, (reference) => reference.label),
-                ),
-              ).trim();
-          const isEditing = item.runId !== null && item.runId === props.editingRunId;
-          // The server decides on the agent's text, and a goal command can stop the turn.
-          const sentText = { text: item.message?.text ?? item.text, attachments: item.attachments };
-          const movesCommandFirst = isSlashCommand(sentText) && parseGoalCommand(sentText) === null;
-          return (
-            <li
-              key={item.key}
-              aria-label={gt("Queued message {position} of {total}, not sent", {
-                position: position + 1,
-                total: items.length,
-              })}
-              aria-posinset={position + 1}
-              aria-setsize={items.length}
-              aria-current={isEditing ? "true" : undefined}
-              className="group/queued flex w-full flex-col items-end gap-1"
-            >
-              <QueuedMessage
-                environmentId={props.environmentId}
-                message={item.message}
-                previewText={previewText}
-                thumbnails={item.thumbnails}
-                isEditing={isEditing}
-                timestampFormat={props.timestampFormat}
-                onOpenThread={props.onOpenThread}
-                onImageExpand={props.onImageExpand}
-              >
-                {canSendRun(item.freshContext) && !isEditing ? (
-                  <>
-                    <SharedTooltipTrigger
-                      render={<span className="flex shrink-0" />}
-                      label={
-                        item.serverIndex === 0 && props.steerShortcutLabel
-                          ? workflow?.canSendNow
-                            ? gt("Start a turn with this message ({shortcut})", {
-                                shortcut: props.steerShortcutLabel,
-                              })
-                            : workflow?.promoteSkipsCompaction
-                              ? gt("Skip compaction and send this message ({shortcut})", {
-                                  shortcut: props.steerShortcutLabel,
-                                })
-                              : movesCommandFirst
-                                ? gt("Move this command to the front of the queue ({shortcut})", {
-                                    shortcut: props.steerShortcutLabel,
-                                  })
-                                : gt("Send into the current turn ({shortcut})", {
-                                    shortcut: props.steerShortcutLabel,
-                                  })
-                          : workflow?.canSendNow
-                            ? gt("Start a turn with this message")
-                            : workflow?.promoteSkipsCompaction
-                              ? gt("Skip compaction and send this message")
-                              : movesCommandFirst
-                                ? gt("Move this command to the front of the queue")
-                                : gt("Send into the current turn")
-                      }
-                    >
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root
+        role="region"
+        aria-label={gt(
+          "{count, plural, one {{count} queued message} other {{count} queued messages}}",
+          { count: items.length },
+        )}
+        aria-live="polite"
+        data-chat-composer-collapsed-controls="true"
+        className="relative z-0"
+      >
+        <ComposerBanner.Row
+          render={<button type="button" />}
+          aria-label={expanded ? gt("Collapse queued messages") : gt("Expand queued messages")}
+          aria-expanded={expanded}
+          aria-controls={queueListId}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ComposerBanner.Icon>
+            <ListOrderedIcon />
+          </ComposerBanner.Icon>
+          <ComposerBanner.Content className="text-muted-foreground">
+            {queued.some(({ run }) => run.queueEditing)
+              ? gt("Queue paused while editing")
+              : gt("Queued", { $context: "label for messages waiting to send" })}
+          </ComposerBanner.Content>
+          <ComposerBanner.Actions>
+            <ComposerBanner.Count>{items.length}</ComposerBanner.Count>
+            <ComposerBanner.ToggleIcon expanded={expanded} />
+          </ComposerBanner.Actions>
+        </ComposerBanner.Row>
+        <ComposerBanner.Scroll className={cn("max-h-32", !expanded && "hidden")}>
+          <ComposerBanner.Children render={<ol />} id={queueListId}>
+            {items.map((item) => {
+              const previewText = isAttachmentOnlyBootstrapPrompt(item.text)
+                ? ""
+                : assistantCitationsToPlainText(
+                    composerFileLinksToPlainText(
+                      replaceComposerContextReferences(item.text, (reference) => reference.label),
+                    ),
+                  ).trim();
+              const rowRunId = item.runId;
+              const rowServerIndex = item.serverIndex;
+              const isEditing = rowRunId !== null && rowRunId === props.editingRunId;
+              // The server decides on the agent's text, and a goal command can stop the turn.
+              const sentText = {
+                text: item.message?.text ?? item.text,
+                attachments: item.attachments,
+              };
+              const movesCommandFirst =
+                isSlashCommand(sentText) && parseGoalCommand(sentText) === null;
+              const rowDraggable =
+                rowRunId !== null && rowServerIndex !== null && canReorder && busyRunId === null;
+              return (
+                <ComposerBanner.Row
+                  render={<li />}
+                  key={item.key}
+                  aria-current={isEditing ? "true" : undefined}
+                  className={cn(
+                    "relative rounded-sm",
+                    isEditing && "bg-accent text-accent-foreground",
+                    dragState !== null && dragState.runId === item.runId && "opacity-50",
+                  )}
+                  draggable={rowDraggable}
+                  onDragStart={(event) => {
+                    if (item.runId === null || dragArmedRunIdRef.current !== item.runId) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.setData(QUEUED_RUN_DRAG_TYPE, item.runId);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDragState({
+                      runId: item.runId,
+                      insertIndex: null,
+                    });
+                  }}
+                  onDragEnd={() => {
+                    dragArmedRunIdRef.current = null;
+                    setDragState(null);
+                  }}
+                  onDragOver={(event) => {
+                    if (dragState === null || item.serverIndex === null) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const insertIndex =
+                      event.clientY < rect.top + rect.height / 2
+                        ? item.serverIndex
+                        : item.serverIndex + 1;
+                    if (dragState.insertIndex !== insertIndex) {
+                      setDragState({
+                        runId: dragState.runId,
+                        insertIndex,
+                      });
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (dragState === null) return;
+                    event.preventDefault();
+                    completeDrag(dragState.runId, dragState.insertIndex);
+                  }}
+                >
+                  {item.serverIndex !== null && dragState?.insertIndex === item.serverIndex ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded bg-primary/70"
+                    />
+                  ) : null}
+                  {item.serverIndex === queued.length - 1 &&
+                  dragState?.insertIndex === queued.length ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 rounded bg-primary/70"
+                    />
+                  ) : null}
+                  <ComposerBanner.Icon aria-hidden={false}>
+                    {canReorder && rowRunId !== null && rowServerIndex !== null ? (
                       <Button
-                        size="xs"
+                        size="icon-xs"
                         variant="ghost-muted"
-                        disabled={item.runId === null || busyRunId !== null}
-                        onClick={() => {
-                          if (item.runId !== null) {
-                            void sendQueuedMessage(item.runId);
+                        aria-label={gt("Reorder queued message (drag, or press the arrow keys)")}
+                        className="cursor-grab active:cursor-grabbing disabled:cursor-default"
+                        disabled={busyRunId !== null}
+                        onPointerDown={() => {
+                          dragArmedRunIdRef.current = rowRunId;
+                        }}
+                        onKeyDown={(event) => {
+                          if (busyRunId !== null) return;
+                          if (event.key === "ArrowUp" && rowServerIndex > 0) {
+                            event.preventDefault();
+                            void move(rowRunId, queued[rowServerIndex - 1]?.run.id ?? null);
+                          }
+                          if (event.key === "ArrowDown" && rowServerIndex < queued.length - 1) {
+                            event.preventDefault();
+                            void move(rowRunId, queued[rowServerIndex + 2]?.run.id ?? null);
                           }
                         }}
                       >
-                        <ArrowUpIcon />
-                        <T>Send now</T>
+                        <GripVerticalIcon />
                       </Button>
-                    </SharedTooltipTrigger>
-                  </>
-                ) : null}
-                {item.pending ? (
-                  <span className="flex items-center gap-1 px-1">
-                    <Clock3Icon aria-hidden className="size-3" />
-                    <T>Saving</T>
-                  </span>
-                ) : null}
-                {isEditing ? (
-                  <>
-                    <span className="px-1 text-foreground">
-                      <T>Editing in the composer</T>
-                    </span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      aria-label={gt("Cancel editing queued message")}
-                      onClick={props.onCancelEdit}
-                    >
-                      <T>Cancel</T>
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Tooltip>
-                      {/* The span keeps the tooltip, and its reason, on a disabled button. */}
-                      <TooltipTrigger render={<span className="flex shrink-0" />}>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost-muted"
-                          aria-label={gt("Edit queued message")}
-                          disabled={
-                            item.runId === null ||
-                            !item.editable ||
-                            busyRunId !== null ||
-                            props.editBlockedReason !== null
-                          }
-                          onClick={() => {
-                            if (item.runId !== null && item.messageId !== null) {
-                              props.onEditQueuedRun({
-                                runId: item.runId,
-                                messageId: item.messageId,
-                                text: item.text,
-                                attachments: item.attachments,
-                              });
+                    ) : null}
+                  </ComposerBanner.Icon>
+                  <ComposerBanner.Content className="text-foreground/80">
+                    {isEditing ? (
+                      <span className="sr-only">
+                        <T>Editing queued message:</T>{" "}
+                      </span>
+                    ) : null}
+                    {item.pending ? (
+                      <Clock3Icon
+                        aria-label={gt("Saving queued message")}
+                        className="size-3 shrink-0 text-muted-foreground/60"
+                      />
+                    ) : null}
+                    {item.message &&
+                    resolveUserMessagePresentation(item.message).attribution !== null ? (
+                      <QueuedMessage
+                        environmentId={props.environmentId}
+                        message={item.message}
+                        previewText={previewText}
+                        thumbnails={item.thumbnails}
+                        isEditing={isEditing}
+                        timestampFormat={props.timestampFormat}
+                        onOpenThread={props.onOpenThread}
+                        onImageExpand={props.onImageExpand}
+                      >
+                        {null}
+                      </QueuedMessage>
+                    ) : (
+                      <>
+                        {item.thumbnails.length > 0 ? (
+                          <span className="flex shrink-0 items-center gap-0.5">
+                            {item.thumbnails.map((thumbnail) => (
+                              <QueuedThumbnail
+                                key={thumbnail.id}
+                                thumbnail={thumbnail}
+                                thumbnails={item.thumbnails}
+                                className="size-4 rounded"
+                                onImageExpand={props.onImageExpand}
+                              />
+                            ))}
+                          </span>
+                        ) : null}
+                        {item.guestName === undefined ? null : (
+                          <span className="shrink-0 text-guest-foreground">{item.guestName}</span>
+                        )}
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
+                            {previewText}
+                          </TooltipTrigger>
+                          <TooltipPopup side="top" className="max-w-96 break-words">
+                            {previewText}
+                          </TooltipPopup>
+                        </Tooltip>
+                      </>
+                    )}
+                  </ComposerBanner.Content>
+                  <ComposerBanner.Actions>
+                    {item.runId &&
+                    activeRun &&
+                    workflow?.canPromoteToSteer &&
+                    supportsNextToolQueue &&
+                    !isSlashCommand(sentText) ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={busyRunId !== null || !canSendRun(item.freshContext)}
+                        aria-label={
+                          item.afterNextTool
+                            ? gt("Run after current turn")
+                            : gt("Steer after next tool call")
+                        }
+                        onClick={() => void sendQueuedMessage(item.runId!, !item.afterNextTool)}
+                      >
+                        {item.afterNextTool ? <HammerIcon /> : <Clock3Icon />}
+                        {item.afterNextTool ? gt("After tool") : gt("After turn")}
+                      </Button>
+                    ) : null}
+                    {isEditing ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={gt("Cancel editing queued message")}
+                        onClick={props.onCancelEdit}
+                      >
+                        <T>Cancel</T>
+                      </Button>
+                    ) : (
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={gt("Edit queued message")}
+                                disabled={
+                                  item.runId === null ||
+                                  !item.editable ||
+                                  props.editBlockedReason !== null ||
+                                  busyRunId !== null ||
+                                  props.editingRunId !== null
+                                }
+                                onClick={() => {
+                                  if (item.runId !== null && item.messageId !== null) {
+                                    props.onEditQueuedRun({
+                                      runId: item.runId,
+                                      messageId: item.messageId,
+                                      text: item.text,
+                                      attachments: item.attachments,
+                                    });
+                                  }
+                                }}
+                              />
                             }
-                          }}
+                          >
+                            <PencilIcon />
+                          </TooltipTrigger>
+                          <TooltipPopup>
+                            {item.serverIndex === queued.length - 1 && props.editShortcutLabel
+                              ? gt("Edit in the composer ({shortcut})", {
+                                  shortcut: props.editShortcutLabel,
+                                })
+                              : gt("Edit in the composer")}
+                          </TooltipPopup>
+                        </Tooltip>
+                        <SharedTooltipTrigger
+                          render={<span className="flex shrink-0" />}
+                          label={
+                            item.serverIndex === 0 && props.steerShortcutLabel
+                              ? workflow?.canSendNow
+                                ? gt("Start a turn with this message ({shortcut})", {
+                                    shortcut: props.steerShortcutLabel,
+                                  })
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message ({shortcut})", {
+                                      shortcut: props.steerShortcutLabel,
+                                    })
+                                  : movesCommandFirst
+                                    ? gt(
+                                        "Move this command to the front of the queue ({shortcut})",
+                                        {
+                                          shortcut: props.steerShortcutLabel,
+                                        },
+                                      )
+                                    : gt("Send as a steer instead ({shortcut})", {
+                                        shortcut: props.steerShortcutLabel,
+                                      })
+                              : workflow?.canSendNow
+                                ? gt("Start a turn with this message")
+                                : workflow?.promoteSkipsCompaction
+                                  ? gt("Skip compaction and send this message")
+                                  : movesCommandFirst
+                                    ? gt("Move this command to the front of the queue")
+                                    : gt("Send as a steer instead")
+                          }
                         >
-                          <PencilIcon />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipPopup>
-                        {props.editBlockedReason ??
-                          (item.serverIndex === queued.length - 1 && props.editShortcutLabel
-                            ? gt("Edit in the composer ({shortcut})", {
-                                shortcut: props.editShortcutLabel,
-                              })
-                            : gt("Edit in the composer"))}
-                      </TooltipPopup>
-                    </Tooltip>
-                    <SharedTooltipTrigger
-                      render={
-                        <Button
-                          size="icon-xs"
-                          variant="ghost-muted"
-                          aria-label={gt("Remove queued message")}
-                          disabled={item.runId === null || busyRunId !== null}
-                          onClick={() => {
-                            if (item.runId !== null) void remove(item.runId);
-                          }}
-                        />
-                      }
-                      label={
-                        <>
-                          <T>Remove from queue</T>
-                        </>
-                      }
-                    >
-                      <XIcon />
-                    </SharedTooltipTrigger>
-                  </>
-                )}
-              </QueuedMessage>
-            </li>
-          );
-        })}
-      </ol>
-      {collapsible ? (
-        <div className="self-end pe-1 text-xs pointer-coarse:[&_[data-slot=inline-button]]:relative pointer-coarse:[&_[data-slot=inline-button]]:after:absolute pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-x-1.5 pointer-coarse:[&_[data-slot=inline-button]]:after:-inset-y-3.5">
-          <InlineButton
-            tone="muted"
-            aria-expanded={showAll}
-            aria-controls={queueListId}
-            // Keep the composer focused; keyboard activation still works.
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => setShowAll((value) => !value)}
-          >
-            {showAll
-              ? gt("Show fewer")
-              : gt(
-                  "{count, plural, one {Show all {count} queued} other {Show all {count} queued}}",
-                  { count: items.length },
-                )}
-            <ChevronDownIcon
-              aria-hidden
-              className={cn(
-                "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
-                showAll && "rotate-180",
-              )}
-            />
-          </InlineButton>
-        </div>
-      ) : null}
-    </section>
+                          <Button
+                            size="xs"
+                            variant="ghost-muted"
+                            disabled={
+                              item.runId === null ||
+                              busyRunId !== null ||
+                              !canSendRun(item.freshContext)
+                            }
+                            onClick={() => {
+                              if (item.runId !== null) {
+                                void sendQueuedMessage(item.runId);
+                              }
+                            }}
+                          >
+                            <CornerUpRightIcon />
+                            {workflow?.canSendNow
+                              ? gt("Send now")
+                              : gt("Steer", {
+                                  $context: "verb, sends a queued message into the running turn",
+                                })}
+                          </Button>
+                        </SharedTooltipTrigger>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <ComposerBanner.Dismiss
+                                aria-label={gt("Remove queued message")}
+                                disabled={
+                                  item.runId === null ||
+                                  busyRunId !== null ||
+                                  props.editingRunId !== null
+                                }
+                                onClick={() => {
+                                  if (item.runId !== null) void remove(item.runId);
+                                }}
+                              />
+                            }
+                          />
+                          <TooltipPopup>
+                            <T>Remove from queue</T>
+                          </TooltipPopup>
+                        </Tooltip>
+                      </>
+                    )}
+                  </ComposerBanner.Actions>
+                </ComposerBanner.Row>
+              );
+            })}
+          </ComposerBanner.Children>
+        </ComposerBanner.Scroll>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
   );
 }
 
-type QueuedRunMessage = NonNullable<ThreadQueueProjection["messages"][number]>;
-
-/** A queued turn wears its sent form's attribution; only the dashed edge and controls differ. */
+type QueuedRunMessage = NonNullable<
+  NonNullable<ReturnType<typeof deriveThreadQueueWorkflowState>>["queuedRuns"][number]["message"]
+>;
 function QueuedMessage(props: {
   readonly environmentId: EnvironmentId;
   readonly message: QueuedRunMessage | undefined;
@@ -476,15 +659,14 @@ function QueuedMessage(props: {
   readonly isEditing: boolean;
   readonly timestampFormat: TimestampFormat;
   readonly onOpenThread: (threadId: ThreadId, environmentId?: EnvironmentId) => void;
-  readonly children: ReactNode;
   readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+  readonly children: ReactNode;
 }) {
   const gt = useGT();
   const presentation = props.message ? resolveUserMessagePresentation(props.message) : null;
   const attribution = presentation?.attribution ?? null;
   const scheduledTaskId = presentation?.scheduledTaskId;
   const senderThreadId = props.message?.senderThreadId;
-  // A linked environment's agent sent it from a thread there.
   const senderRef =
     props.message?.linkedSender ??
     (senderThreadId === undefined ? null : scopeThreadRef(props.environmentId, senderThreadId));
@@ -516,7 +698,7 @@ function QueuedMessage(props: {
   const bodyVisible = fold === null || expanded;
 
   return (
-    <>
+    <div className="group/queued flex min-w-0 flex-1 flex-col gap-1">
       {attribution === "t3code" ? (
         <p className="me-1 text-2xs text-muted-foreground/70">
           <T>Sent by T3 Code</T>
@@ -528,7 +710,7 @@ function QueuedMessage(props: {
       {/* Dashed and unfilled: a turn that has not been sent yet. */}
       <div
         className={cn(
-          "flex min-w-0 max-w-[80%] flex-col rounded-2xl border border-dashed text-sm",
+          "flex min-w-0 max-w-full flex-col rounded-2xl border border-dashed text-sm",
           props.isEditing
             ? "border-primary/60 text-foreground"
             : attribution === "guest"
@@ -558,28 +740,13 @@ function QueuedMessage(props: {
             {props.thumbnails.length > 0 ? (
               <span className="flex flex-wrap items-center gap-1">
                 {props.thumbnails.map((thumbnail) => (
-                  <button
+                  <QueuedThumbnail
                     key={thumbnail.id}
-                    type="button"
-                    aria-label={gt("Preview {name}", { name: thumbnail.name })}
-                    disabled={!thumbnail.previewUrl}
-                    className="size-8 overflow-hidden rounded-md border border-border/70 bg-background enabled:cursor-zoom-in"
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(props.thumbnails, thumbnail.id);
-                      if (preview) props.onImageExpand(preview);
-                    }}
-                  >
-                    {thumbnail.previewUrl ? (
-                      <img
-                        src={thumbnail.previewUrl}
-                        alt={thumbnail.name}
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      <span aria-label={thumbnail.name} className="block size-full bg-muted/60" />
-                    )}
-                  </button>
+                    thumbnail={thumbnail}
+                    thumbnails={props.thumbnails}
+                    className="size-8 rounded-md"
+                    onImageExpand={props.onImageExpand}
+                  />
                 ))}
               </span>
             ) : null}
@@ -595,7 +762,6 @@ function QueuedMessage(props: {
           <span className="me-1 flex items-center gap-2 px-1 opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/queued:opacity-100">
             {attribution === "agent" &&
             senderRef &&
-            // Only an environment this client is connected to can open the sender's thread there.
             (props.message?.linkedSender === undefined || linkedSenderEnvironment !== null) ? (
               <InlineButton
                 tone="muted"
@@ -626,6 +792,39 @@ function QueuedMessage(props: {
         ) : null}
         {props.children}
       </div>
-    </>
+    </div>
+  );
+}
+
+function QueuedThumbnail(props: {
+  readonly thumbnail: ChatImageAttachment;
+  readonly thumbnails: ReadonlyArray<ChatImageAttachment>;
+  readonly className: string;
+  readonly onImageExpand: (preview: ExpandedImagePreview) => void;
+}) {
+  const { thumbnail } = props;
+  const gt = useGT();
+  return (
+    <button
+      type="button"
+      aria-label={gt("Preview {name}", { name: thumbnail.name })}
+      disabled={!thumbnail.previewUrl}
+      className={cn(
+        "shrink-0 overflow-hidden border border-border/70 bg-background enabled:cursor-zoom-in",
+        props.className,
+      )}
+      // Keeps the composer focused.
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={() => {
+        const preview = buildExpandedImagePreview(props.thumbnails, thumbnail.id);
+        if (preview) props.onImageExpand(preview);
+      }}
+    >
+      {thumbnail.previewUrl ? (
+        <img src={thumbnail.previewUrl} alt={thumbnail.name} className="size-full object-cover" />
+      ) : (
+        <span className="block size-full bg-muted/60" />
+      )}
+    </button>
   );
 }

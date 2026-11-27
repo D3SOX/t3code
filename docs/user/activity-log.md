@@ -17,6 +17,7 @@ Configure **Settings → Chat → Tool calls in chat** (web and desktop) or **Se
 | **Show all** (default) | Shows all tool calls and summaries.                                                                                                                       |
 | **Hide successful**    | Shows a call while it runs and keeps it only if it fails.                                                                                                 |
 | **Hide all**           | Hides every tool call and shows **Thinking** while the agent works.                                                                                       |
+| **Only viewed images** | Hides the same calls as **Hide all** but keeps images the agent looked at.                                                                                |
 | **Zen**                | Also hides intermediate agent messages, showing only your prompt and the agent's final reply once the turn ends (plus any reply finished before a steer). |
 
 Approvals, questions, and errors are always shown. On web and desktop, opening Find temporarily reveals hidden intermediate messages.

@@ -23,6 +23,7 @@ import {
   type ThemeDefinition,
   type ThemeHalves,
   T3_CHAT_THEME,
+  T3_CODE_DIM_THEME,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -56,6 +57,7 @@ import { ThemeWireframe } from "./ThemeWireframe";
 import { T, useGT } from "gt-react";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
+  T3_CODE_DIM_THEME,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

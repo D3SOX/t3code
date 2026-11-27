@@ -47,8 +47,12 @@ const UNDONE = {
   Discarded: msg("Undid discard of {count, plural, one {{count} draft} other {{count} drafts}}"),
 } satisfies Record<UndoOptions["action"], string>;
 
-function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
-  return m(SUMMARY[notice.action], { count: notice.count });
+/** Components pass `useMessages()` so the summary follows a language switch. */
+export function threadUndoNoticeSummary(
+  notice: Pick<UndoNotice, "action" | "count">,
+  resolve: MessageResolver = m,
+): string {
+  return resolve(SUMMARY[notice.action], { count: notice.count });
 }
 
 /** Components pass `useMessages()` so the label follows a language switch. */
@@ -161,8 +165,13 @@ export function releaseThreadUndoShortcut() {
 
 /** Shows one compact confirmation for the currently undoable thread actions. */
 export function showThreadUndoNotice(options: UndoOptions) {
-  if (!options.claim.isCurrent()) return;
-  liveUndos.push(options);
+  showThreadUndoNotices([options]);
+}
+
+export function showThreadUndoNotices(options: readonly UndoOptions[]) {
+  const current = options.filter(({ claim }) => claim.isCurrent());
+  if (current.length === 0) return;
+  liveUndos.push(...current);
   shortcutClaimed = true;
   refreshNotice();
   clearTimeout(expiry);

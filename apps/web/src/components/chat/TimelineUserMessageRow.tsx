@@ -1,23 +1,16 @@
 import { copySnapshot as copySnapshotToClipboard } from "./copySnapshot";
+import { FoldedMessageHeader, useScheduledTaskTitle } from "./UserMessagePresentation";
 import { InlineAudioPreview } from "../files/InlineAudioPreview";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import type { MarkdownExtensions } from "~/markdown/wordsHast";
 import { T, useGT, useMessages, Var } from "gt-react";
 import { findRevealRef } from "./markdownFindContext";
-import {
-  type EnvironmentId,
-  type MessageId,
-  type ScheduledTaskId,
-  type ServerProviderSkill,
-  ThreadId,
-} from "@t3tools/contracts";
+import { type MessageId, type ServerProviderSkill, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
 import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
-import { useEnvironmentQuery } from "../../state/query";
-import { serverEnvironment } from "../../state/server";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { memo, use, useState, type ReactNode } from "react";
 import {
@@ -33,10 +26,8 @@ import {
 import ChatMarkdown from "../ChatMarkdown";
 import {
   CalendarClockIcon,
-  ChevronDownIcon,
   DownloadIcon,
   EyeIcon,
-  type LucideIcon,
   MessagesSquareIcon,
   Redo2Icon,
   PencilIcon,
@@ -387,55 +378,6 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         </div>
       ) : null}
     </div>
-  );
-}
-
-export function useScheduledTaskTitle(
-  environmentId: EnvironmentId,
-  scheduledTaskId: ScheduledTaskId | undefined,
-): string | undefined {
-  const tasksQuery = useEnvironmentQuery(
-    scheduledTaskId ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} }) : null,
-  );
-  return tasksQuery.data?.tasks.find((task) => task.id === scheduledTaskId)?.title;
-}
-
-export function FoldedMessageHeader(props: {
-  icon: LucideIcon;
-  label: string;
-  /** A generic label (not a thread title) never truncates, whatever its length in the UI language. */
-  fitLabel?: boolean;
-  summary: string;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const Icon = props.icon;
-  return (
-    <button
-      type="button"
-      aria-expanded={props.expanded}
-      data-scroll-anchor-ignore
-      onClick={props.onToggle}
-      className="flex w-full min-w-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      <Icon className="size-4 shrink-0 stroke-2 text-muted-foreground" />
-      <span
-        className={cn(
-          "shrink-0 text-muted-foreground",
-          props.fitLabel !== true && "max-w-1/2 truncate",
-        )}
-      >
-        {props.label}
-      </span>
-      {/* Mentioned macOS paths can be NFD; compose them like the chips in the body. */}
-      <span className="min-w-0 flex-1 truncate">{props.summary.normalize("NFC")}</span>
-      <ChevronDownIcon
-        className={cn(
-          "size-3.5 shrink-0 text-muted-foreground transition-transform",
-          props.expanded && "rotate-180",
-        )}
-      />
-    </button>
   );
 }
 

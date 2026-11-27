@@ -23,6 +23,7 @@ function makeSnapshotAtom(resolve: MessageResolver) {
       get(environmentPresentations.presentationsWithProvidersAtom),
       Linking.createURL("settings/usage", { queryParams: { tab: "limits" } }),
       Platform.OS === "android" ? Infinity : 6,
+      Platform.OS === "android" ? "accounts" : "pooled",
       resolve,
     ),
   ).pipe(Atom.withEquality((a, b) => JSON.stringify(a) === JSON.stringify(b)));

@@ -4,7 +4,7 @@ Run T3 Code as a background user service on Linux, macOS, or Windows so your hos
 
 ## Manage the service
 
-Install the `t3` CLI first ([Command line](./install.md#command-line)), then run these commands on the host machine:
+Use the desktop app's installed `t3` command or install the standalone CLI ([Command line](./install.md#command-line)), then run these commands on the host machine:
 
 | Task                                    | Command                                                   |
 | --------------------------------------- | --------------------------------------------------------- |
@@ -12,13 +12,15 @@ Install the `t3` CLI first ([Command line](./install.md#command-line)), then run
 | Check how other devices reach it        | `t3 status`                                               |
 | Install and start (or repair)           | `t3 service install`                                      |
 | Check status and log path               | `t3 service status`                                       |
-| Update to a newer release               | `t3 update`                                               |
+| Update a standalone CLI                 | `t3 update`                                               |
 | Restart                                 | `t3 service restart`                                      |
 | Stop and remove from startup            | `t3 service uninstall`                                    |
 | Remove service, launcher, and downloads | `t3 uninstall` (keeps `~/.t3/userdata` and `service.env`) |
 
 - Pairing codes are never written to logs; run `t3 pair` or `t3 up` on the host to connect a device.
 - `t3 update` asks before restarting (pass `--yes` in scripts). Pin a version with `t3 update 0.0.42`, switch tracks with `--channel nightly`, or downgrade with `--allow-downgrade`.
+- When installed through the desktop app's CLI, the service uses that app's bundled server and follows the installed app through its CLI launcher, including when an AppImage moves or is replaced. Update the app through its updater or package manager, then run `t3 service restart`; `t3 update` directs desktop CLI users to update the app instead.
+- The service uses the same T3 home, including saved settings and authorization, but does not copy the desktop's network access settings or port. Configure a fixed port or bind address separately. On Linux, existing systemd drop-ins for `T3CODE_PORT`, `T3CODE_HOST`, or `ExecStart` remain in place during installation and repair.
 
 ## Local network access
 

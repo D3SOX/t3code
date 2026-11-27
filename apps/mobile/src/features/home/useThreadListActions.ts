@@ -5,11 +5,11 @@ import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 import { showThreadUndoNotice } from "./thread-undo-notice";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { msg } from "gt-react-native";
 import { useRef } from "react";
-
 import { withThreadDismissal } from "./thread-dismissal";
 import * as Dialog from "../../components/ui/Dialog";
 import { m } from "../../i18n/messages";
@@ -35,11 +35,13 @@ import {
   threadDropBusyAtom,
 } from "../../state/thread-order";
 import {
+  activeRowAnchor,
   createPendingThreadOrder,
   createThreadMovePlanner,
   threadDropLifecycle,
 } from "../threads/threadOrder";
-import { getThreadListV2OrderedSection } from "../threads/threadListV2";
+import { getThreadListV2OrderedSection, threadListInboxReturns } from "../threads/threadListV2";
+import { mobilePreferencesAtom } from "../../state/preferences";
 import { threadCanArchive } from "./threadArchive";
 import { resolveThreadTitleRename } from "../threads/thread-title-rename";
 import { useStableCallback } from "../../lib/useStableCallback";
@@ -47,7 +49,6 @@ import { useStableCallback } from "../../lib/useStableCallback";
 function environmentConfigLoaded(environmentId: EnvironmentThreadShell["environmentId"]) {
   return appAtomRegistry.get(environmentServerConfigsAtom).has(environmentId);
 }
-
 function environmentSupportsAutoSettleOptOut(
   environmentId: EnvironmentThreadShell["environmentId"],
 ) {
@@ -56,7 +57,6 @@ function environmentSupportsAutoSettleOptOut(
       .threadAutoSettleOptOut === true
   );
 }
-
 type ThreadListAction = "archive" | "unarchive" | "delete" | "settle" | "unsettle";
 
 const ACTION_FAILURES: Record<ThreadListAction, string> = {
@@ -66,7 +66,6 @@ const ACTION_FAILURES: Record<ThreadListAction, string> = {
   settle: msg("The thread could not be settled."),
   unsettle: msg("The thread could not be un-settled."),
 };
-
 function actionFailureMessage(action: ThreadListAction, cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -74,11 +73,9 @@ function actionFailureMessage(action: ThreadListAction, cause: Cause.Cause<unkno
   }
   return m(ACTION_FAILURES[action]);
 }
-
 function selectionHaptic(): void {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 }
-
 function actionFailureTitle(action: ThreadListAction): string {
   if (action === "archive") return m(msg("Could not archive thread"));
   if (action === "unarchive") return m(msg("Could not unarchive thread"));
@@ -196,7 +193,9 @@ function useThreadActionExecutor(
                       : deleteMutation
               )({
                 environmentId: thread.environmentId,
-                input: { threadId: thread.id },
+                input: {
+                  threadId: thread.id,
+                },
               }),
         (result) => result._tag === "Success",
       );
@@ -218,7 +217,6 @@ function useThreadActionExecutor(
     if (latestPendingActions.current.get(key) === pending) latestPendingActions.current.delete(key);
     return succeeded;
   };
-
   return executeAction;
 }
 
@@ -244,7 +242,6 @@ function confirmThreadDeletion(
     },
   });
 }
-
 export function useThreadListActions(): {
   readonly archiveThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
@@ -266,10 +263,18 @@ export function useThreadListActions(): {
   readonly regenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
 } {
   const executeAction = useThreadActionExecutor();
-  const snoozeMutation = useAtomCommand(threadEnvironment.snooze, { reportFailure: false });
-  const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
-  const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
-  const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
+  const snoozeMutation = useAtomCommand(threadEnvironment.snooze, {
+    reportFailure: false,
+  });
+  const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, {
+    reportFailure: false,
+  });
+  const pinMutation = useAtomCommand(threadEnvironment.pin, {
+    reportFailure: false,
+  });
+  const unpinMutation = useAtomCommand(threadEnvironment.unpin, {
+    reportFailure: false,
+  });
   const setAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
   });
@@ -401,7 +406,11 @@ export function useThreadListActions(): {
         );
         return false;
       }
-      if (!canSnooze(thread, { now: new Date().toISOString() })) {
+      if (
+        !canSnooze(thread, {
+          now: new Date().toISOString(),
+        })
+      ) {
         Dialog.alert(
           m(msg("Could not snooze thread")),
           thread.hasPendingApprovals || thread.pendingSubagentRequest != null
@@ -414,7 +423,6 @@ export function useThreadListActions(): {
         );
         return false;
       }
-
       selectionHaptic();
       const claim = ThreadUndo.begin("snooze", key);
       const result = await withThreadDismissal(
@@ -467,7 +475,6 @@ export function useThreadListActions(): {
         );
         return false;
       }
-
       selectionHaptic();
       ThreadUndo.invalidate("snooze", key);
       const result = await withThreadDismissal(
@@ -475,7 +482,10 @@ export function useThreadListActions(): {
         () =>
           unsnoozeMutation({
             environmentId: thread.environmentId,
-            input: { threadId: thread.id, reason: "user" },
+            input: {
+              threadId: thread.id,
+              reason: "user",
+            },
           }),
         (result) => result._tag === "Success",
       );
@@ -585,6 +595,23 @@ export function useThreadListActions(): {
     offerUndo(thread, "Unpinned", claim, plan);
     return true;
   };
+  const confirmAndUnpinThread = async (thread: EnvironmentThreadShell) => {
+    if (!checkThreadOperationPermission(thread, m(msg("Could not unpin thread")))) return false;
+    const preferences = appAtomRegistry.get(mobilePreferencesAtom);
+    if (!AsyncResult.isSuccess(preferences) || !preferences.value.skipThreadUnpinConfirmation) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Dialog.confirm({
+          title: m(msg('Unpin thread "{title}"?', { title: thread.title })),
+          message: m(msg("This will move the thread out of your pinned section.")),
+          confirmText: m(msg("Unpin", { $context: "verb, confirm button" })),
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return false;
+    }
+    return unpinThread(liveThread(thread));
+  };
   const setThreadAutoSettle = async (thread: EnvironmentThreadShell, enabled: boolean) => {
     if (!environmentSupportsAutoSettleOptOut(thread.environmentId)) {
       Dialog.alert(
@@ -600,7 +627,10 @@ export function useThreadListActions(): {
     selectionHaptic();
     const result = await setAutoSettleMutation({
       environmentId: thread.environmentId,
-      input: { threadId: thread.id, enabled },
+      input: {
+        threadId: thread.id,
+        enabled,
+      },
     });
     if (result._tag === "Failure") {
       const error = Cause.squash(result.cause);
@@ -631,13 +661,14 @@ export function useThreadListActions(): {
       );
       return false;
     }
-
     titleRegenerationInFlightThreadKeys.current.add(key);
     selectionHaptic();
     const succeeded = await (async () => {
       const result = await regenerateTitle({
         environmentId: thread.environmentId,
-        input: { threadId: thread.id },
+        input: {
+          threadId: thread.id,
+        },
       });
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
@@ -663,7 +694,10 @@ export function useThreadListActions(): {
   };
   const renameThread = (thread: EnvironmentThreadShell) => {
     const commit = (title: string) => {
-      const resolution = resolveThreadTitleRename({ title, originalTitle: thread.title });
+      const resolution = resolveThreadTitleRename({
+        title,
+        originalTitle: thread.title,
+      });
       if (resolution.action === "reject-empty") {
         Dialog.alert(m(msg("Could not rename thread")), m(msg("Thread title cannot be empty.")));
         return;
@@ -672,7 +706,10 @@ export function useThreadListActions(): {
       selectionHaptic();
       void updateThreadMetadata({
         environmentId: thread.environmentId,
-        input: { threadId: thread.id, title: resolution.title },
+        input: {
+          threadId: thread.id,
+          title: resolution.title,
+        },
       }).then((result) => {
         if (result._tag === "Success") return;
         const error = Cause.squash(result.cause);
@@ -684,7 +721,6 @@ export function useThreadListActions(): {
         );
       });
     };
-
     Dialog.prompt({
       title: m(msg("Rename thread")),
       initialValue: thread.title,
@@ -741,9 +777,14 @@ export function useThreadListActions(): {
       );
       return false;
     }
+    const preferences = appAtomRegistry.get(mobilePreferencesAtom);
+    const workingShelfEnabled =
+      AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled !== false;
     const ordered = getThreadListV2OrderedSection({
       threads: shells,
       section,
+      workingShelfEnabled,
+      inboxReturnAt: threadListInboxReturns.returnedAt,
       now: new Date().toISOString(),
       queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
       settlementEnvironmentIds: new Set(configs.keys()),
@@ -753,6 +794,7 @@ export function useThreadListActions(): {
       allThreads: shells,
       ordered,
       section,
+      activeAnchor: activeRowAnchor(workingShelfEnabled, threadListInboxReturns.returnedAt),
       reorderableEnvironmentIds: new Set(
         [...configs.keys()].filter((environmentId) => connectedEnvironmentIds.has(environmentId)),
       ),
@@ -796,7 +838,14 @@ export function useThreadListActions(): {
           ThreadUndo.invalidate("snooze", scopedThreadKey(thread.environmentId, thread.id));
           const result = await pinMutation({
             environmentId: thread.environmentId,
-            input: { threadId: thread.id, ...(orderKey === undefined ? {} : { orderKey }) },
+            input: {
+              threadId: thread.id,
+              ...(orderKey === undefined
+                ? {}
+                : {
+                    orderKey,
+                  }),
+            },
           });
           if (result._tag === "Failure") {
             Dialog.alert(m(msg("Could not pin thread")), String(Cause.squash(result.cause)));
@@ -823,7 +872,10 @@ export function useThreadListActions(): {
         ThreadUndo.invalidate("pin", scopedThreadKey(target.environmentId, target.id));
         const result = await reorder({
           environmentId: target.environmentId,
-          input: { threadId: target.id, orderKey: assignment.orderKey },
+          input: {
+            threadId: target.id,
+            orderKey: assignment.orderKey,
+          },
         });
         if (result._tag === "Failure") {
           const error = Cause.squash(result.cause);
@@ -843,7 +895,6 @@ export function useThreadListActions(): {
     appAtomRegistry.set(threadDropBusyAtom, false);
     return moved;
   };
-
   const confirmDeleteThread = (thread: EnvironmentThreadShell) =>
     confirmThreadDeletion(executeAction, thread);
 
@@ -870,7 +921,7 @@ export function useThreadListActions(): {
     ),
     pinThread: useStableCallback((thread: EnvironmentThreadShell) => pinThread(liveThread(thread))),
     unpinThread: useStableCallback((thread: EnvironmentThreadShell) =>
-      unpinThread(liveThread(thread)),
+      confirmAndUnpinThread(liveThread(thread)),
     ),
     setThreadAutoSettle: useStableCallback((thread: EnvironmentThreadShell, enabled: boolean) =>
       setThreadAutoSettle(liveThread(thread), enabled),
@@ -884,7 +935,6 @@ export function useThreadListActions(): {
     ),
   };
 }
-
 export function useArchivedThreadListActions(
   onCompleted: (thread: EnvironmentThreadShell) => void,
 ): {
@@ -900,6 +950,8 @@ export function useArchivedThreadListActions(
   };
   const confirmDeleteThread = (thread: EnvironmentThreadShell) =>
     confirmThreadDeletion(executeAction, thread);
-
-  return { unarchiveThread, confirmDeleteThread };
+  return {
+    unarchiveThread,
+    confirmDeleteThread,
+  };
 }

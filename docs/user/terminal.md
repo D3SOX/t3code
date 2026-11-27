@@ -18,6 +18,8 @@ Example for Git Bash on Windows (PowerShell, then fully quit and reopen T3 Code)
 
 Each terminal retains up to **5,000 lines** and **8 MiB** of scrollback on the server.
 
+Closing a terminal stops its processes and deletes its saved history. Web and desktop close terminals without confirmation by default; enable **Settings → General → Confirmations → Terminal close confirmation** to ask first.
+
 | Action                     | macOS                              | Windows / Linux                            |
 | -------------------------- | ---------------------------------- | ------------------------------------------ |
 | Scroll page up/down        | `Shift+PageUp` / `Shift+PageDown`  | `Shift+PageUp` / `Shift+PageDown`          |

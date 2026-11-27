@@ -9,6 +9,7 @@ import type {
   ModelSelection,
   OrchestrationMessageContext,
   ResponseContextRecord,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
 import {
@@ -22,8 +23,12 @@ import { msg } from "gt-react";
 import { m } from "../../i18n/messages";
 import { releaseDraftAttachments } from "../../lib/attachmentUploadQueue";
 import {
+  asKnownContextRecord,
   attachmentContextRecord,
   isSameComposerContextPayload,
+  previewAnnotationFromRecord,
+  reviewCommentFromRecord,
+  terminalContextDraftFromRecord,
 } from "../../lib/composerContextRecords";
 import { removeInlineContextReference } from "../../lib/composerContextReferences";
 
@@ -98,6 +103,55 @@ export function discardQueuedEditDraft(target: ComposerThreadTarget): void {
   store.clearDraftThread(target);
 }
 
+/** Return a removed queue entry without overwriting the user's current draft. */
+export function restoreQueuedMessage(input: {
+  readonly target: ComposerThreadTarget;
+  readonly threadId: ThreadId;
+  readonly text: string;
+  readonly context?: OrchestrationMessageContext | undefined;
+  readonly images: ComposerImageAttachment[];
+  readonly files: ComposerFileAttachment[];
+}): string {
+  const store = useComposerDraftStore.getState();
+  const current = store.getComposerDraft(input.target)?.prompt ?? "";
+  const restored = input.text;
+  const existing = store.getComposerDraft(input.target);
+  const records = (input.context?.records ?? []).flatMap((record) => {
+    const known = asKnownContextRecord(record);
+    return known ? [known] : [];
+  });
+  store.setTerminalContexts(input.target, [
+    ...(existing?.terminalContexts ?? []),
+    ...records
+      .filter((record) => record.kind === "terminal")
+      .map((record) => terminalContextDraftFromRecord(record, input.threadId)),
+  ]);
+  store.setReviewComments(input.target, [
+    ...(existing?.reviewComments ?? []),
+    ...records.filter((record) => record.kind === "review-comment").map(reviewCommentFromRecord),
+  ]);
+  store.setPreviewAnnotations(input.target, [
+    ...(existing?.previewAnnotations ?? []),
+    ...records
+      .filter((record) => record.kind === "preview-annotation")
+      .map(previewAnnotationFromRecord),
+  ]);
+  store.setThreadContexts(input.target, [
+    ...(existing?.threadContexts ?? []),
+    ...records.filter((record) => record.kind === "thread"),
+  ]);
+  store.setEnvironmentContexts(input.target, [
+    ...(existing?.environmentContexts ?? []),
+    ...records.filter((record) => record.kind === "environment"),
+  ]);
+  const prompt = [current, restored].filter((text) => text.length > 0).join("\n\n");
+  store.setPrompt(input.target, prompt);
+  store.addImages(input.target, input.images, { allowDuplicates: true });
+  store.addFiles(input.target, input.files, { allowDuplicates: true });
+  return store.getComposerDraft(input.target)?.prompt ?? prompt;
+}
+
+/** Keep an unsaved edit when its queued run starts or is removed remotely. */
 export function recoverQueuedMessageEdit(input: {
   readonly editTarget: ComposerThreadTarget;
   readonly threadTarget: ComposerThreadTarget;
@@ -155,6 +209,7 @@ export function recoverQueuedMessageEdit(input: {
   return recovery;
 }
 
+/** Generic files need upload references; images also support the inline transport. */
 export async function prepareQueuedEditAttachments(input: {
   readonly existingAttachments: ReadonlyArray<ChatAttachment>;
   readonly images: ReadonlyArray<ComposerImageAttachment>;

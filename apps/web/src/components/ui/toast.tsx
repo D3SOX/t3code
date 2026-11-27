@@ -574,7 +574,7 @@ function Toasts({ position }: { position: ToastPosition }) {
   const gt = useGT();
   const isTop = position.startsWith("top");
   const visibleToasts = toasts.filter((toast) =>
-    shouldRenderThreadScopedToast(toast.data, activeThreadRef),
+    shouldRenderThreadScopedToast(toast, activeThreadRef),
   );
   const visibleToastLayout = buildVisibleToastLayout(visibleToasts);
 
@@ -742,7 +742,7 @@ function AnchoredToasts() {
         role={undefined}
       >
         {toasts
-          .filter((toast) => shouldRenderThreadScopedToast(toast.data, activeThreadRef))
+          .filter((toast) => shouldRenderThreadScopedToast(toast, activeThreadRef))
           .map((toast) => {
             const tooltipStyle = toast.data?.tooltipStyle ?? false;
             const positionerProps = toast.positionerProps;

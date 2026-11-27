@@ -83,7 +83,7 @@ function setup() {
   state.openLink.mockReset().mockResolvedValue(undefined);
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
-    pullRequestLinksOpenInApp: true,
+    pullRequestLinkTarget: "app",
     browserLinkTarget: "system",
   });
   useDiffPanelStore.setState({
@@ -129,7 +129,7 @@ it.each(["system", "app"] as const)(
     // Without preview access, the "app" preference opens a popup too.
     __setClientSettingsForTests({
       ...DEFAULT_CLIENT_SETTINGS,
-      pullRequestLinksOpenInApp: true,
+      pullRequestLinkTarget: "app",
       browserLinkTarget,
     });
     using _desktop = stubGlobal("desktopBridge", undefined);

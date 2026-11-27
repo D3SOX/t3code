@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ColorValue } from "react-native";
 import type { AppSymbolName } from "./AppSymbol";
+import type { AndroidAnchoredMenuProps } from "./AndroidAnchoredMenu.android";
 
 export interface AppBarAction {
   readonly accessibilityLabel: string;
@@ -48,6 +49,7 @@ export interface AppBarMenu {
   readonly status?: string;
   readonly separateBackground?: boolean;
   readonly items: ReadonlyArray<AppBarMenuItem>;
+  readonly renderActionIcon?: AndroidAnchoredMenuProps["renderActionIcon"];
 }
 
 export interface AppBarConfirm {

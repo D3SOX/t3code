@@ -704,6 +704,8 @@ export const layerExecutor: Layer.Layer<
               );
               yield* resourceCleanup.cleanupAttachments(
                 request.attachmentIds.filter((id) => !referenced.has(id)),
+                // Retained image previews belong to the thread, not to a dropped queued file.
+                request.skipReferenced ? null : effect.threadId,
               );
             }).pipe(
               Effect.mapError(

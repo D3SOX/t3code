@@ -5,6 +5,7 @@ import {
   pinOrderKeyBetween,
   planPinnedReorder,
 } from "@t3tools/client-runtime/state/thread-sort";
+import { inboxReturnAtMs } from "@t3tools/client-runtime/state/thread-inbox";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { msg } from "gt-react-native";
@@ -58,7 +59,19 @@ export type OrderRow = Pick<
   | "createdAt"
   | "unsettledAt"
   | "pinnedAt"
+  | "latestRun"
 >;
+
+/** Keyless active rows sort by this anchor; moves must derive their implied keys from it too. */
+export type ActiveRowAnchor = (row: OrderRow) => number;
+
+/** The Working section orders the inbox by when each thread came back, not by its own anchor. */
+export function activeRowAnchor(
+  workingShelfEnabled: boolean,
+  returnedAt: (row: OrderRow) => number | undefined,
+): ActiveRowAnchor | undefined {
+  return workingShelfEnabled ? (row) => inboxReturnAtMs(row, returnedAt) : undefined;
+}
 
 export interface PendingThreadOrder {
   readonly section: "pinned" | "active";
@@ -77,9 +90,16 @@ function storedKey(row: OrderRow, section: PendingThreadOrder["section"]) {
   return (section === "pinned" ? row.pinOrderKey : row.activeOrderKey) ?? null;
 }
 
-function rowOrder(row: OrderRow, section: PendingThreadOrder["section"]) {
+function rowOrder(
+  row: OrderRow,
+  section: PendingThreadOrder["section"],
+  activeAnchor?: ActiveRowAnchor,
+) {
   return {
-    key: section === "pinned" ? storedKey(row, section) : activeThreadSortKey(row),
+    key:
+      section === "pinned"
+        ? storedKey(row, section)
+        : activeThreadSortKey(row, activeAnchor?.(row)),
     anchor: section === "pinned" ? (row.pinnedAt ?? "") : (row.unsettledAt ?? row.createdAt),
   };
 }
@@ -89,6 +109,7 @@ export function createThreadMovePlanner(input: {
   readonly allThreads?: readonly OrderRow[];
   readonly section: PendingThreadOrder["section"];
   readonly reorderableEnvironmentIds: ReadonlySet<EnvironmentId>;
+  readonly activeAnchor?: ActiveRowAnchor | undefined;
 }) {
   const orderedIds = input.ordered.map(rowId);
   // Hidden rows keep their stored key: only stored keys can collide with a write.
@@ -96,7 +117,9 @@ export function createThreadMovePlanner(input: {
     ...(input.allThreads ?? input.ordered).map(
       (row) => [rowId(row), storedKey(row, input.section)] as const,
     ),
-    ...input.ordered.map((row) => [rowId(row), rowOrder(row, input.section).key] as const),
+    ...input.ordered.map(
+      (row) => [rowId(row), rowOrder(row, input.section, input.activeAnchor).key] as const,
+    ),
   ]);
   const writableIds = new Set(
     (input.allThreads ?? input.ordered)
@@ -128,6 +151,7 @@ export function computeThreadMoveAvailability(input: {
   readonly section: PendingThreadOrder["section"];
   readonly reorderableEnvironmentIds: ReadonlySet<EnvironmentId>;
   readonly pendingOrder?: PendingThreadOrder | null;
+  readonly activeAnchor?: ActiveRowAnchor | undefined;
 }): Map<string, ThreadMoveAvailability> {
   const result = new Map<string, ThreadMoveAvailability>();
   if (input.pendingOrder != null) return result;
@@ -150,7 +174,8 @@ export function computeThreadMoveAvailability(input: {
     keysById.set(id, storedKey(row, input.section));
     if (input.reorderableEnvironmentIds.has(row.environmentId)) writableIds.add(id);
   }
-  for (const row of rows) keysById.set(rowId(row), rowOrder(row, input.section).key);
+  for (const row of rows)
+    keysById.set(rowId(row), rowOrder(row, input.section, input.activeAnchor).key);
   const reservedKeys = new Set<string>();
   keysById.forEach((key, id) => {
     if (key != null && !indexById.has(id)) reservedKeys.add(key);

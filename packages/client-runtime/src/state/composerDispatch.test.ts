@@ -1,6 +1,11 @@
-import { expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
-import { compactionBlocksSteering, composerRunsDraftLocally } from "./composerDispatch.ts";
+import {
+  alternateComposerDispatchAction,
+  compactionBlocksSteering,
+  composerRunsDraftLocally,
+  resolveComposerDispatchMode,
+} from "./composerDispatch.ts";
 
 it("blocks steering for explicit compaction, and for automatic compaction unless the provider takes steers then", () => {
   const during = (
@@ -70,4 +75,46 @@ it("treats only the commands the composer runs itself as local", () => {
   expect(composerRunsDraftLocally({ ...all, text: "fix the bug" })).toBe(false);
   expect(composerRunsDraftLocally({ ...all, holdsOnlyText: false, text: "/clear" })).toBe(false);
   expect(composerRunsDraftLocally({ ...all, holdsOnlyText: false, text: "/side why?" })).toBe(true);
+});
+
+describe("resolveComposerDispatchMode", () => {
+  it.each([
+    ["queue", "next-tool"],
+    ["next-tool", "queue"],
+    ["steer", "queue"],
+  ] as const)(
+    "uses configured %s behavior only during a running turn",
+    (activeTurnDefault, alternateAction) => {
+      expect(
+        resolveComposerDispatchMode({
+          running: true,
+          alternateModifier: false,
+          activeTurnDefault,
+        }),
+      ).toBe(activeTurnDefault);
+      expect(
+        resolveComposerDispatchMode({
+          running: true,
+          alternateModifier: true,
+          activeTurnDefault,
+        }),
+      ).toBe(alternateAction);
+      expect(
+        resolveComposerDispatchMode({
+          running: false,
+          alternateModifier: false,
+          activeTurnDefault,
+        }),
+      ).toBe("auto");
+      expect(
+        resolveComposerDispatchMode({ running: false, alternateModifier: true, activeTurnDefault }),
+      ).toBe("auto");
+    },
+  );
+
+  it("names the alternate action so the affordance can be labelled", () => {
+    expect(alternateComposerDispatchAction("queue")).toBe("next-tool");
+    expect(alternateComposerDispatchAction("steer")).toBe("queue");
+    expect(alternateComposerDispatchAction()).toBe("queue");
+  });
 });

@@ -90,14 +90,20 @@ function normalizeToastHeight(height: number | null | undefined): number {
 }
 
 export function shouldRenderThreadScopedToast(
-  data:
-    | {
-        threadRef?: ScopedThreadRef | null;
-        threadId?: ThreadId | null;
-      }
-    | undefined,
+  toast: ToastWithTransitionStatus & {
+    data?:
+      | {
+          threadRef?: ScopedThreadRef | null;
+          threadId?: ThreadId | null;
+        }
+      | undefined;
+  },
   activeThreadRef: ScopedThreadRef | null,
 ): boolean {
+  // Base UI removes a closed toast only once its Root finishes the exit. One left unrendered stays
+  // "ending" forever, and the viewport then never ends its hover pause, freezing every toast timer.
+  if (toast.transitionStatus === "ending") return true;
+  const { data } = toast;
   if (data?.threadRef) {
     return (
       activeThreadRef !== null &&

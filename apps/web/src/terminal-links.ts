@@ -1,4 +1,9 @@
-import { parseFileUrlHref, resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
+import {
+  parseFileUrlHref,
+  resolvePathLinkTarget,
+  splitFilePathPosition,
+} from "@t3tools/shared/fileLinks";
+import { isWindowsAbsolutePath, workspaceRelativeFilePath } from "@t3tools/shared/path";
 import { isMacPlatform } from "./lib/utils";
 
 export type TerminalLinkKind = "url" | "path";
@@ -256,4 +261,24 @@ export function isTerminalLinkActivation(
   return isMacPlatform(platform)
     ? event.metaKey && !event.ctrlKey
     : event.ctrlKey && !event.metaKey;
+}
+
+export function terminalAppPathTarget(
+  target: string,
+  workspaceRoot: string,
+): { kind: "files" } | { kind: "file"; path: string; line?: number } {
+  const { path, line } = splitFilePathPosition(target);
+  const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalizedPath = normalize(path);
+  const normalizedRoot = normalize(workspaceRoot);
+  const sameRoot = isWindowsAbsolutePath(workspaceRoot)
+    ? normalizedPath.toLowerCase() === normalizedRoot.toLowerCase()
+    : normalizedPath === normalizedRoot;
+  if (sameRoot) return { kind: "files" };
+
+  return {
+    kind: "file",
+    path: workspaceRelativeFilePath(path, workspaceRoot) ?? path,
+    ...(line !== undefined ? { line } : {}),
+  };
 }

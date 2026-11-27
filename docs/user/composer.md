@@ -23,9 +23,9 @@ Attach up to **100 files** per message:
 - **Images**: Up to 10 MiB each, 80 MiB total per message. HEIC/HEIF photos are converted to JPEG, and oversized photos are resized automatically.
 - **Other files (including videos)**: Up to 50 MiB each (subject to environment limits). Video attachments pass a file path; only [Antigravity](./providers-antigravity.md#skills-and-attachments) sends supported videos natively to Gemini models.
 
-Files upload to the environment's machine as soon as you attach them, and all uploads must finish before sending. Provider and model limits still apply.
+Files upload to the environment's machine as soon as you attach them. You can submit while uploads or an earlier send are still in progress; messages wait locally and send in submission order once ready, and you can keep composing the next message meanwhile. Provider and model limits still apply.
 
-- **Web and desktop**: Drag, paste, or pick files. Reloading before an upload finishes requires re-attaching.
+- **Web and desktop**: Drag, paste, or pick files. Keep the client open while messages wait locally; reloading before an upload finishes requires re-attaching.
 - **Mobile**: Pick files, share into T3 Code via the system share sheet, or drag images in Android split screen.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
@@ -34,12 +34,13 @@ See [images and videos](#images-and-videos-in-messages) for previewing and savin
 
 Choose your default follow-up behavior in **Settings → Chat → Follow-up behavior** (per client):
 
-- **Queue**: Holds the message on the server for the next turn.
+- **Queue after next tool call** (default): Holds the message on the server and steers it into the running turn after the next completed tool call.
+- **Queue**: Holds the message on the server until the current turn ends.
 - **Steer**: Injects the message into the running turn (when supported by the agent).
 
 Shortcuts while a turn is running:
 
-- **Opposite action**: `Cmd+Enter` (macOS) or `Ctrl+Enter` (Windows/Linux) uses the non-default action. If your send shortcut already requires `Cmd/Ctrl+Enter`, add `Shift`. On mobile, long-press the send button or use `Cmd/Ctrl+Return` on a hardware keyboard.
+- **Alternate timing**: `Cmd+Enter` (macOS) or `Ctrl+Enter` (Windows/Linux) queues after the next tool call when your default is Queue, and queues after the current turn for the other defaults. If your send shortcut already requires `Cmd/Ctrl+Enter`, add `Shift`. On mobile, long-press the send button or use `Cmd/Ctrl+Return` on a hardware keyboard.
 - **Steer oldest queued message**: `Cmd+Shift+Enter` (macOS) or `Ctrl+Shift+Enter` (Windows/Linux) sends the first queued message as a steer without touching your current draft. Remap `thread.steerQueuedMessage` in **Settings → Keybindings**, or add a rule in your [keybindings file](./keybindings.md#edit-the-configuration-file) to trigger it on `mod+enter` when the composer is empty:
 
 ```json
@@ -116,9 +117,11 @@ Dictate into the composer with the microphone button or `mod+shift+d` (web and d
 
 ## Queued messages
 
-Queued messages appear at the end of the thread (web/desktop) or above the composer (mobile). From a queued message you can:
+Queued messages appear above the composer, with a thumbnail of any attached image. From a queued message you can:
 
-- **Send now**: Injects it immediately into a running turn (or moves a slash command to the front of the queue).
+- **Reorder**: Drag a row by its handle, or use the handle's arrow keys.
+- **Send now**: Promotes it to a steer in the running turn (or moves a slash command to the front of the queue).
+- **Change timing**: Switches between after the turn and after the next tool call. The next-tool timing steers only the first queued message after a completed tool call, respects queue order, and falls back to a new turn if the agent finishes first or cannot steer. It requires an updated D3SOX fork server on the host; upstream servers support Queue and Steer.
 - **Edit**: Opens the message and its attachments in the composer without losing your existing draft.
 - **Remove**: Cancels the queued message.
 

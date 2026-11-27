@@ -8,20 +8,22 @@ To free a default shortcut, choose **Unassign** from its row menu (**Reset to de
 
 ## Common composer shortcuts
 
-| Action                      | Default           | Notes                                                              |
-| --------------------------- | ----------------- | ------------------------------------------------------------------ |
-| Start / finish dictation    | `mod+shift+d`     | `Esc` discards. See [Voice input](./voice-input.md).               |
-| Opposite queue/steer action | `mod+Enter`       | Uses the non-default follow-up behavior while a turn runs.         |
-| Start thread in background  | `mod+Alt+Enter`   | Also `mod+Enter` in a new thread; opens a fresh draft immediately. |
-| Send first queued message   | `mod+Shift+Enter` | Steers if running, or starts a turn if stopped.                    |
-| Pick model                  | `mod+shift+m`     | `mod+shift+up/down` switches providers inside the picker.          |
-| Pick host / environment     | `mod+shift+h`     | Bind **Composer: Cycle Host** to step without a menu.              |
-| Pick effort                 | `mod+shift+e`     | Bind **Increase/Decrease Effort** to step without a menu.          |
-| Pick permissions            | `mod+shift+a`     |                                                                    |
-| Pick workspace mode         | `mod+shift+x`     | `mod+shift+l` reuses the previous worktree directly.               |
-| Pick Git branch             | `mod+shift+g`     |                                                                    |
+| Action                      | Default           | Notes                                                      |
+| --------------------------- | ----------------- | ---------------------------------------------------------- |
+| Start / finish dictation    | `mod+shift+d`     | `Esc` discards. See [Voice input](./voice-input.md).       |
+| Opposite queue/steer action | `mod+Enter`       | Uses the non-default follow-up behavior while a turn runs. |
+| Start thread in background  | `mod+Alt+Enter`   | Opens a fresh draft immediately.                           |
+| Send first queued message   | `mod+Shift+Enter` | Steers if running, or starts a turn if stopped.            |
+| Pick model                  | `mod+shift+m`     | `mod+shift+up/down` switches providers inside the picker.  |
+| Pick host / environment     | `mod+shift+h`     | Bind **Composer: Cycle Host** to step without a menu.      |
+| Pick effort                 | `mod+shift+e`     | Bind **Increase/Decrease Effort** to step without a menu.  |
+| Pick permissions            | `mod+shift+a`     |                                                            |
+| Pick workspace mode         | `mod+shift+x`     | `mod+shift+l` reuses the previous worktree directly.       |
+| Pick Git branch             | `mod+shift+g`     |                                                            |
 
 Configure whether `Enter` sends or requires `mod+Enter` in **Settings → Chat → Send shortcut** (`Shift+Enter` always inserts a newline).
+
+New threads start in the background by default, leaving a fresh composer ready for the next task. Turn off **Settings → General → Start threads in background** to open a new thread after submitting it. In a new thread, `mod+Enter` does the opposite of that setting; existing threads keep their normal send behavior.
 
 In the model picker, use `Left`/`Shift+Tab` to move to the provider list, `Right` to return to search or move into effort levels, and `Up`/`Down`/`Enter` to select.
 
@@ -88,7 +90,7 @@ The last matching rule in `keybindings.json` wins, even across different command
 
 ## Reserved and platform shortcuts
 
-- `mod+w` (desktop) closes the focused terminal, the selected range of right-panel tabs, or the active tab if there is no range. On web, browsers intercept `mod+w`. Rebind `rightPanel.close` and `terminal.close` to a shortcut such as `alt+w`.
+- `Ctrl+Shift+W` closes the focused terminal; `Ctrl+W` stays available to the shell. Outside the terminal, `mod+w` (desktop) closes the selected range of right-panel tabs, or the active tab if there is no range; it never closes the desktop window. On web, browsers intercept `mod+w`. Rebind `rightPanel.close` to a shortcut such as `alt+w`.
 - `mod+shift+t`: Reopens the last closed panel tab (files, diffs, PRs, browsers, devices) in order. Browser tabs reopen as fresh sessions. Rebind on web if your browser intercepts it.
 - Keep `!terminalFocus` when remapping shortcuts that shouldn't intercept terminal input. `sidebar.toggle` ignores `Ctrl+B` inside terminals so `tmux` keeps its prefix (`Cmd+B` still works on macOS).
 

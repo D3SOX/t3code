@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+    <meta
+      name="description"
+      content="What D3SOX's T3 Code fork changes, and how to install its Android and Arch Linux nightlies."
+    />
+    <title>T3 Code D3SOX</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        background: #f7f7f7;
+        color: #242424;
+        --text: #242424;
+        --muted: #454545;
+        --link: #292929;
+        --border: #d0d0d0;
+        --code-background: #eeeeee;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #1c1c1c;
+          color: #eeeeee;
+          --text: #eeeeee;
+          --muted: #cccccc;
+          --link: #eeeeee;
+          --border: #505050;
+          --code-background: #292929;
+        }
+      }
+      body {
+        max-width: 48rem;
+        margin: 0 auto;
+        padding: 3rem 1.25rem 5rem;
+      }
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3rem);
+        margin: 0 0 1rem;
+      }
+      h2 {
+        font-size: 1.35rem;
+        margin-top: 2.5rem;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      li + li {
+        margin-top: 0.5rem;
+      }
+      h3 {
+        margin: 2rem 0 0.5rem;
+      }
+      li strong {
+        color: var(--text);
+      }
+      a {
+        color: var(--link);
+        text-underline-offset: 0.2em;
+      }
+      a:hover {
+        text-decoration-thickness: 2px;
+      }
+      a:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 3px;
+      }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.5rem;
+        margin: 1.5rem 0;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      pre {
+        overflow-x: auto;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 0.25rem;
+        background: var(--code-background);
+        color: inherit;
+      }
+      .note {
+        font-size: 0.9rem;
+      }
+      .obtainium-badge {
+        display: inline-block;
+        line-height: 0;
+      }
+      .obtainium-badge img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>T3 Code D3SOX</h1>
+      <p>
+        D3SOX's fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a>. It stays in sync
+        with upstream, and the list below covers what's different. Signed nightly builds are
+        available for Android and Arch Linux.
+      </p>
+      <nav class="links" aria-label="Project links">
+        <a href="https://github.com/D3SOX/t3code">Source</a>
+        <a href="https://github.com/D3SOX/t3code/releases">Latest builds</a>
+      </nav>
+
+      <h2>What's different</h2>
+      <p>Platforms are noted where a change doesn't apply to every client.</p>
+      <h3>Messages and the queue</h3>
+      <ul>
+        <li>
+          <strong>Queue after the next tool call.</strong> Besides upstream's Queue and Steer, a
+          follow-up can wait for the agent's next tool call, and that's the default. Ctrl+Enter
+          (Cmd+Enter on macOS) switches between that and waiting for the turn to end. Slash commands
+          always wait for the turn. This needs the fork's server on the host.
+        </li>
+        <li>
+          <strong>Queue controls.</strong> Queued messages sit above the composer. Drag them into a
+          new order, change their timing, or turn one into a steer. You get one completion
+          notification once the whole queue is done.
+        </li>
+        <li>
+          <strong>Queue editing.</strong> On web and desktop, press Up in an empty composer to edit
+          the last queued message. Editing pauses the queue until you save or cancel. Removing a
+          message puts its text and attachments back in the composer.
+        </li>
+        <li>
+          <strong>Send while uploads run.</strong> On web and desktop, you can send before uploads
+          or an earlier send finish. Messages wait on your device and go out in order. Keep the tab
+          or window open until they're sent.
+        </li>
+        <li>
+          <strong>New threads start in the background.</strong> On web and desktop, sending from a
+          new-thread draft starts the thread and gives you a fresh draft, and Ctrl+Enter opens the
+          thread instead. Turn off Settings → General → Start threads in background to swap the two.
+        </li>
+        <li>
+          <strong>Interrupt feedback.</strong> The interrupt button shows a spinner until the
+          interrupt goes through.
+        </li>
+      </ul>
+
+      <h3>Images</h3>
+      <ul>
+        <li>
+          <strong>Viewed images.</strong> Images the agent opens get their own row in the timeline,
+          even inside a collapsed turn. The Only viewed images tool call visibility hides every
+          other tool call but keeps these rows.
+        </li>
+        <li>
+          <strong>Media previews.</strong> Images and videos the agent references show up as
+          previews under its message on every client. Videos don't autoplay.
+        </li>
+        <li>
+          <strong>Current and kept copies.</strong> If the agent changes a local image and shows it
+          again, you see the new version. Threads keep their own copies, so older images still load
+          after the original files are gone.
+        </li>
+      </ul>
+
+      <h3>Notifications and pull requests</h3>
+      <ul>
+        <li>
+          <strong>No alerts for nothing.</strong> Empty replies, short PR-monitoring updates, and
+          background jobs that finish mid-task don't mark a thread Done, notify you, or play a
+          sound. Image-only replies and errors still notify you.
+        </li>
+        <li>
+          <strong>Background work.</strong> Any running background command keeps a thread from
+          settling, not only work the agent says it's waiting on. The task's result wakes the agent
+          even if another notification arrives first, and it can wake a thread that already settled.
+        </li>
+        <li>
+          <strong>Watching PRs section.</strong> Threads waiting on a watched pull request get their
+          own sidebar section on every client, separate from Active, and stay there after checks
+          finish.
+        </li>
+        <li>
+          <strong>PR wakes that matter.</strong> Missing required checks, checks that show up later,
+          and overlapping CI runs count as pending, and the agent wakes again when they finish. New
+          comments from people, review findings, and bot approvals wake it too, and so does a review
+          bot that finishes its check or only reacts to the PR description. Comment edits, bot
+          status messages, acknowledgements, rate-limit notices, and updates for outdated commits
+          don't.
+        </li>
+        <li>
+          <strong>PR links.</strong> Agents link only the PRs that belong to their task. PR links
+          open in your system browser, and on desktop you can right-click one to open it in T3 Code.
+          In a repository with both <code>origin</code> and <code>upstream</code>, T3 Code uses
+          <code>origin</code> for your fork's pull requests.
+        </li>
+        <li>
+          <strong>Desktop notifications.</strong> Clicking one brings T3 Code to the front and opens
+          its thread, even if the window is minimized or hidden. Switching back to the app clears
+          the notification for the thread you're looking at and resets the unread badge.
+          Notifications for other threads stay until you open them.
+        </li>
+        <li>
+          <strong>In-app notifications.</strong> They disappear when you open their thread and stay
+          hidden while you're there. A provider usage limit alerts you once per environment instead
+          of once per thread.
+        </li>
+      </ul>
+
+      <h3>Sidebar and navigation</h3>
+      <ul>
+        <li>
+          <strong>Collapsible sections.</strong> On web and desktop, drafts get their own section at
+          the top of the sidebar. Pinned and Active collapse too, and each client remembers your
+          choice. Threads that are Done, need input, or are open stay visible in a collapsed
+          section.
+        </li>
+        <li>
+          <strong>Your own order.</strong> With the Working section enabled, you can drag Active
+          threads into your own order.
+        </li>
+        <li>
+          <strong>Clearer status.</strong> Background work looks different from a running turn, and
+          a thread shows when it needs input even while it's still running. Working threads stay in
+          their section while the client syncs.
+        </li>
+        <li>
+          <strong>New-thread project.</strong> The new-thread button remembers the project you last
+          picked for a new thread, and opening some other chat doesn't change it. On web and
+          desktop, right-click or Shift-click the button to pick another project. The composer shows
+          the project's icon next to its name.
+        </li>
+        <li>
+          <strong>Machine for threads without a project.</strong> On web and desktop, pick it per
+          device in Settings → General → New threads.
+        </li>
+        <li>
+          <strong>Cleaner history.</strong> On web and desktop, opening Settings or Usage doesn't
+          add Back and Forward entries. When a sidebar action takes you out of the current thread,
+          you land on a new-thread draft in the same project.
+        </li>
+        <li>
+          <strong>Archive in bulk.</strong> On web and desktop, right-click the Settled section to
+          archive every settled thread, including older ones that aren't loaded yet. It always asks
+          first, and one undo brings them all back.
+        </li>
+        <li>
+          <strong>Archived thread search.</strong> Search archived threads in Settings by title,
+          branch, project name or path, or environment name.
+        </li>
+        <li>
+          <strong>Unpin confirmation.</strong> Unpinning asks first by default. Turn it off in
+          Settings → General.
+        </li>
+      </ul>
+
+      <h3>Source control and terminals</h3>
+      <ul>
+        <li>
+          <strong>Optional generated names.</strong> In Settings → Source Control, you can turn off
+          generated thread titles and worktree branch names for an environment or a single project.
+          New worktree branches have no prefix by default.
+        </li>
+        <li>
+          <strong>Scheduled task branches.</strong> Scheduled tasks default to the repository's
+          default branch instead of <code>main</code>.
+        </li>
+        <li>
+          <strong>Clickable terminal paths.</strong> Click a path in the terminal to open the file
+          in T3 Code or show the folder in its file explorer, also on remote machines. Hold Ctrl or
+          Shift to select the text instead. Right-click a URL or path to copy it.
+        </li>
+        <li>
+          <strong>Terminal shortcuts.</strong> Ctrl+Shift+W closes the focused terminal, so Ctrl+W
+          and Ctrl+D still reach the program running in it. Closing doesn't ask first unless you
+          turn that on in Settings → General → Confirmations.
+        </li>
+      </ul>
+
+      <h3>Appearance</h3>
+      <ul>
+        <li>
+          <strong>T3 Code Dim.</strong> This theme in Settings → Appearance brings back the old gray
+          dark colors on every client.
+        </li>
+        <li>
+          <strong>Thread branches.</strong> Thread rows show their branch. Turn off Show thread
+          branches in Settings → Appearance for slimmer rows and more room for titles.
+        </li>
+        <li>
+          <strong>Legacy controls.</strong> On web and desktop, the Build/Plan toggle, plan
+          commands, and the round context-window indicator are opt-in settings in Labs → Legacy.
+        </li>
+        <li>
+          <strong>Environment artwork.</strong> On mobile, the app header shows Nightly sky or Dev
+          blueprint artwork. Switch to a pill or turn it off in Settings → Appearance → Environment
+          identification.
+        </li>
+      </ul>
+
+      <h3>Mobile</h3>
+      <ul>
+        <li>
+          <strong>Notifications without Google services.</strong> On Android, turn on Background
+          connection in Settings → Notifications to keep getting alerts and live agent updates after
+          you switch apps. Android shows an ongoing notification while it's on. It stops when you
+          swipe T3 away from recents.
+        </li>
+        <li>
+          <strong>UnifiedPush.</strong> Android can also get encrypted push notifications through
+          any UnifiedPush distributor. This needs neither Google services nor a T3 Connect account,
+          but your paired hosts have to support it.
+        </li>
+        <li>
+          <strong>Usage widget.</strong> The Android widget gives each Codex and Claude subscription
+          its own bar instead of averaging them, and keeps account emails off your home screen. Tap
+          its refresh prompt to open Usage.
+        </li>
+        <li>
+          <strong>Draft markers.</strong> Threads with unsent drafts get a yellow pen and a light
+          highlight, like on web and desktop.
+        </li>
+        <li>
+          <strong>Smaller fixes.</strong> Project filters and the Settings scope picker show project
+          icons, and the Android composer keeps the cursor in view as long messages wrap.
+        </li>
+      </ul>
+
+      <h3>Providers and hosting</h3>
+      <ul>
+        <li>
+          <strong>Codex capacity retries.</strong> When Codex is out of capacity, T3 Code retries
+          after 10 seconds and doubles the wait each time. Every client shows a countdown and a
+          Cancel retry button. Retries keep your context and count as one turn for checkpoint
+          restore.
+        </li>
+        <li>
+          <strong>Codex credits.</strong> When the provider reports a balance, Usage shows your
+          remaining Codex credits on every client.
+        </li>
+        <li>
+          <strong>Codex crashes.</strong> If a Codex process crashes, you can send your next turn
+          without restarting the host.
+        </li>
+        <li>
+          <strong>Desktop CLI services.</strong> Background services installed with the desktop CLI
+          run the installed fork and update along with the desktop app.
+        </li>
+        <li>
+          <strong>Tunnel recovery.</strong> After a host update or service restart, clients retry
+          temporary tunnel errors instead of staying offline until you refresh.
+        </li>
+        <li>
+          <strong>Worktree cleanup.</strong> Storage cleanup also removes clean, merged worktrees
+          whose branch was renamed or whose checkout is detached, including ones with submodules. It
+          checks the submodules for uncommitted changes and unpushed commits first.
+        </li>
+      </ul>
+
+      <h3>Privacy</h3>
+      <ul>
+        <li>
+          Product analytics are off unless you set <code>T3CODE_TELEMETRY_ENABLED=true</code> on the
+          server.
+        </li>
+        <li>The app doesn't ask you to star its GitHub repository.</li>
+      </ul>
+
+      <h2>Android nightly</h2>
+      <p>
+        Download the latest <code>T3-Code-D3SOX-Android</code> APK from
+        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>, or add the app to
+        Obtainium to get updates automatically:
+      </p>
+      <p>
+        <a
+          class="obtainium-badge"
+          href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522com.t3tools.t3code.preview%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FD3SOX%252Ft3code%2522%252C%2522author%2522%253A%2522D3SOX%2522%252C%2522name%2522%253A%2522T3%2520Code%2520D3SOX%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includePrereleases%255C%2522%253Atrue%252C%255C%2522filterReleaseTitlesByRegEx%255C%2522%253A%255C%2522%255ED3SOX%2520nightly%2520r%255B0-9%255D%252B%2524%255C%2522%257D%2522%257D"
+          ><img
+            src="./assets/badge-obtainium.png"
+            alt="Add T3 Code D3SOX to Obtainium"
+            width="160"
+            height="62"
+        /></a>
+      </p>
+      <p>
+        It installs as a separate preview app next to the regular T3 Code app. It doesn't use
+        upstream's Expo over-the-air updates and doesn't send app telemetry.
+        <span class="note"
+          >Badge artwork:
+          <a href="https://github.com/D3SOX/t3code/blob/main/assets/fork/LICENSE.obtainium.txt"
+            >Obtainium (GPL-3.0)</a
+          >.</span
+        >
+      </p>
+
+      <h2>Arch Linux nightly</h2>
+      <p>
+        The signed <code>t3code-d3sox-git</code> package updates through pacman. First, download the
+        <a
+          href="https://github.com/D3SOX/t3code/blob/main/packaging/aur/t3code-d3sox-git/signing-key.asc"
+          >repository signing key</a
+        >
+        and check that its fingerprint is
+        <code>5A4D 66D6 9437 77AD 48A5 F169 9728 12D8 A4CF BA4D</code>:
+      </p>
+      <pre><code>curl -fsSL -o t3code-d3sox.asc https://raw.githubusercontent.com/D3SOX/t3code/main/packaging/aur/t3code-d3sox-git/signing-key.asc
+gpg --show-keys --fingerprint t3code-d3sox.asc</code></pre>
+      <p>
+        Once the fingerprint matches, add the key to pacman and trust it for this repository's
+        packages:
+      </p>
+      <pre><code>sudo pacman-key --add t3code-d3sox.asc
+sudo pacman-key --lsign-key 5A4D66D6943777AD48A5F169972812D8A4CFBA4D</code></pre>
+      <p>Then add the repository and install the package:</p>
+      <pre><code>sudo pacman-conf --repo-list | grep -qxF 't3code-d3sox' ||
+  printf '%s\n' '' '[t3code-d3sox]' 'SigLevel = Required' \
+    'Server = https://t3code.d3sox.me/arch/$arch' |
+  sudo tee -a /etc/pacman.conf &gt;/dev/null
+sudo pacman -Syu t3code-d3sox-git</code></pre>
+      <p>
+        This adds the repository only if it isn't configured yet, and works in bash, zsh, and fish.
+        Keep the single quotes so pacman gets <code>$arch</code> as written. From then on, nightlies
+        arrive with your regular pacman updates.
+      </p>
+      <p class="note">
+        The repository only has the latest x86_64 build. Older builds stay on
+        <a href="https://github.com/D3SOX/t3code/releases">GitHub Releases</a>. The package
+        conflicts with <code>t3code-bin</code>, so pacman will offer to replace it. To build from
+        source instead, see the
+        <a href="https://github.com/D3SOX/t3code#arch-linux-nightly">README</a>.
+      </p>
+    </main>
+  </body>
+</html>

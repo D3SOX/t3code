@@ -14,26 +14,30 @@ Threads don't require a project. Pick **No project** (or press `mod+alt+n` on we
 
 - Deleting a scratch thread leaves its folder on disk.
 - Git branch, worktree, and diff controls are hidden (and scratch threads are unavailable if your T3 data directory itself is inside a Git repo).
+- It starts on this client's default machine (**Settings → General → New threads → Machine for threads without a project** on web/desktop; **Automatic** prefers this app's primary machine). A selected machine must be connected; T3 Code does not substitute another. Before sending, pick another machine from the machine menu to move the draft there.
 - Choose **Turn into project** from the thread menu to promote the folder into a real project in place, then **Initialize Git** if needed.
 
 ### Start in the background and multi-model runs
 
-- **Background start** (web/desktop): Press `Cmd+Enter` (macOS) or `Ctrl+Enter` (Windows/Linux) in a new thread to submit it and immediately open another draft with the same workspace mode and base branch.
+- **Background start** (web/desktop): Submitting a new thread starts it in the background and immediately opens another draft with the same workspace mode and base branch. Disable **Settings → General → Start threads in background** to open the submitted thread instead; `Cmd+Enter` (macOS) or `Ctrl+Enter` (Windows/Linux) does the opposite of your setting.
 - **Same prompt, multiple models** (web/desktop, Git projects): `Shift`-click models in a new thread's model picker to select several. Sending starts a separate thread and worktree for each model.
 
 ## Sidebar layout and organization
 
 - **Resize or hide** (web/desktop): Drag the sidebar's right edge past its minimum width to hide it; hover the left window edge and click or drag the handle to bring it back.
 - **Drop files onto a thread** (web/desktop): Drag files from your computer onto any thread row to open it and attach them to its composer.
-- **Pin and reorder**: Pin a thread from its menu or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
+- **Pin and reorder**: Pin a thread from its menu or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake); the Pinned and Active headings also act as drop targets. On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server). Unpinning with the pin icon or thread menu asks for confirmation; turn this off in **Settings → General**.
+- **Collapse sections**: Click or tap the **Pinned** or **Active** heading to collapse or expand it (remembered per client). Threads showing **Done** or **Input**, and the thread you are viewing, stay visible in a collapsed section.
 - **Undo** (web/desktop): Unpinning, settling, snoozing, archiving, or discarding a draft shows a 5-second **Undo** toast (`mod+z`).
 - **Titles**: Choose **Regenerate title** from a thread's menu, or customize title style in **Settings → Threads → Text generation → Thread title instructions** (global or per-project).
 
 ### Working section (beta)
 
-Enabled by default (**Settings → General → Working section**, per device). Unpinned threads that are actively running—or waiting on subagents, watched PRs, or monitors—collapse into a **Working** section below Active, and return to the top of Active when they finish, fail, or need input.
+Enabled by default (**Settings → General → Working section**, per device). Unpinned threads that are actively running—or waiting on subagents or monitors—collapse into a **Working** section below Active, and return to the top of Active when they finish, fail, or need input.
 
-While enabled, Active is sorted by most recent return (manual reordering is paused until you turn it off).
+While enabled, threads you haven't arranged are sorted by most recent return; a thread you drag or move keeps the place you give it.
+
+Threads waiting on watched pull requests have a separate **Watching PRs** section, even after all checks finish. The selected thread stays visible when it is collapsed, each device remembers whether it is expanded, and it stays available when Working is turned off.
 
 ### Group threads by project (beta)
 
@@ -51,7 +55,7 @@ Enable **Settings → Labs → Boring sidebar (group by project)** on web/deskto
 
 ### Settlement rules and hooks
 
-- **Automatic settlement**: By default, environments settle threads after 7 days of inactivity or when their linked PR merges/closes (even while your apps are closed). Active work, pending questions/approvals, and waited-on background work block auto-settlement. Configure rules in **Settings → Threads** (per environment or **All environments**), including **Keep threads with a PR**.
+- **Automatic settlement**: By default, environments settle threads after 7 days of inactivity or when their linked PR merges/closes (even while your apps are closed). Active work, pending questions/approvals, and any background work still running block auto-settlement (a dev server an agent leaves running holds the thread until T3 Code stops the idle agent, at most a few hours later). Configure rules in **Settings → Threads** (per environment or **All environments**), including **Keep threads with a PR**.
 - **Per-thread override**: Open a thread's menu → **Auto-settle behavior → Never** to exempt a single thread.
 - **Drag-to-settle** (web/desktop): Press and drag down/up from a thread's **Settle**, **Un-settle**, or **Wake** button to act on a contiguous range (`Esc` cancels).
 - **Offline settle/snooze**: Queues locally (**Pending** / **Waiting to sync**) and syncs on reconnect; remote changes take precedence if the thread changed in the meantime.
@@ -68,6 +72,7 @@ The server automatically links open PRs matching an unsettled thread's branch. O
 ## Find and reference work
 
 - **Command palette** (`Cmd/Ctrl+K`): Searches threads across connected environments by title, branch, PR, project, and message contents (use `"exact phrase"` for exact matches). On mobile, use the thread list search (or `Cmd+K` on iPad with a keyboard).
+- **Archived threads**: Search **Settings → Archive** by thread title, branch, project name or path, or environment name to find and unarchive older conversations. On web and desktop, results stay within your selected settings scope.
 - **Copy reference**: Copies the linked PR URL if one exists, otherwise a thread link that pastes into any composer as a thread chip. Use **Copy → Thread** (or **Copy thread** on mobile) to force a thread link, or **Thread ID** for scripts and the `t3` CLI.
 
 ## Usage limits, subagents, and thread details

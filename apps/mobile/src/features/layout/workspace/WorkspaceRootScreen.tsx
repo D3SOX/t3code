@@ -1,3 +1,5 @@
+import { renderEnvironmentHeaderBackground } from "../../../components/EnvironmentArtwork";
+import { useEnvironmentIdentification } from "../../../state/environmentIdentification";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { isSharedSlotTab } from "./navigation-tab-order";
 import { SharedSlotTitle } from "./SharedSlotTitle";
@@ -89,6 +91,7 @@ function WorkspaceRootTitle(props: {
 function WorkspaceRootContent() {
   const gt = useGT();
   const m = useMessages();
+  const { artworkStage } = useEnvironmentIdentification();
   const navigation = useNavigation();
   const { width: windowWidth } = useWindowDimensions();
   const { layout, startNewTask } = useAdaptiveWorkspaceLayout();
@@ -142,6 +145,7 @@ function WorkspaceRootContent() {
       <View className={sidebarPicker ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
         <NativeStackScreenOptions
           optionsVersion={[
+            artworkStage,
             settingsOpen,
             state.selectedTab,
             width,
@@ -157,6 +161,8 @@ function WorkspaceRootContent() {
                     $context: "screen title when every navigation tab is hidden",
                   }),
             headerShown: true,
+            headerBackground: artworkStage ? renderEnvironmentHeaderBackground : undefined,
+            headerTintColor: artworkStage ? "white" : undefined,
             headerTransparent: NATIVE_LIQUID_GLASS_SUPPORTED,
             headerStyle: NATIVE_LIQUID_GLASS_SUPPORTED
               ? { backgroundColor: "transparent" }

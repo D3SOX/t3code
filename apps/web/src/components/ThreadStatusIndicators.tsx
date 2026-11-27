@@ -410,6 +410,7 @@ export function ThreadPullRequestBadgeControl({
   onOpenList,
   onOpenPullRequest,
   side,
+  onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
   badge: ThreadPullRequestBadge | null;
@@ -420,6 +421,7 @@ export function ThreadPullRequestBadgeControl({
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
   side?: ThreadLinkBadgeSide | undefined;
+  onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const m = useMessages();
   const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status }, m);
@@ -436,6 +438,7 @@ export function ThreadPullRequestBadgeControl({
       onOpenList={onOpenList}
       onOpenPullRequest={onOpenPullRequest}
       side={side}
+      onOpenPullRequestContextMenu={onOpenPullRequestContextMenu}
     />
   );
 }
@@ -451,6 +454,7 @@ function PullRequestBadge({
   onOpenList,
   onOpenPullRequest,
   side,
+  onOpenPullRequestContextMenu,
 }: {
   render: ReactElement<{ render?: useRender.RenderProp }>;
   presentation: NonNullable<ReturnType<typeof resolveThreadPullRequestBadgePresentation>>;
@@ -462,6 +466,7 @@ function PullRequestBadge({
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
   side: ThreadLinkBadgeSide | undefined;
+  onOpenPullRequestContextMenu: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const onClick = opensList
     ? (event: MouseEvent<HTMLElement>) => {
@@ -482,6 +487,7 @@ function PullRequestBadge({
       "aria-label": presentation.label,
       onPointerDown: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
       onClick,
+      onContextMenu: opensList ? undefined : onOpenPullRequestContextMenu,
     },
   });
   return (

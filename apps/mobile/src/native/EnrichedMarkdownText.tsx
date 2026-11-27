@@ -6,6 +6,7 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import {
   markdownForNativeRendering,
+  markdownWithBlockImages,
   markdownWithFileEmbeds,
   markdownForNativeParsing,
   markdownWithInlineFileLinks,
@@ -285,7 +286,9 @@ export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
     const files = markdownWithFileEmbeds(content, fileEmbedLabel);
     return {
       ...files,
-      markdown: markdownWithTextDirection(markdownWithTableBreaks(files.markdown)),
+      markdown: markdownWithTextDirection(
+        markdownWithBlockImages(markdownWithTableBreaks(files.markdown)),
+      ),
     };
   }, [props.markdown, fileEmbedLabel]);
   const [parsedLinkUrls, setParsedLinkUrls] = useState<ReadonlyArray<string>>([]);

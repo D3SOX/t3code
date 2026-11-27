@@ -23,6 +23,9 @@ export interface ComposerSendPresentation {
 
 const ACTION_LABEL: Record<ActiveTurnComposerAction, string> = {
   queue: msg("Queue", { $context: "verb, sends the message after the current turn" }),
+  "next-tool": msg("After next tool", {
+    $context: "sends the message after the next tool call",
+  }),
   steer: msg("Steer", { $context: "verb, sends the message into the running turn" }),
   restart: msg("Restart", { $context: "verb, restarts the turn with the message" }),
 };

@@ -1,0 +1,47 @@
+diff --git a/android/src/main/java/expo/modules/observe/ObserveModule.kt b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+index f6fd70eb1f6492a85287c3957b5fcb93f6a34f62..fc0716369d17c0edc93c097d7c3905d930a39f35 100644
+--- a/android/src/main/java/expo/modules/observe/ObserveModule.kt
++++ b/android/src/main/java/expo/modules/observe/ObserveModule.kt
+@@ -33,7 +33,7 @@ class ObserveModule : Module() {
+   private val context: Context
+     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+ 
+-  private lateinit var observabilityManager: ObservabilityManager
++  private var observabilityManager: ObservabilityManager? = null
+   private lateinit var appMetricsModule: AppMetricsModule
+ 
+   private var lastIntegrations: Map<String, Any?> = emptyMap()
+@@ -48,16 +48,18 @@ class ObserveModule : Module() {
+         appMetricsModule = checkNotNull(appContext.registry.getModule<AppMetricsModule>()) {
+           "AppMetricsModule is required by ObserveModule. Make sure expo-app-metrics is installed."
+         }
++        val constants = appContext.service<ConstantsInterface>()
++        if (getManifest(constants)?.projectId.isNullOrBlank()) return@OnCreate
+         val sessionManager = appMetricsModule.sessionManager
+         observabilityManager = ObservabilityManager(
+           context,
+-          appContext.service<ConstantsInterface>(),
++          constants,
+           sessionManager = sessionManager
+         )
+       }
+ 
+       OnActivityEntersBackground {
+-        observabilityManager.scheduleBackgroundDispatch()
++        observabilityManager?.scheduleBackgroundDispatch()
+       }
+ 
+       Constant("clientId") {
+@@ -65,9 +67,9 @@ class ObserveModule : Module() {
+       }
+ 
+       AsyncFunction("dispatchEvents") Coroutine { ->
+-        observabilityManager.dispatchUnsentMetrics()
+-        observabilityManager.dispatchUnsentLogs()
+-        observabilityManager.dispatchUnsentSpans()
++        observabilityManager?.dispatchUnsentMetrics()
++        observabilityManager?.dispatchUnsentLogs()
++        observabilityManager?.dispatchUnsentSpans()
+       }
+ 
+       Function("configure") { config: Config ->

@@ -153,7 +153,6 @@ export function AppearanceSettingsPanel() {
     "--settings-slider-progress": `${panelAnimationDurationRatio * 100}%`,
     "--settings-slider-fill-offset": `${0.5 - panelAnimationDurationRatio}rem`,
   } as CSSProperties;
-
   return (
     <SettingsPageContainer>
       <SettingsSection id="appearance" title={gt("Colors & themes")} variant="plain" hideTitle>
@@ -175,6 +174,36 @@ export function AppearanceSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="appearance-interface" title={gt("Interface")}>
+        <SettingsRow
+          {...searchableSetting("sidebar-thread-branches")}
+          description={gt(
+            "Turn off to make sidebar threads more compact. Branch names remain in hover details.",
+          )}
+          resetAction={
+            settings.sidebarShowThreadBranches !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches ? (
+              <SettingResetButton
+                ariaLabel={gt("Reset thread branches to default")}
+                onClick={() =>
+                  updateSettings({
+                    sidebarShowThreadBranches: DEFAULT_UNIFIED_SETTINGS.sidebarShowThreadBranches,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarShowThreadBranches}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  sidebarShowThreadBranches: checked,
+                })
+              }
+              aria-label={gt("Show thread branches")}
+            />
+          }
+        />
         <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}
           description={gt("Adjust the contrast of colors and borders across the interface.")}
@@ -211,7 +240,9 @@ export function AppearanceSettingsPanel() {
                     appearanceContrast >= MIN_APPEARANCE_CONTRAST &&
                     appearanceContrast <= MAX_APPEARANCE_CONTRAST
                   ) {
-                    updateSettings({ appearanceContrast });
+                    updateSettings({
+                      appearanceContrast,
+                    });
                   }
                 }}
                 step={5}
@@ -231,7 +262,9 @@ export function AppearanceSettingsPanel() {
               <SettingResetButton
                 ariaLabel={gt("Reset glass opacity to default")}
                 onClick={() =>
-                  updateSettings({ glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity })
+                  updateSettings({
+                    glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
+                  })
                 }
               />
             ) : null
@@ -257,7 +290,9 @@ export function AppearanceSettingsPanel() {
                     glassOpacity >= MIN_GLASS_OPACITY &&
                     glassOpacity <= MAX_GLASS_OPACITY
                   ) {
-                    updateSettings({ glassOpacity });
+                    updateSettings({
+                      glassOpacity,
+                    });
                   }
                 }}
                 step={5}
@@ -286,7 +321,9 @@ export function AppearanceSettingsPanel() {
                 value={settings.chatWidth}
                 onValueChange={(value) => {
                   if (value === "comfortable" || value === "wide" || value === "full")
-                    updateSettings({ chatWidth: value });
+                    updateSettings({
+                      chatWidth: value,
+                    });
                 }}
               >
                 <SelectTrigger size="sm" className="w-full min-w-0" aria-label={gt("Chat width")}>
@@ -404,7 +441,9 @@ export function AppearanceSettingsPanel() {
             <Switch
               checked={settings.mathRenderingEnabled}
               onCheckedChange={(checked) =>
-                updateSettings({ mathRenderingEnabled: Boolean(checked) })
+                updateSettings({
+                  mathRenderingEnabled: Boolean(checked),
+                })
               }
               aria-label={gt("Render math")}
             />

@@ -1,4 +1,5 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
+import { formatCreditBalance } from "@t3tools/shared/usageLimits";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { limitsNotice } from "@t3tools/shared/usageLimitsCopy";
 import { msg, T, useGT, useMessages } from "gt-react";
@@ -162,6 +163,16 @@ function UsageLimitsBannerBody({
                   now={now}
                 />
               )}
+              {account.limits.credits ? (
+                <span className="flex justify-between gap-3 text-xs text-muted-foreground">
+                  <span>
+                    <T>Credits remaining</T>
+                  </span>
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatCreditBalance(account.limits.credits)}
+                  </span>
+                </span>
+              ) : null}
               {externalUsage ? (
                 <Button
                   size="sm"

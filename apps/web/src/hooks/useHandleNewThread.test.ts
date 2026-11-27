@@ -20,6 +20,10 @@ const testState = vi.hoisted(() => {
     defaultModelSelection: null,
     defaultRuntimeMode: "full-access" as RuntimeMode,
   };
+  let rememberedProjectRef: { environmentId: string; projectId: string } | null = null;
+  const rememberProject = (ref: { environmentId: string; projectId: string }) => {
+    rememberedProjectRef = ref;
+  };
   let storedDraft: {
     readonly draftId: string;
     readonly environmentId: string;
@@ -63,6 +67,10 @@ const testState = vi.hoisted(() => {
   };
 
   return {
+    rememberProject,
+    get rememberedProjectRef() {
+      return rememberedProjectRef;
+    },
     completeProjectFileRead: (value: ProjectFile) => completeProjectFileRead(value),
     discoverBranch(branch: string) {
       draftSession = { ...draftSession, branch };
@@ -103,6 +111,7 @@ const testState = vi.hoisted(() => {
       },
     ) {
       storedDraft = nextStoredDraft;
+      rememberedProjectRef = null;
       openDraftRoute = null;
       draftSession = {
         environmentId: "environment-ssh",
@@ -243,7 +252,15 @@ vi.mock("../state/entities", () => {
     defaultModelSelection: null,
   };
   return {
-    readProjects: () => [project],
+    readProjects: () => [
+      project,
+      {
+        ...project,
+        id: "project-selected",
+        environmentId: "environment-primary",
+        workspaceRoot: "/primary/project",
+      },
+    ],
     readThreadShell: () => null,
     readThreadShells: () => [],
     useProjects: () => [],
@@ -264,12 +281,21 @@ vi.mock("../threadRoutes", () => ({
 }));
 vi.mock("../uiStateStore", () => ({
   legacyProjectCwdPreferenceKey: () => "remote-project",
-  useUiStateStore: () => [],
+  useUiStateStore: Object.assign(() => [], {
+    getState: () => ({
+      lastNewThreadProjectRef: testState.rememberedProjectRef,
+      setLastNewThreadProjectRef: testState.rememberProject,
+    }),
+  }),
 }));
 vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
 
 import { readPendingWorkspaceDefault } from "../lib/draftWorkspaceDefaults";
-import { resolveDefaultProjectRef, useNewThreadHandler } from "./useHandleNewThread";
+import {
+  readLastUsedProjectKey,
+  resolveDefaultProjectRef,
+  useNewThreadHandler,
+} from "./useHandleNewThread";
 
 describe.each([
   ["new", null],
@@ -283,6 +309,21 @@ describe.each([
     },
   ],
 ])("useNewThreadHandler with a %s draft", (_, draft) => {
+  it("preserves the selected project when navigation opens a replacement draft", async () => {
+    testState.reset(draft);
+    testState.rememberProject({
+      environmentId: "environment-primary",
+      projectId: "project-selected",
+    });
+    const openThread = useNewThreadHandler();
+    const projectRef = { environmentId: "environment-ssh", projectId: "project-remote" } as never;
+    await openThread(projectRef, { rememberProject: false });
+    expect(readLastUsedProjectKey()).toBe("environment-primary:project-selected");
+
+    await openThread(projectRef);
+    expect(readLastUsedProjectKey()).toBe("environment-ssh:project-remote");
+  });
+
   it("opens the draft before the project file is read, then applies its workspace default", async () => {
     testState.reset(draft, { envMode: null, startFromOrigin: false });
     const opened = await useNewThreadHandler()({
