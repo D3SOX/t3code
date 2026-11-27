@@ -41,7 +41,7 @@ Choose your default follow-up behavior in **Settings → Chat → Follow-up beha
 Shortcuts while a turn is running:
 
 - **Alternate timing**: `Cmd+Enter` (macOS) or `Ctrl+Enter` (Windows/Linux) queues after the next tool call when your default is Queue, and queues after the current turn for the other defaults. If your send shortcut already requires `Cmd/Ctrl+Enter`, add `Shift`. On mobile, long-press the send button or use `Cmd/Ctrl+Return` on a hardware keyboard.
-- **Steer oldest queued message**: `Cmd+Shift+Enter` (macOS) or `Ctrl+Shift+Enter` (Windows/Linux) sends the first queued message as a steer without touching your current draft. Remap `thread.steerQueuedMessage` in **Settings → Keybindings**, or add a rule in your [keybindings file](./keybindings.md#edit-the-configuration-file) to trigger it on `mod+enter` when the composer is empty:
+- **Steer oldest queued message**: `Cmd+Shift+Enter` (macOS) or `Ctrl+Shift+Enter` (Windows/Linux) sends the first queued message as a steer without touching your current draft. If your send shortcut already uses `Cmd/Ctrl+Shift+Enter` for alternate timing, move focus outside the composer to steer the queued message. Remap `thread.steerQueuedMessage` in **Settings → Keybindings**, or add a rule in your [keybindings file](./keybindings.md#edit-the-configuration-file) to trigger it on `mod+enter` when the composer is empty:
 
 ```json
 {
